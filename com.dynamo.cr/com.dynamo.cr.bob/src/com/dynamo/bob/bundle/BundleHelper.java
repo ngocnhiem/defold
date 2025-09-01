@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -1002,5 +1003,27 @@ public class BundleHelper {
         }
     }
 
+    public static Stream<Path> collectSharedLibraries(Platform platform, File buildDir) throws IOException {
+        if (buildDir.exists()) {
+            String libPrefix = platform.getLibPrefix();
+            String libSuffix = platform.getLibSuffix();
+            return Files.walk(buildDir.toPath())
+                    .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String filename = path.getFileName().toString();
+                        return filename.startsWith(libPrefix) && filename.endsWith(libSuffix);
+                    });
+        }
+        return Stream.of();
+    }
 
+    public static void copySharedLibraries(Platform platform, File buildDir, File targetDir) throws IOException {
+        collectSharedLibraries(platform, buildDir).forEach(path -> {
+            try {
+                FileUtils.copyFileToDirectory(path.toFile(), targetDir);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 }
