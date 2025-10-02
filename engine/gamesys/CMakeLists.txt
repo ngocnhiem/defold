@@ -1,0 +1,159 @@
+cmake_minimum_required(VERSION 4.0)
+
+# Early toolchain/SDK detection (for standalone configure)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake")
+include(functions)
+include(platform_host)
+if(NOT TARGET_PLATFORM)
+  set(TARGET_PLATFORM "${HOST_PLATFORM}")
+endif()
+include(sdk)
+
+project(defold_gamesys LANGUAGES C CXX)
+
+include(../../scripts/cmake/defold.cmake)
+include(functions_protoc)
+
+# Log domain for this module
+add_compile_definitions(DLIB_LOG_DOMAIN="GAMESYS")
+
+set(GS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
+set(GS_SRC_DIR "${GS_ROOT}/src/gamesys")
+set(GS_PROTO_DIR "${GS_ROOT}/proto/gamesys")
+
+# ========= Protobuf (DDF) =========
+# Mirror wscript: include all proto files under proto/gamesys except model_ddf.proto
+file(GLOB _ALL_PROTO_FILES "${GS_PROTO_DIR}/*.proto")
+set(GS_PROTO_FILES)
+foreach(_pf IN LISTS _ALL_PROTO_FILES)
+  if(NOT _pf MATCHES "/model_ddf\\.proto$")
+    list(APPEND GS_PROTO_FILES "${_pf}")
+  endif()
+endforeach()
+
+set(GS_PROTO_CC)
+foreach(_pf IN LISTS GS_PROTO_FILES)
+  get_filename_component(_base "${_pf}" NAME_WE)
+  set(_out_cc "${CMAKE_CURRENT_BINARY_DIR}/gamesys/${_base}.pb.cc")
+  defold_protoc_gen_cpp("${_out_cc}" "${_pf}" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+  list(APPEND GS_PROTO_CC "${_out_cc}")
+endforeach()
+
+# ========= gamesys (main) =========
+# ========= gamesys (main) =========
+# Mirror ant_glob patterns from wscript:
+#   ['*.cpp', 'resources/**/*.cpp', 'components/**/*.cpp', 'scripts/*.cpp', 'fontgen/*.cpp']
+file(GLOB GS_TOP_LEVEL
+    "${GS_SRC_DIR}/*.cpp"
+    "${GS_SRC_DIR}/scripts/*.cpp"
+    "${GS_SRC_DIR}/fontgen/*.cpp")
+file(GLOB_RECURSE GS_RESOURCES "${GS_SRC_DIR}/resources/*.cpp")
+file(GLOB_RECURSE GS_COMPONENTS "${GS_SRC_DIR}/components/*.cpp")
+set(GS_SOURCES ${GS_TOP_LEVEL} ${GS_RESOURCES} ${GS_COMPONENTS})
+
+# Exclude model/rig sources (built as separate libs) using explicit paths for reliability
+# Apply remove_from_node_list() exclusions by basename
+list(FILTER GS_SOURCES EXCLUDE REGEX "/comp_model\\.cpp$")
+list(FILTER GS_SOURCES EXCLUDE REGEX "/comp_model_null\\.cpp$")
+list(FILTER GS_SOURCES EXCLUDE REGEX "/res_model\\.cpp$")
+list(FILTER GS_SOURCES EXCLUDE REGEX "/res_model_null\\.cpp$")
+list(FILTER GS_SOURCES EXCLUDE REGEX "/res_rig_scene\\.cpp$")
+list(FILTER GS_SOURCES EXCLUDE REGEX "/res_rig_scene_null\\.cpp$")
+list(FILTER GS_SOURCES EXCLUDE REGEX "/script_model\\.cpp$")
+
+# Mirror waf include patterns: do not include Box2D script sources in the
+# main gamesys library. They are built as separate libraries below
+# (script_box2d, script_box2d_defold). The waf wscript uses 'scripts/*.cpp'
+# (non-recursive), so scripts/box2d/*.cpp are not part of gamesys.
+list(FILTER GS_SOURCES EXCLUDE REGEX "/scripts/box2d/")
+
+# Choose platform-specific window script
+if (TARGET_PLATFORM MATCHES "arm64-ios|x86_64-ios")
+    list(APPEND GS_SOURCES "${GS_SRC_DIR}/scripts/window/script_window_ios.mm")
+elseif (TARGET_PLATFORM MATCHES "armv7-android|arm64-android")
+    list(APPEND GS_SOURCES "${GS_SRC_DIR}/scripts/window/script_window_android.cpp")
+else()
+    list(APPEND GS_SOURCES "${GS_SRC_DIR}/scripts/window/script_window_null.cpp")
+endif()
+
+# HTTP implementation: JS vs native
+if (TARGET_PLATFORM MATCHES "^(js-web|wasm-web|wasm_pthread-web)$")
+    list(FILTER GS_SOURCES EXCLUDE REGEX "/scripts/script_http\\.cpp$")
+else()
+    list(FILTER GS_SOURCES EXCLUDE REGEX "/scripts/script_http_js\\.cpp$")
+endif()
+
+add_library(gamesys STATIC ${GS_SOURCES} ${GS_PROTO_CC})
+target_include_directories(gamesys PUBLIC
+    "${GS_SRC_DIR}"
+    "${GS_ROOT}/src"
+    "${GS_ROOT}/proto"
+    "${CMAKE_CURRENT_BINARY_DIR}")
+
+# ========= gamesys_model =========
+set(GS_MODEL_PROTO "${GS_PROTO_DIR}/model_ddf.proto")
+set(GS_MODEL_CC "${CMAKE_CURRENT_BINARY_DIR}/gamesys/model_ddf.pb.cc")
+defold_protoc_gen_cpp("${GS_MODEL_CC}" "${GS_MODEL_PROTO}" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+
+add_library(gamesys_model STATIC
+    "${GS_SRC_DIR}/resources/res_model.cpp"
+    "${GS_SRC_DIR}/components/comp_model.cpp"
+    "${GS_SRC_DIR}/scripts/script_model.cpp"
+    "${GS_MODEL_CC}")
+target_include_directories(gamesys_model PUBLIC "${GS_SRC_DIR}" "${GS_ROOT}/proto" "${CMAKE_CURRENT_BINARY_DIR}")
+
+add_library(gamesys_model_null STATIC
+    "${GS_SRC_DIR}/resources/res_model_null.cpp"
+    "${GS_SRC_DIR}/components/comp_model_null.cpp")
+target_include_directories(gamesys_model_null PUBLIC "${GS_SRC_DIR}")
+
+# ========= gamesys_rig =========
+add_library(gamesys_rig STATIC "${GS_SRC_DIR}/resources/res_rig_scene.cpp")
+target_include_directories(gamesys_rig PUBLIC "${GS_SRC_DIR}")
+
+add_library(gamesys_rig_null STATIC "${GS_SRC_DIR}/resources/res_rig_scene_null.cpp")
+target_include_directories(gamesys_rig_null PUBLIC "${GS_SRC_DIR}")
+
+# ========= script_box2d =========
+add_library(script_box2d STATIC
+    "${GS_SRC_DIR}/scripts/box2d/script_box2d.cpp"
+    "${GS_SRC_DIR}/scripts/box2d/script_box2d_body.cpp")
+# Default to the Defold-provided Box2D headers
+target_include_directories(script_box2d PUBLIC
+    "${GS_SRC_DIR}"
+    "${DEFOLD_EXT_INCLUDE_DIR}/box2d")
+
+
+
+add_library(script_box2d_defold STATIC
+    "${GS_SRC_DIR}/scripts/box2d/script_box2d.cpp"
+    "${GS_SRC_DIR}/scripts/box2d/script_box2d_body_defold.cpp")
+target_include_directories(script_box2d_defold PUBLIC
+    "${GS_SRC_DIR}"
+    "${DEFOLD_EXT_INCLUDE_DIR}/box2d_defold")
+
+# ========= Android Java (optional) =========
+if (TARGET_PLATFORM MATCHES "armv7-android|arm64-android")
+    find_package(Java 21 COMPONENTS Development QUIET)
+    if(Java_JAVAC_EXECUTABLE)
+        file(GLOB_RECURSE GS_JAVA_SRC "${GS_ROOT}/src/java/*.java")
+        set(GS_JAR "${CMAKE_CURRENT_BINARY_DIR}/gamesys_android.jar")
+        add_custom_command(OUTPUT "${GS_JAR}"
+            COMMAND "${Java_JAVAC_EXECUTABLE}" -g -source 1.8 -target 1.8 -d "${CMAKE_CURRENT_BINARY_DIR}/java" ${GS_JAVA_SRC}
+            COMMAND jar cf "${GS_JAR}" -C "${CMAKE_CURRENT_BINARY_DIR}/java" .
+            DEPENDS ${GS_JAVA_SRC}
+            VERBATIM)
+        add_custom_target(gamesys_android_jar ALL DEPENDS "${GS_JAR}")
+        install(FILES "${GS_JAR}" DESTINATION share/java)
+    endif()
+endif()
+
+# ========= Install =========
+install(TARGETS gamesys gamesys_model gamesys_model_null gamesys_rig gamesys_rig_null script_box2d script_box2d_defold
+        ARCHIVE DESTINATION lib/${TARGET_PLATFORM}
+        LIBRARY DESTINATION lib/${TARGET_PLATFORM}
+        RUNTIME DESTINATION bin/${TARGET_PLATFORM})
+
+install(FILES "${GS_SRC_DIR}/gamesys.h" DESTINATION include/gamesys)
+install(FILES "${GS_SRC_DIR}/components/comp_gui.h" DESTINATION include/gamesys/components)
+install(FILES ${GS_PROTO_FILES} DESTINATION share/proto/gamesys)
