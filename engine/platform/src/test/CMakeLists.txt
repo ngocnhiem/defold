@@ -21,11 +21,8 @@ set_target_properties(test_platform PROPERTIES EXCLUDE_FROM_ALL TRUE)
 # Include the platform src directory for headers
 target_include_directories(test_platform PRIVATE "${CMAKE_CURRENT_LIST_DIR}/..")
 
-target_link_libraries(test_platform PRIVATE
-    ${defold_libprefix}dlib
-    ${defold_libprefix}profile_null
-    ${defold_libprefix}testmain
-    platform_null)
+defold_target_link_libraries(test_platform ${TARGET_PLATFORM} dlib profile_null testmain)
+target_link_libraries(test_platform PRIVATE platform_null)
 
 defold_target_link_socket(test_platform "${TARGET_PLATFORM}" PRIVATE)
 
@@ -62,9 +59,7 @@ if (NOT (TARGET_PLATFORM MATCHES "js-web|wasm-web|wasm_pthread-web"))
         target_link_libraries(test_platform_app PRIVATE Threads::Threads dl)
     endif()
 
-    target_link_libraries(test_platform_app PRIVATE
-        ${defold_libprefix}dlib
-        ${defold_libprefix}profile_null)
+    defold_target_link_libraries(test_platform_app ${TARGET_PLATFORM} dlib profile_null)
 
     defold_target_link_opengl(test_platform_app "${TARGET_PLATFORM}" PRIVATE)
     defold_target_link_glfw(test_platform_app "${TARGET_PLATFORM}" PRIVATE)

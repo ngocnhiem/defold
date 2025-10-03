@@ -326,7 +326,7 @@ if os.environ.get('TERM','') in ('cygwin',):
 ENGINE_LIBS = "testmain dlib jni texc modelc shaderc ddf platform font graphics particle lua hid input physics resource extension script render rig gameobject gui sound liveupdate crash gamesys tools record profiler engine sdk".split()
 HOST_LIBS = "testmain dlib jni texc modelc shaderc".split()
 
-CMAKE_SUPPORT = ['platform', 'hid', 'input']
+CMAKE_SUPPORT = ['platform', 'hid', 'input', 'gamesys']
 
 EXTERNAL_LIBS = "box2d box2d_v2 glfw bullet3d opus".split()
 
@@ -1534,8 +1534,9 @@ class Configuration(object):
         build_test = 'build_tests' if build_tests else ''
         install = 'install'
 
+        trace = '' #'--trace-expand'
         # generate the build script
-        cmake_configure_args = f"cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS=ON".split()
+        cmake_configure_args = f"cmake -S . -B build -GNinja {trace} -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS=ON".split()
         run.env_command(self._form_env(), cmake_configure_args, cwd = libdir)
 
         # execute the build

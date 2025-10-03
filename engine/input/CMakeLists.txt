@@ -13,8 +13,6 @@ include(sdk)
 project(defold_input LANGUAGES C CXX)
 
 include(../../scripts/cmake/defold.cmake)
-include(functions_glfw)
-include(functions_protoc)
 
 # Define log domain for this module
 add_compile_definitions(DLIB_LOG_DOMAIN="INPUT")

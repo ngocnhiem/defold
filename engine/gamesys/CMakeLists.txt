@@ -12,7 +12,6 @@ include(sdk)
 project(defold_gamesys LANGUAGES C CXX)
 
 include(../../scripts/cmake/defold.cmake)
-include(functions_protoc)
 
 # Log domain for this module
 add_compile_definitions(DLIB_LOG_DOMAIN="GAMESYS")
@@ -157,3 +156,8 @@ install(TARGETS gamesys gamesys_model gamesys_model_null gamesys_rig gamesys_rig
 install(FILES "${GS_SRC_DIR}/gamesys.h" DESTINATION include/gamesys)
 install(FILES "${GS_SRC_DIR}/components/comp_gui.h" DESTINATION include/gamesys/components)
 install(FILES ${GS_PROTO_FILES} DESTINATION share/proto/gamesys)
+
+# ========= Tests =========
+if(BUILD_TESTS)
+  add_subdirectory(src/gamesys/test)
+endif()

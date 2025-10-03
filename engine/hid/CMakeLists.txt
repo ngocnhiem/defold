@@ -53,13 +53,8 @@ if(BUILD_TESTS)
     # Do not build test executables by default (optional via explicit target)
     set_target_properties(test_hid PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
-    target_link_libraries(test_hid PRIVATE
-        ${defold_libprefix}dlib
-        ${defold_libprefix}profile_null
-        ${defold_libprefix}platform_null
-        ${defold_libprefix}testmain
-        hid_null
-    )
+    defold_target_link_libraries(test_hid ${TARGET_PLATFORM} dlib profile_null platform_null testmain)
+    target_link_libraries(test_hid PRIVATE hid_null)
 
     if (TARGET_PLATFORM MATCHES "arm64-linux|x86_64-linux")
         find_package(Threads REQUIRED)
@@ -104,11 +99,8 @@ if(BUILD_TESTS)
         target_link_libraries(test_app_hid PRIVATE Threads::Threads dl)
     endif()
 
-    target_link_libraries(test_app_hid PRIVATE
-        ${defold_libprefix}dlib
-        ${defold_libprefix}profile_null
-        hid
-    )
+    defold_target_link_libraries(test_app_hid ${TARGET_PLATFORM} dlib profile_null)
+    target_link_libraries(test_app_hid PRIVATE hid)
 
     defold_target_link_graphics(test_app_hid "${TARGET_PLATFORM}" PRIVATE)
     defold_target_link_platform(test_app_hid "${TARGET_PLATFORM}" PRIVATE)

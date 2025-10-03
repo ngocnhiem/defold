@@ -1,4 +1,5 @@
 defold_log("functions_glfw.cmake:")
+include(functions_libs)
 
 # Determine GLFW major version (2 or 3) for a given target platform.
 # Mirrors build_tools/waf_dynamo.py: platform_glfw_version(platform)
@@ -52,18 +53,8 @@ function(defold_target_link_glfw target platform)
     defold_get_glfw_version(_GLFW_VER "${platform}")
 
     if(_GLFW_VER EQUAL 3)
-        set(_glfw_lib glfw3)
+        defold_target_link_libraries(${target} ${platform} SCOPE ${DGLFW_SCOPE} glfw3)
     else()
-        set(_glfw_lib dmglfw)
+        defold_target_link_libraries(${target} ${platform} SCOPE ${DGLFW_SCOPE} dmglfw)
     endif()
-
-    # If platform OS is win32, our prebuilt static libs are prefixed with "lib"
-    string(REGEX REPLACE "^[^-]+-" "" _PLAT_OS "${platform}")
-    if(_PLAT_OS STREQUAL "win32")
-        if(NOT _glfw_lib MATCHES "^lib")
-            set(_glfw_lib "lib${_glfw_lib}")
-        endif()
-    endif()
-
-    target_link_libraries(${target} ${DGLFW_SCOPE} ${_glfw_lib})
 endfunction()
