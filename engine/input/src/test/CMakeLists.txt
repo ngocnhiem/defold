@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 4.0)
 
-include(functions)
+# Early toolchain/SDK detection (for standalone configure)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/cmake")
+include(defold)
 
-#================================ Test Data ================================
+#******************************* Test Data *******************************
 
 defold_protoc_encode(
   "${CMAKE_CURRENT_BINARY_DIR}/build/test.input_bindingc"           # OUT_FILE
@@ -44,11 +46,10 @@ defold_protoc_encode(
   INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/../../proto"
 )
 
-#===========================================================================
+#***********************************************************************
 
 # Build the input test executable
-add_executable(test_input "${CMAKE_CURRENT_LIST_DIR}/test_input.cpp")
-include(../../../../scripts/cmake/functions_libs.cmake)
+defold_add_executable(test_input "${CMAKE_CURRENT_LIST_DIR}/test_input.cpp")
 
 # make sure the test data is built
 add_custom_target(input_test_data DEPENDS
@@ -65,8 +66,15 @@ target_include_directories(test_input PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/../../"
 )
 
-defold_target_link_libraries(test_input ${TARGET_PLATFORM} dlib mbedtls ddf profile_null testmain)
-target_link_libraries(test_input PRIVATE hid_null input)
+defold_target_link_libraries(test_input "${TARGET_PLATFORM}"
+    dlib
+    mbedtls
+    ddf
+    profile_null
+    testmain
+    hid_null
+    input
+)
 
 defold_target_link_platform(test_input "${TARGET_PLATFORM}" PRIVATE)
 defold_target_link_socket(test_input "${TARGET_PLATFORM}" PRIVATE)

@@ -1,5 +1,8 @@
 defold_log("sdk_xcode.cmake:")
 
+# Disable requirement of having code signed executables when generating solutions
+set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
+
 # Detect packaged or local Xcode toolchain and set compilers (clang/clang++)
 
 set(_XCODE_TOOLCHAIN "")
@@ -59,9 +62,11 @@ endif()
 
 if(_XCODE_TOOLCHAIN AND EXISTS "${_XCODE_CXX}")
     defold_log("sdk_xcode: Using Xcode toolchain: ${_XCODE_TOOLCHAIN}")
-    # Set C++ compiler to detected clang++ (cache, force to override defaults)
-    set(CMAKE_CXX_COMPILER "${_XCODE_CXX}" CACHE FILEPATH "Xcode clang++" FORCE)
-    if(EXISTS "${_XCODE_CC}")
+    # Set compilers only if not already defined to avoid mid-run changes
+    if(NOT CMAKE_CXX_COMPILER)
+        set(CMAKE_CXX_COMPILER "${_XCODE_CXX}" CACHE FILEPATH "Xcode clang++" FORCE)
+    endif()
+    if(EXISTS "${_XCODE_CC}" AND NOT CMAKE_C_COMPILER)
         set(CMAKE_C_COMPILER "${_XCODE_CC}" CACHE FILEPATH "Xcode clang" FORCE)
     endif()
     # ------------------------------------------------------------------

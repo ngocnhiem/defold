@@ -1,13 +1,9 @@
+# Minimum CMake version and project
 cmake_minimum_required(VERSION 4.0)
 
 # Early toolchain/SDK detection (for standalone configure)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake")
-include(functions)
-include(platform_host)
-if(NOT TARGET_PLATFORM)
-  set(TARGET_PLATFORM "${HOST_PLATFORM}")
-endif()
-include(sdk)
+include(defold)
 
 project(defold_gamesys LANGUAGES C CXX)
 
@@ -39,7 +35,7 @@ foreach(_pf IN LISTS GS_PROTO_FILES)
 endforeach()
 
 # ========= gamesys (main) =========
-# ========= gamesys (main) =========
+
 # Mirror ant_glob patterns from wscript:
 #   ['*.cpp', 'resources/**/*.cpp', 'components/**/*.cpp', 'scripts/*.cpp', 'fontgen/*.cpp']
 file(GLOB GS_TOP_LEVEL
@@ -82,7 +78,7 @@ else()
     list(FILTER GS_SOURCES EXCLUDE REGEX "/scripts/script_http_js\\.cpp$")
 endif()
 
-add_library(gamesys STATIC ${GS_SOURCES} ${GS_PROTO_CC})
+defold_add_library(gamesys STATIC ${GS_SOURCES} ${GS_PROTO_CC})
 target_include_directories(gamesys PUBLIC
     "${GS_SRC_DIR}"
     "${GS_ROOT}/src"
@@ -94,27 +90,27 @@ set(GS_MODEL_PROTO "${GS_PROTO_DIR}/model_ddf.proto")
 set(GS_MODEL_CC "${CMAKE_CURRENT_BINARY_DIR}/gamesys/model_ddf.pb.cc")
 defold_protoc_gen_cpp("${GS_MODEL_CC}" "${GS_MODEL_PROTO}" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
 
-add_library(gamesys_model STATIC
+defold_add_library(gamesys_model STATIC
     "${GS_SRC_DIR}/resources/res_model.cpp"
     "${GS_SRC_DIR}/components/comp_model.cpp"
     "${GS_SRC_DIR}/scripts/script_model.cpp"
     "${GS_MODEL_CC}")
 target_include_directories(gamesys_model PUBLIC "${GS_SRC_DIR}" "${GS_ROOT}/proto" "${CMAKE_CURRENT_BINARY_DIR}")
 
-add_library(gamesys_model_null STATIC
+defold_add_library(gamesys_model_null STATIC
     "${GS_SRC_DIR}/resources/res_model_null.cpp"
     "${GS_SRC_DIR}/components/comp_model_null.cpp")
 target_include_directories(gamesys_model_null PUBLIC "${GS_SRC_DIR}")
 
 # ========= gamesys_rig =========
-add_library(gamesys_rig STATIC "${GS_SRC_DIR}/resources/res_rig_scene.cpp")
+defold_add_library(gamesys_rig STATIC "${GS_SRC_DIR}/resources/res_rig_scene.cpp")
 target_include_directories(gamesys_rig PUBLIC "${GS_SRC_DIR}")
 
-add_library(gamesys_rig_null STATIC "${GS_SRC_DIR}/resources/res_rig_scene_null.cpp")
+defold_add_library(gamesys_rig_null STATIC "${GS_SRC_DIR}/resources/res_rig_scene_null.cpp")
 target_include_directories(gamesys_rig_null PUBLIC "${GS_SRC_DIR}")
 
 # ========= script_box2d =========
-add_library(script_box2d STATIC
+defold_add_library(script_box2d STATIC
     "${GS_SRC_DIR}/scripts/box2d/script_box2d.cpp"
     "${GS_SRC_DIR}/scripts/box2d/script_box2d_body.cpp")
 # Default to the Defold-provided Box2D headers
@@ -124,7 +120,7 @@ target_include_directories(script_box2d PUBLIC
 
 
 
-add_library(script_box2d_defold STATIC
+defold_add_library(script_box2d_defold STATIC
     "${GS_SRC_DIR}/scripts/box2d/script_box2d.cpp"
     "${GS_SRC_DIR}/scripts/box2d/script_box2d_body_defold.cpp")
 target_include_directories(script_box2d_defold PUBLIC

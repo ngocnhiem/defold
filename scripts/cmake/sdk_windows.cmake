@@ -14,10 +14,6 @@ if(NOT WIN32)
     return()
 endif()
 
-# Ensure shared helpers are available (defold_collect_packaged_roots, Windows helpers, etc.)
-include(functions)
-include(functions_windows)
-
 set(_DEFOLD_WIN_ARCH "x64")
 if(DEFINED TARGET_PLATFORM)
     if(TARGET_PLATFORM MATCHES "(^|-)x86($|-)" OR TARGET_PLATFORM MATCHES "x86-win32")
@@ -32,41 +28,245 @@ set(_FOUND_LLVM_CLANG   "")
 set(_FOUND_WINSDK_VERSION "")
 set(_FOUND_PACKAGED_TOOLCHAIN FALSE)
 
+
 # Helper to pick latest directory path from a list of paths
+function(_defold_pick_latest_dir OUT_VAR)
+    set(dirs ${ARGN})
+    if(dirs)
+        # Use natural sorting so versioned directory names order correctly
+        list(SORT dirs COMPARE NATURAL)
+        list(REVERSE dirs)
+        list(GET dirs 0 _latest)
+        set(${OUT_VAR} "${_latest}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+
+# Helper: detect clang-cl.exe under a Visual Studio root
+function(_defold_detect_clang_cl_from_vsroot VSROOT ARCH OUT_PATH)
+    set(${OUT_PATH} "" PARENT_SCOPE)
+    if(NOT EXISTS "${VSROOT}")
+        return()
+    endif()
+    if(ARCH STREQUAL "x64")
+        set(_globs "${VSROOT}/VC/Tools/Llvm/x64/bin/clang-cl.exe")
+    else()
+        set(_globs "${VSROOT}/VC/Tools/Llvm/x86/bin/clang-cl.exe")
+    endif()
+    file(GLOB _matches ${_globs})
+    if(_matches)
+        _defold_pick_latest_dir(_best ${_matches})
+        if(_best)
+            set(${OUT_PATH} "${_best}" PARENT_SCOPE)
+        endif()
+    endif()
+endfunction()
+
+# Helper: locate rc.exe and mt.exe inside a Windows Kits root
+function(_defold_locate_winsdk_tools_in_root ROOT VER ARCH OUT_RC OUT_MT)
+    set(_rc "")
+    set(_mt "")
+    if(NOT EXISTS "${ROOT}")
+        set(${OUT_RC} "" PARENT_SCOPE)
+        set(${OUT_MT} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    foreach(_winsdk_layout "Windows Kits" "WindowsKits")
+        if(_rc AND _mt)
+            break()
+        endif()
+        set(_bin_root "${ROOT}/${_winsdk_layout}/10/bin")
+        if(EXISTS "${_bin_root}")
+            # Prefer versioned layout: .../10/bin/<VER>/<ARCH>/
+            set(_ver_dir "${_bin_root}/${VER}")
+            if(EXISTS "${_ver_dir}")
+                set(_rc_candidate "${_ver_dir}/${ARCH}/rc.exe")
+                set(_mt_candidate "${_ver_dir}/${ARCH}/mt.exe")
+                if(NOT _rc AND EXISTS "${_rc_candidate}")
+                    set(_rc "${_rc_candidate}")
+                endif()
+                if(NOT _mt AND EXISTS "${_mt_candidate}")
+                    set(_mt "${_mt_candidate}")
+                endif()
+            endif()
+            # Fallback non-versioned layout: .../10/bin/<ARCH>/
+            if(NOT _rc)
+                set(_rc_candidate2 "${_bin_root}/${ARCH}/rc.exe")
+                if(EXISTS "${_rc_candidate2}")
+                    set(_rc "${_rc_candidate2}")
+                endif()
+            endif()
+            if(NOT _mt)
+                set(_mt_candidate2 "${_bin_root}/${ARCH}/mt.exe")
+                if(EXISTS "${_mt_candidate2}")
+                    set(_mt "${_mt_candidate2}")
+                endif()
+            endif()
+        endif()
+    endforeach()
+
+    set(${OUT_RC} "${_rc}" PARENT_SCOPE)
+    set(${OUT_MT} "${_mt}" PARENT_SCOPE)
+endfunction()
+
+# Helper: given a cl.exe path, locate the MSVC lib directory that contains LIBCMT.lib
+function(_defold_locate_msvc_lib_dir_from_cl CL_PATH ARCH OUT_LIB_DIR)
+    set(${OUT_LIB_DIR} "" PARENT_SCOPE)
+    if(NOT EXISTS "${CL_PATH}")
+        return()
+    endif()
+    # Normalize and walk up to VC/Tools/MSVC/<ver>
+    file(REAL_PATH "${CL_PATH}" _cl_real)
+    cmake_path(GET _cl_real PARENT_PATH _cl_dir)       # .../bin/Host*/<arch>
+    cmake_path(GET _cl_dir  PARENT_PATH _host_dir)     # .../bin/Host*
+    cmake_path(GET _host_dir PARENT_PATH _bin_dir)     # .../bin
+    cmake_path(GET _bin_dir  PARENT_PATH _msvc_ver_dir)# .../VC/Tools/MSVC/<ver>
+
+    set(_candidates
+        "${_msvc_ver_dir}/lib/${ARCH}"
+        "${_msvc_ver_dir}/lib/onecore/${ARCH}"
+    )
+    foreach(_cand IN LISTS _candidates)
+        if(EXISTS "${_cand}/libcmt.lib")
+            set(${OUT_LIB_DIR} "${_cand}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+endfunction()
+
+# Helper: given a cl.exe path, locate the MSVC include directory that contains vcruntime.h
+function(_defold_locate_msvc_include_dir_from_cl CL_PATH OUT_INC_DIR)
+    set(${OUT_INC_DIR} "" PARENT_SCOPE)
+    if(NOT EXISTS "${CL_PATH}")
+        return()
+    endif()
+    file(REAL_PATH "${CL_PATH}" _cl_real)
+    cmake_path(GET _cl_real PARENT_PATH _cl_dir)       # .../bin/Host*/<arch>
+    cmake_path(GET _cl_dir  PARENT_PATH _host_dir)     # .../bin/Host*
+    cmake_path(GET _host_dir PARENT_PATH _bin_dir)     # .../bin
+    cmake_path(GET _bin_dir  PARENT_PATH _msvc_ver_dir)# .../VC/Tools/MSVC/<ver>
+    set(_inc_dir "${_msvc_ver_dir}/include")
+    if(EXISTS "${_inc_dir}/vcruntime.h")
+        set(${OUT_INC_DIR} "${_inc_dir}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Helper: locate UM and UCRT lib dirs in a Windows Kits root
+function(_defold_locate_winsdk_lib_dirs_in_root ROOT VER ARCH OUT_UM_DIR OUT_UCRT_DIR)
+    set(_um_dir "")
+    set(_ucrt_dir "")
+    foreach(_winsdk_layout "Windows Kits" "WindowsKits")
+        if(_um_dir AND _ucrt_dir)
+            break()
+        endif()
+        set(_lib_root "${ROOT}/${_winsdk_layout}/10/Lib/${VER}")
+        if(EXISTS "${_lib_root}")
+            set(_um_candidate "${_lib_root}/um/${ARCH}")
+            if(EXISTS "${_um_candidate}")
+                set(_um_dir "${_um_candidate}")
+            endif()
+            set(_ucrt_candidate "${_lib_root}/ucrt/${ARCH}")
+            if(EXISTS "${_ucrt_candidate}")
+                set(_ucrt_dir "${_ucrt_candidate}")
+            endif()
+        endif()
+    endforeach()
+    set(${OUT_UM_DIR} "${_um_dir}" PARENT_SCOPE)
+    set(${OUT_UCRT_DIR} "${_ucrt_dir}" PARENT_SCOPE)
+endfunction()
+
+# Helper: detect Windows SDK version under a root (Windows Kits/10/Include/<ver>)
+function(_defold_detect_winsdk_from_root ROOT OUT_VER)
+    set(${OUT_VER} "" PARENT_SCOPE)
+    if(NOT EXISTS "${ROOT}")
+        return()
+    endif()
+    set(_best_ver "")
+    foreach(_winsdk_layout "Windows Kits" "WindowsKits")
+        if(_best_ver)
+            break()
+        endif()
+        set(_inc_root "${ROOT}/${_winsdk_layout}/10/Include")
+        if(EXISTS "${_inc_root}")
+            file(GLOB _sdk_vers RELATIVE "${_inc_root}" "${_inc_root}/*")
+            if(_sdk_vers)
+                _defold_pick_latest_dir(_latest_ver ${_sdk_vers})
+                if(_latest_ver)
+                    set(_best_ver "${_latest_ver}")
+                endif()
+            endif()
+        endif()
+    endforeach()
+    if(_best_ver)
+        set(${OUT_VER} "${_best_ver}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Helper: detect cl.exe under a Visual Studio root
+function(_defold_detect_msvc_cl_from_vsroot VSROOT ARCH OUT_PATH)
+    set(${OUT_PATH} "" PARENT_SCOPE)
+    if(NOT EXISTS "${VSROOT}")
+        return()
+    endif()
+    if(ARCH STREQUAL "x64")
+        set(_cl_globs "${VSROOT}/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe")
+    else()
+        set(_cl_globs "${VSROOT}/VC/Tools/MSVC/*/bin/Hostx86/x86/cl.exe")
+    endif()
+    foreach(_pat IN LISTS _cl_globs)
+        file(GLOB _matches ${_pat})
+        if(_matches)
+            _defold_pick_latest_dir(_best ${_matches})
+            if(_best)
+                set(${OUT_PATH} "${_best}" PARENT_SCOPE)
+                return()
+            endif()
+        endif()
+    endforeach()
+endfunction()
 
 #############################################
-# Unified Visual Studio roots and detection
-set(_VS_CANDIDATE_ROOTS "")
+# Visual Studio roots and detection (packaged first)
+set(_VS_PACKAGED_ROOTS "")
+set(_VS_PACKAGED_SEARCH_DIRS "")
+
+# Always probe the repo-local tmp/dynamo_home first to prefer packaged toolchains
+get_filename_component(_DEFOLD_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(_DEFOLD_TMP_DYNAMO_HOME "${_DEFOLD_REPO_ROOT}/tmp/dynamo_home")
+if(EXISTS "${_DEFOLD_TMP_DYNAMO_HOME}/ext/SDKs")
+    list(APPEND _VS_PACKAGED_SEARCH_DIRS "${_DEFOLD_TMP_DYNAMO_HOME}/ext/SDKs")
+endif()
+
 if(DEFINED DEFOLD_SDK_ROOT)
     set(_SDKS_DIR "${DEFOLD_SDK_ROOT}/ext/SDKs")
     if(EXISTS "${_SDKS_DIR}")
-        defold_collect_packaged_roots("${_SDKS_DIR}" _packaged_vs_roots)
-        list(APPEND _VS_CANDIDATE_ROOTS ${_packaged_vs_roots})
+        list(APPEND _VS_PACKAGED_SEARCH_DIRS "${_SDKS_DIR}")
     endif()
 endif()
 
-# Prefer latest from vswhere if available
-find_program(_VSWHERE vswhere HINTS "C:/Program Files (x86)/Microsoft Visual Studio/Installer")
-if(_VSWHERE)
-    execute_process(COMMAND "${_VSWHERE}" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-                    OUTPUT_VARIABLE _VS_INSTALL
-                    OUTPUT_STRIP_TRAILING_WHITESPACE
-                    ERROR_QUIET)
-    if(_VS_INSTALL AND EXISTS "${_VS_INSTALL}")
-        list(INSERT _VS_CANDIDATE_ROOTS 0 "${_VS_INSTALL}")
+list(REMOVE_DUPLICATES _VS_PACKAGED_SEARCH_DIRS)
+
+foreach(_sdks_dir IN LISTS _VS_PACKAGED_SEARCH_DIRS)
+    defold_collect_packaged_roots("${_sdks_dir}" _packaged_level1)
+    if(_packaged_level1)
+        list(APPEND _VS_PACKAGED_ROOTS ${_packaged_level1})
     endif()
+    file(GLOB _packaged_vs_roots LIST_DIRECTORIES TRUE "${_sdks_dir}/*/MicrosoftVisualStudio*")
+    if(_packaged_vs_roots)
+        list(APPEND _VS_PACKAGED_ROOTS ${_packaged_vs_roots})
+    endif()
+endforeach()
+
+list(REMOVE_DUPLICATES _VS_PACKAGED_ROOTS)
+
+set(_VS_CANDIDATE_ROOTS "")
+if(_VS_PACKAGED_ROOTS)
+    list(APPEND _VS_CANDIDATE_ROOTS ${_VS_PACKAGED_ROOTS})
 endif()
 
-# Common local fallback roots
-list(APPEND _VS_CANDIDATE_ROOTS
-    "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools"
-    "C:/Program Files (x86)/Microsoft Visual Studio/2022/Community"
-    "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools"
-    "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community")
-list(REMOVE_DUPLICATES _VS_CANDIDATE_ROOTS)
-
-# Scan for MSVC and clang-cl
-foreach(_vs IN LISTS _VS_CANDIDATE_ROOTS)
+# 1) Scan packaged Visual Studio roots first
+foreach(_vs IN LISTS _VS_PACKAGED_ROOTS)
     if(NOT _FOUND_MSVC_CL)
         _defold_detect_msvc_cl_from_vsroot("${_vs}" "${_DEFOLD_WIN_ARCH}" _cl)
         if(_cl)
@@ -80,6 +280,48 @@ foreach(_vs IN LISTS _VS_CANDIDATE_ROOTS)
         endif()
     endif()
 endforeach()
+
+# 2) If not found yet, add local Visual Studio roots
+set(_VS_LOCAL_ROOTS "")
+find_program(_VSWHERE vswhere HINTS "C:/Program Files (x86)/Microsoft Visual Studio/Installer")
+if(_VSWHERE)
+    execute_process(COMMAND "${_VSWHERE}" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+                    OUTPUT_VARIABLE _VS_INSTALL
+                    OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+    if(_VS_INSTALL AND EXISTS "${_VS_INSTALL}")
+        list(APPEND _VS_LOCAL_ROOTS "${_VS_INSTALL}")
+    endif()
+endif()
+
+list(APPEND _VS_LOCAL_ROOTS
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools"
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/Community"
+    "C:/Program Files (x86)/Microsoft Visual Studio/2019/BuildTools"
+    "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community")
+list(REMOVE_DUPLICATES _VS_LOCAL_ROOTS)
+
+if(_VS_LOCAL_ROOTS)
+    list(APPEND _VS_CANDIDATE_ROOTS ${_VS_LOCAL_ROOTS})
+    list(REMOVE_DUPLICATES _VS_CANDIDATE_ROOTS)
+endif()
+
+if(NOT _FOUND_MSVC_CL OR NOT _FOUND_CLANG_CL)
+    foreach(_vs IN LISTS _VS_LOCAL_ROOTS)
+        if(NOT _FOUND_MSVC_CL)
+            _defold_detect_msvc_cl_from_vsroot("${_vs}" "${_DEFOLD_WIN_ARCH}" _cl)
+            if(_cl)
+                set(_FOUND_MSVC_CL "${_cl}")
+            endif()
+        endif()
+        if(NOT _FOUND_CLANG_CL)
+            _defold_detect_clang_cl_from_vsroot("${_vs}" "${_DEFOLD_WIN_ARCH}" _clangcl)
+            if(_clangcl)
+                set(_FOUND_CLANG_CL "${_clangcl}")
+            endif()
+        endif()
+    endforeach()
+endif()
 
 # Detect Windows SDK version from the same roots or system
 if(NOT _FOUND_WINSDK_VERSION)
@@ -171,6 +413,8 @@ if(_FOUND_MSVC_CL)
     defold_log("sdk_windows: Using MSVC cl: ${_FOUND_MSVC_CL}")
     # Cache discovered MSVC cl path
     set(DEFOLD_MSVC_CL "${_FOUND_MSVC_CL}" CACHE FILEPATH "Path to cl.exe (MSVC)" FORCE)
+    # Export alias for compatibility with consumers expecting MSVC_CL
+    set(MSVC_CL "${_FOUND_MSVC_CL}" CACHE FILEPATH "Path to MSVC cl.exe" FORCE)
     if(NOT CMAKE_C_COMPILER)
         set(CMAKE_C_COMPILER "${_FOUND_MSVC_CL}" CACHE FILEPATH "MSVC C compiler" FORCE)
     endif()
@@ -564,4 +808,33 @@ if(_DEFOLD_LINK_LIBPATH_FLAGS)
     else()
         set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES "${_DEFOLD_TRY_VARS}")
     endif()
+endif()
+# Prefer explicit packaged MSVC roots for the current arch (Win32/x64)
+if(DEFINED DEFOLD_SDK_ROOT)
+    set(_EXPL_MSVC_ROOTS)
+    if(_DEFOLD_WIN_ARCH STREQUAL "x86")
+        list(APPEND _EXPL_MSVC_ROOTS
+            "${DEFOLD_SDK_ROOT}/ext/SDKs/Win32"
+            "${DEFOLD_SDK_ROOT}/ext/SDKs/x86")
+    else()
+        list(APPEND _EXPL_MSVC_ROOTS
+            "${DEFOLD_SDK_ROOT}/ext/SDKs/x64"
+            "${DEFOLD_SDK_ROOT}/ext/SDKs/Win64")
+    endif()
+    foreach(_vs IN LISTS _EXPL_MSVC_ROOTS)
+        if(EXISTS "${_vs}")
+            if(NOT _FOUND_MSVC_CL)
+                _defold_detect_msvc_cl_from_vsroot("${_vs}" "${_DEFOLD_WIN_ARCH}" _cl_expl)
+                if(_cl_expl)
+                    set(_FOUND_MSVC_CL "${_cl_expl}")
+                endif()
+            endif()
+            if(NOT _FOUND_CLANG_CL)
+                _defold_detect_clang_cl_from_vsroot("${_vs}" "${_DEFOLD_WIN_ARCH}" _clangcl_expl)
+                if(_clangcl_expl)
+                    set(_FOUND_CLANG_CL "${_clangcl_expl}")
+                endif()
+            endif()
+        endif()
+    endforeach()
 endif()

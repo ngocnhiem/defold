@@ -1,3 +1,8 @@
+if(DEFINED DEFOLD_SDK_CMAKE_INCLUDED)
+    return()
+endif()
+set(DEFOLD_SDK_CMAKE_INCLUDED ON CACHE INTERNAL "sdk.cmake include guard")
+
 if(DEFINED DEFOLD_SDK_DETECTED)
     # Avoid re-running detection when sdk.cmake is included multiple times
     return()
@@ -17,15 +22,15 @@ if(NOT DEFINED DEFOLD_SDK_ROOT)
     endif()
 endif()
 
-# NOTE: Minimum iOS-version is also specified in Info.plist-files
-# (MinimumOSVersion and perhaps DTPlatformVersion)
-set(SDK_VERSION_IPHONEOS_MIN "11.0")
-set(SDK_VERSION_MACOSX_MIN "10.15")
-
 if (TARGET_PLATFORM MATCHES "arm64-macos|x86_64-macos|arm64-ios|x86_64-ios")
-    # Try to detect packaged toolchains (e.g. Xcode) inside DEFOLD_SDK_ROOT
+    # NOTE: Minimum iOS-version is also specified in Info.plist-files
+    # (MinimumOSVersion and perhaps DTPlatformVersion)
+    defold_set_from_sdk_py(SOURCE VERSION_IPHONEOS_MIN TARGET SDK_VERSION_IPHONEOS_MIN)
+    defold_set_from_sdk_py(SOURCE VERSION_MACOSX_MIN  TARGET SDK_VERSION_MACOSX_MIN)
     include(sdk_xcode)
 elseif (TARGET_PLATFORM MATCHES "arm64-android|armv7-android")
+    defold_set_from_sdk_py(SOURCE ANDROID_64_NDK_API_VERSION TARGET SDK_VERSION_ANDROID_ARM64_API_LEVEL)
+    defold_set_from_sdk_py(SOURCE ANDROID_NDK_API_VERSION  TARGET SDK_VERSION_ANDROID_ARMV7_API_LEVEL)
     include(sdk_android)
 elseif (TARGET_PLATFORM MATCHES "arm64-linux|x86_64-linux")
     include(sdk_linux)
@@ -35,8 +40,6 @@ elseif (TARGET_PLATFORM MATCHES "js-web|wasm-web|wasm_pthread-web")
     include(sdk_emscripten)
 else()
     message(FATAL "Unsupported platform: ${TARGET_PLATFORM}")
-    set(CMAKE_C_COMPILER "clang")
-    set(CMAKE_CXX_COMPILER "clang++")
 endif()
 
 set(DEFOLD_SDK_DETECTED ON CACHE INTERNAL "Defold SDK/toolchain detection has run")
