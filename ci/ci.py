@@ -535,7 +535,7 @@ def main(argv):
             build_editor2(
                 editor_channel, 
                 platform,
-                engine_artifacts = engine_artifacts, 
+                engine_artifacts = "36c72507bfe12f906ec8215bc03ab4823e226354", 
                 skip_tests = args.skip_tests,
                 notarization_username = args.notarization_username,
                 notarization_password = args.notarization_password,
