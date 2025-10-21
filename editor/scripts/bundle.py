@@ -252,14 +252,15 @@ def sign_file(platform, options, file):
     if platform_is_windows(platform):
         if not shutil.which('gcloud'):
             sys.exit("NO GLCOUD!!!")
+        gcloud = shutil.which('gcloud')
         run.command([
-            'gcloud',
+            gcloud,
             'auth',
             'activate-service-account',
             '--key-file', options.gcloud_keyfile], silent = True)
 
         storepass = run.command([
-            'gcloud',
+            gcloud,
             'auth',
             'print-access-token'], silent = True)
 
