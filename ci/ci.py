@@ -17,6 +17,7 @@ import sys
 import subprocess
 import platform
 import os
+import shutil
 import base64
 from argparse import ArgumentParser
 from ci_helper import is_platform_supported, is_platform_private, is_repo_private
@@ -301,6 +302,8 @@ def build_editor2(channel, platform, engine_artifacts = None, skip_tests = False
         opts.append("--gcloud-keyname=ev-windows-key")
         opts.append("--gcloud-keyringname=ev-key-ring")
         opts.append("--gcloud-projectid=defold-editor")
+
+        shutil.which("gcloud") or sys.exit("gcloud CLI not found in PATH")
 
         gcloud_keyfile = os.path.abspath(gcloud_keyfile)
         if not os.path.exists(gcloud_keyfile):
