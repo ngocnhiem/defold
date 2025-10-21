@@ -237,7 +237,7 @@
             "mergecommit": "29f3e998a5f709b6e98b49e86b3d1db1b94279cf",
             "pr_number": 11366,
             "referencecommits": [],
-            "title": "HTML5 profiler now reports the correct memory useage",
+            "title": "HTML5 profiler now reports the correct memory usage",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11366"
         },
@@ -332,8 +332,49 @@
             "title": "Fix frustrum culling for sprites with pivot point",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11369"
+        },
+        {
+            "author": "JosephFerano",
+            "body": "Currently pressing ENTER in the welcome screen to select a project doesn't do anything. This PR adds the ENTER keybinding so it opens the currently selected project.",
+            "closed_issues": [
+                11184
+            ],
+            "duplicate": false,
+            "issue_number": 11184,
+            "labels": [
+                "feature request",
+                "editor",
+                "good first issue",
+                "quick win?",
+                "ux"
+            ],
+            "mergecommit": "c7d7ea55c944ea77f47502ccce2e00cd30c0c567",
+            "pr_number": 11367,
+            "referencecommits": [],
+            "title": "WelcomeScreen: Enter keybinding to open selected project",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11367"
+        },
+        {
+            "author": "JCash",
+            "body": "",
+            "closed_issues": [
+                11397
+            ],
+            "duplicate": false,
+            "issue_number": 11397,
+            "labels": [
+                "engine",
+                "font"
+            ],
+            "mergecommit": "36920d7cf79f630b7f1b9209c7692306fe145dc8",
+            "pr_number": 11398,
+            "referencecommits": [],
+            "title": "Fix for when bitmap font uses 4 channels which caused a crash",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11398"
         }
     ],
-    "timestamp": 1761029721.7908301,
+    "timestamp": 1761062412.807601,
     "version": "1.11.2"
 }
