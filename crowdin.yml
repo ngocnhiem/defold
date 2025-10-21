@@ -5,5 +5,4 @@ files:
     escape_special_characters: 0
     languages_mapping:
       locale_with_underscore:
-        ru-RU: ru
-        en-EN: en
+        ru_RU: ru
