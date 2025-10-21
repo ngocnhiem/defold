@@ -303,7 +303,8 @@ def build_editor2(channel, platform, engine_artifacts = None, skip_tests = False
         opts.append("--gcloud-keyringname=ev-key-ring")
         opts.append("--gcloud-projectid=defold-editor")
 
-        shutil.which("gcloud") or sys.exit("gcloud CLI not found in PATH")
+        gcloud = shutil.which("gcloud") or sys.exit("gcloud CLI not found in PATH")
+        print("gcloud found at", gcloud)
 
         gcloud_keyfile = os.path.abspath(gcloud_keyfile)
         if not os.path.exists(gcloud_keyfile):
