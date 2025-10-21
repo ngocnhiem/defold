@@ -4,5 +4,6 @@ files:
     type: properties
     escape_special_characters: 0
     languages_mapping:
-      ru-RU: ru
-      en-EN: en
+      locale_with_underscore:
+        ru-RU: ru
+        en-EN: en
