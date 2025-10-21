@@ -250,6 +250,8 @@ def mac_certificate(codesigning_identity):
 
 def sign_file(platform, options, file):
     if platform_is_windows(platform):
+        if not shutil.which('gcloud'):
+            sys.exit("NO GLCOUD!!!")
         run.command([
             'gcloud',
             'auth',
