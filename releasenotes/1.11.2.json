@@ -227,7 +227,7 @@
         },
         {
             "author": "smagnuso",
-            "body": "",
+            "body": "On HTML5, our in game profiler now returns the memory usage as reported by Emscripten.\r\nThis affects both our in game profiler `Memory` variable, as well as the `profiler.get_memory_usage()` Lua function.",
             "closed_issues": [
                 11366
             ],
@@ -237,7 +237,7 @@
             "mergecommit": "29f3e998a5f709b6e98b49e86b3d1db1b94279cf",
             "pr_number": 11366,
             "referencecommits": [],
-            "title": "HTML5 profiler now supports GetMemoryUsage",
+            "title": "HTML5 profiler now reports the correct memory useage",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11366"
         },
@@ -295,7 +295,7 @@
         },
         {
             "author": "JCash",
-            "body": "",
+            "body": "This allows the developer to pass in an expected extension, in order to make sure that the resources path passed in is the correct type. This is especially helpful if the code is data driven and the developer doesn't know the resource path beforehand.\r\n\r\n[Documentation](https://defold.com/ref/beta/engine-resource-src-dmsdk-resource-resource-hpp/#GetWithExt:factory-path_hash-ext_hash-resource)",
             "closed_issues": [
                 11380
             ],
@@ -315,7 +315,7 @@
         },
         {
             "author": "ekharkunov",
-            "body": "###",
+            "body": "Fixed culling for sprites with pivot points. Also implemented some optimization on how geometry data calculated and stored between batches. So no it should be a bit faster in terms of calculation but consume some memory to store cached information.\r\n\r\n\n\r\n###",
             "closed_issues": [
                 9917
             ],
@@ -334,6 +334,6 @@
             "url": "https://github.com/defold/defold/pull/11369"
         }
     ],
-    "timestamp": 1760966182.5048451,
+    "timestamp": 1761029721.7908301,
     "version": "1.11.2"
 }
