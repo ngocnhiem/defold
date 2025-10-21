@@ -619,7 +619,7 @@ def notarize(app, notarization_username, notarization_password, notarization_tea
             break
         elif status == "Invalid":
             log("Notarization failed")
-            print(run.command(['xcrun', 'notarytool', 'log', id]))
+            log(run.command(['xcrun', 'notarytool', 'log', id]))
             sys.exit(1)
         else:
             log("Notarization status is {}".format(status))
