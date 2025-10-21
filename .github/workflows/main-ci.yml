@@ -434,12 +434,6 @@ jobs:
         run: 'ci/ci.sh install'
       },
       {
-        name: 'Install ext dependencies',
-        shell: bash,
-        if: (github.event_name != 'repository_dispatch') || ((github.event_name == 'repository_dispatch') && (github.event.client_payload.skip_sign != true)),
-        run: 'ci/ci.sh install_ext --platform=${{ matrix.platform }}'
-      },
-      {
         name: 'Build editor',
         shell: bash,
         if: (github.event_name != 'repository_dispatch') || ((github.event_name == 'repository_dispatch') && (github.event.client_payload.skip_sign != true)),
