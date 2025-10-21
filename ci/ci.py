@@ -469,7 +469,6 @@ def main(argv):
 
     # configure build flags based on the branch
     release_channel = None
-    skip_editor_tests = False
     make_release = False
     if branch == "master":
         engine_channel = "stable"
@@ -537,7 +536,7 @@ def main(argv):
                 editor_channel, 
                 platform,
                 engine_artifacts = engine_artifacts, 
-                skip_tests = skip_editor_tests,
+                skip_tests = args.skip_tests,
                 notarization_username = args.notarization_username,
                 notarization_password = args.notarization_password,
                 notarization_itc_provider = args.notarization_itc_provider,
