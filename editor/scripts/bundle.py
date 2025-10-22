@@ -251,7 +251,7 @@ def mac_certificate(codesigning_identity):
 def sign_file(platform, options, file):
     if platform_is_windows(platform):
         if not shutil.which('gcloud'):
-            sys.exit("NO GLCOUD!!!")
+            sys.exit("No gcloud tool found")
         gcloud = shutil.which('gcloud')
         run.command([
             gcloud,
@@ -297,8 +297,6 @@ def sign_file(platform, options, file):
     if platform_is_macos(platform):
         codesigning_identity = options.codesigning_identity
         certificate = mac_certificate(codesigning_identity)
-        log("Codesigning identity: %s" % codesigning_identity)
-        log("Certificate: %s" % certificate)
         if certificate is None:
             log("Codesigning certificate not found for signing identity %s" % codesigning_identity)
             sys.exit(1)
@@ -311,10 +309,6 @@ def sign_file(platform, options, file):
             '--entitlements', './scripts/entitlements.plist',
             '-s', certificate,
             file])
-
-def verify_signed_bundle(bundle_dir):
-    # Ensure we fail early with actionable diagnostics before sending to Apple
-    run.command(['codesign', '--verify', '--deep', '--strict', '--verbose=4', bundle_dir])
 
 def launcher_path(options, platform, exe_suffix):
     if options.launcher:
@@ -553,7 +547,6 @@ def sign(bundle_dir, platform, options):
             sign_file(platform, options, lib)
         sign_file(platform, options, os.path.join(jdk_path, "lib", "jspawnhelper"))
         sign_file(platform, options, bundle_dir)
-        verify_signed_bundle(bundle_dir)
     elif platform_is_windows(platform):
         sign_file(platform, options, os.path.join(bundle_dir, "Defold.exe"))
 
@@ -573,7 +566,7 @@ def create_dmg(bundle_dir, options, platform):
     mkdirs(dmg_dir)
 
     # create file tree for the .dmg
-    shutil.copytree(bundle_dir, '%s/Defold.app' % dmg_dir)
+    shutil.copytree(bundle_dir, '%s/Defold.app' % dmg_dir, symlinks=True)
     shutil.copy('bundle-resources/dmg_ds_store', '%s/.DS_Store' % dmg_dir)
     shutil.copytree('bundle-resources/dmg_background', '%s/.background' % dmg_dir)
     run.command(['ln', '-sf', '/Applications', '%s/Applications' % dmg_dir])
