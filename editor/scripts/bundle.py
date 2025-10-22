@@ -262,7 +262,7 @@ def sign_file(platform, options, file):
         storepass = run.command([
             gcloud,
             'auth',
-            'print-access-token'], silent = True)
+            'print-access-token'], silent = True, stderr = subprocess.DEVNULL)
 
         jsign = os.path.join(os.environ['DYNAMO_HOME'], 'ext','share','java','jsign-4.2.jar')
         keystore = "projects/%s/locations/%s/keyRings/%s" % (options.gcloud_projectid, options.gcloud_location, options.gcloud_keyringname)
