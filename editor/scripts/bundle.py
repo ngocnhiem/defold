@@ -591,6 +591,9 @@ def create_dmg(bundle_dir, options, platform):
         notarize_dmg(dmg_file, options)
 
 def notarization_status(uuid, notarization_username, notarization_password, notarization_team_id = None):
+    log("has username: %s" % (notarization_username is not None))
+    log("has password: %s" % (notarization_password is not None))
+    log("has team id : %s" % (notarization_team_id is not None))
     args = ['xcrun', 'notarytool', 'info',
             '--progress',
             '--output-format', 'json',
