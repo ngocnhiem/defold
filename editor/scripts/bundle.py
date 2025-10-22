@@ -310,6 +310,11 @@ def sign_file(platform, options, file):
             '-s', certificate,
             file])
 
+def verify_signed_bundle(bundle_dir):
+    # Ensure we fail early with actionable diagnostics before sending to Apple
+    run.command(['codesign', '--verify', '--deep', '--strict', '--verbose=4', bundle_dir])
+    run.command(['spctl', '--assess', '--type', 'execute', '-vvv', bundle_dir])
+
 def launcher_path(options, platform, exe_suffix):
     if options.launcher:
         return options.launcher
@@ -510,9 +515,6 @@ def create_bundle(jdk, platform, options):
                   '--module-path=%s/jmods' % jdk,
                   '--output=%s' % packages_jdk])
 
-    # TODO REMOVE:
-    log('JDK TYPE: %s' % subprocess.run(['file', '%s/bin/java' % packages_jdk], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False).stdout.strip())
-
     # Sign files
     if options.skip_codesign:
         log("Skipping code signing")
@@ -550,6 +552,7 @@ def sign(bundle_dir, platform, options):
             sign_file(platform, options, lib)
         sign_file(platform, options, os.path.join(jdk_path, "lib", "jspawnhelper"))
         sign_file(platform, options, bundle_dir)
+        verify_signed_bundle(bundle_dir)
     elif platform_is_windows(platform):
         sign_file(platform, options, os.path.join(bundle_dir, "Defold.exe"))
 
