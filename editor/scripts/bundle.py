@@ -259,10 +259,27 @@ def sign_file(platform, options, file):
             'activate-service-account',
             '--key-file', options.gcloud_keyfile], silent = True)
 
-        storepass = run.command([
-            gcloud,
-            'auth',
-            'print-access-token'], silent = True, stderr = subprocess.DEVNULL)
+        # Capture the token ourselves so we can strip any stray lines emitted by the Windows
+        # Microsoft Store shim when `python.exe` is missing (it writes that warning to stdout).
+        token_proc = subprocess.run(
+            [gcloud, 'auth', 'print-access-token'],
+            stdout = subprocess.PIPE,
+            stderr = subprocess.PIPE,
+            check = False,
+            text = True)
+        if token_proc.returncode != 0:
+            log("gcloud auth print-access-token failed with exit code %d" % token_proc.returncode)
+            if token_proc.stderr:
+                log(token_proc.stderr.strip())
+            sys.exit(1)
+
+        token_lines = [line.strip() for line in token_proc.stdout.splitlines() if line.strip()]
+        if not token_lines:
+            log("Failed to read Google Cloud access token from gcloud output")
+            if token_proc.stderr:
+                log(token_proc.stderr.strip())
+            sys.exit(1)
+        storepass = token_lines[-1]
 
         jsign = os.path.join(os.environ['DYNAMO_HOME'], 'ext','share','java','jsign-4.2.jar')
         keystore = "projects/%s/locations/%s/keyRings/%s" % (options.gcloud_projectid, options.gcloud_location, options.gcloud_keyringname)
