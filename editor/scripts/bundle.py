@@ -591,9 +591,6 @@ def create_dmg(bundle_dir, options, platform):
         notarize_dmg(dmg_file, options)
 
 def notarization_status(uuid, notarization_username, notarization_password, notarization_team_id = None):
-    log("has username: %s" % (notarization_username is not None))
-    log("has password: %s" % (notarization_password is not None))
-    log("has team id : %s" % (notarization_team_id is not None))
     args = ['xcrun', 'notarytool', 'info',
             '--progress',
             '--output-format', 'json',
@@ -642,7 +639,13 @@ def notarize(app, notarization_username, notarization_password, notarization_tea
             break
         elif status == "Invalid":
             log("Notarization failed")
-            log(run.command(['xcrun', 'notarytool', 'log', id]))
+            log_args = ['xcrun', 'notarytool', 'log',
+                        '--apple-id', notarization_username,
+                        '--password', notarization_password]
+            if notarization_team_id:
+                log_args.extend(['--team-id', notarization_team_id])
+            log_args.append(id)
+            log(run.command(log_args))
             sys.exit(1)
         else:
             log("Notarization status is {}".format(status))

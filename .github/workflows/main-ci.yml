@@ -62,7 +62,10 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        platform: [x86_64-macos, arm64-macos]
+        platform: [
+          # x86_64-macos, 
+          arm64-macos
+        ]
     steps: [
       {
         name: 'Checkout',
