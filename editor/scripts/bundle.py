@@ -297,8 +297,10 @@ def sign_file(platform, options, file):
     if platform_is_macos(platform):
         codesigning_identity = options.codesigning_identity
         certificate = mac_certificate(codesigning_identity)
+        log("Codesigning identity: %s" % codesigning_identity)
+        log("Certificate: %s" % certificate)
         if certificate is None:
-            log("Codesigning certificate not found for signing identity %s" % (codesigning_identity))
+            log("Codesigning certificate not found for signing identity %s" % codesigning_identity)
             sys.exit(1)
 
         run.command([
@@ -549,7 +551,6 @@ def sign(bundle_dir, platform, options):
             sign_file(platform, options, exe)
         for lib in find_files(os.path.join(jdk_path, "lib"), "*.dylib"):
             sign_file(platform, options, lib)
-        sign_file(platform, options, os.path.join(bundle_dir, "Contents", "MacOS", "Defold"))
         sign_file(platform, options, os.path.join(jdk_path, "lib", "jspawnhelper"))
         sign_file(platform, options, bundle_dir)
         verify_signed_bundle(bundle_dir)

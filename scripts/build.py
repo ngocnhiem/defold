@@ -1792,7 +1792,8 @@ class Configuration(object):
                 cmd.append("--gcloud-keyringname=%s" % self.gcloud_keyringname)
 
             if self.codesigning_identity:
-                cmd.append('--codesigning-identity="%s"' % self.codesigning_identity)
+                cmd.append('--codesigning-identity')
+                cmd.append(self.codesigning_identity)
 
             if self.notarization_username:
                 cmd.append('--notarization-username=%s' % self.notarization_username)
