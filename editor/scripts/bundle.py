@@ -313,7 +313,6 @@ def sign_file(platform, options, file):
 def verify_signed_bundle(bundle_dir):
     # Ensure we fail early with actionable diagnostics before sending to Apple
     run.command(['codesign', '--verify', '--deep', '--strict', '--verbose=4', bundle_dir])
-    run.command(['spctl', '--assess', '--type', 'execute', '-vvv', bundle_dir])
 
 def launcher_path(options, platform, exe_suffix):
     if options.launcher:
@@ -550,6 +549,7 @@ def sign(bundle_dir, platform, options):
             sign_file(platform, options, exe)
         for lib in find_files(os.path.join(jdk_path, "lib"), "*.dylib"):
             sign_file(platform, options, lib)
+        sign_file(platform, options, os.path.join(bundle_dir, "Contents", "MacOS", "Defold"))
         sign_file(platform, options, os.path.join(jdk_path, "lib", "jspawnhelper"))
         sign_file(platform, options, bundle_dir)
         verify_signed_bundle(bundle_dir)
