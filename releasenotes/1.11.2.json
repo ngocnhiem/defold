@@ -288,7 +288,9 @@
             "labels": [],
             "mergecommit": "d239e0a0b0160d0c0cfc597cce8a9cc4907e3634",
             "pr_number": 11315,
-            "referencecommits": [],
+            "referencecommits": [
+                "00b3efc470b852944998be13bb2fa327b596f3de"
+            ],
             "title": "Add support for running the Android tools in bob from the commandline",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11315"
@@ -334,28 +336,6 @@
             "url": "https://github.com/defold/defold/pull/11369"
         },
         {
-            "author": "JosephFerano",
-            "body": "Currently pressing ENTER in the welcome screen to select a project doesn't do anything. This PR adds the ENTER keybinding so it opens the currently selected project.",
-            "closed_issues": [
-                11184
-            ],
-            "duplicate": false,
-            "issue_number": 11184,
-            "labels": [
-                "feature request",
-                "editor",
-                "good first issue",
-                "quick win?",
-                "ux"
-            ],
-            "mergecommit": "c7d7ea55c944ea77f47502ccce2e00cd30c0c567",
-            "pr_number": 11367,
-            "referencecommits": [],
-            "title": "WelcomeScreen: Enter keybinding to open selected project",
-            "type": "NEW",
-            "url": "https://github.com/defold/defold/pull/11367"
-        },
-        {
             "author": "JCash",
             "body": "",
             "closed_issues": [
@@ -369,12 +349,14 @@
             ],
             "mergecommit": "36920d7cf79f630b7f1b9209c7692306fe145dc8",
             "pr_number": 11398,
-            "referencecommits": [],
+            "referencecommits": [
+                "95de306898454924a0885a2e04de151fa23be5d5"
+            ],
             "title": "Fix for when bitmap font uses 4 channels which caused a crash",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11398"
         }
     ],
-    "timestamp": 1761062412.807601,
+    "timestamp": 1761204714.4051268,
     "version": "1.11.2"
 }
