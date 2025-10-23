@@ -2512,3 +2512,57 @@ const TestParams params_starttime_play_test[] = {
 };
 INSTANTIATE_TEST_CASE_P(dmSoundTestStartTimePlayTest, dmSoundTestStartTimePlayTest, jc_test_values_in(params_starttime_play_test));
 #endif
+
+TEST(SoundSdk, MasterMuteUpdatesGroupGain)
+{
+    dmSound::InitializeParams params;
+    dmSound::SetDefaultInitializeParams(&params);
+    params.m_FrameCount   = 2048;
+    params.m_UseThread    = false;
+    params.m_OutputDevice = "loopback";
+
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::Initialize(nullptr, &params));
+
+    const dmhash_t master_hash = dmHashString64("master");
+    float master_gain = 0.0f;
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
+    EXPECT_NEAR(1.0f, master_gain, 1e-6f);
+    EXPECT_FALSE(dmSound::IsMasterMuted());
+
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetMasterMute(true));
+    EXPECT_TRUE(dmSound::IsMasterMuted());
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
+    EXPECT_NEAR(0.0f, master_gain, 1e-6f);
+
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::ToggleMasterMute());
+    EXPECT_FALSE(dmSound::IsMasterMuted());
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
+    EXPECT_NEAR(1.0f, master_gain, 1e-6f);
+
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::Finalize());
+}
+
+TEST(SoundSdk, MasterMuteRestoresPreviousGain)
+{
+    dmSound::InitializeParams params;
+    dmSound::SetDefaultInitializeParams(&params);
+    params.m_FrameCount   = 2048;
+    params.m_UseThread    = false;
+    params.m_OutputDevice = "loopback";
+
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::Initialize(nullptr, &params));
+
+    const dmhash_t master_hash = dmHashString64("master");
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::SetGroupGain(master_hash, 0.35f));
+
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetMasterMute(true));
+    EXPECT_TRUE(dmSound::IsMasterMuted());
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetMasterMute(false));
+    EXPECT_FALSE(dmSound::IsMasterMuted());
+
+    float master_gain = 0.0f;
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
+    EXPECT_NEAR(0.35f, master_gain, 1e-6f);
+
+    ASSERT_EQ(dmSound::RESULT_OK, dmSound::Finalize());
+}

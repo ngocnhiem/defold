@@ -235,6 +235,9 @@ namespace dmSound
 
     SoundSystem* g_SoundSystem = 0;
 
+    static float g_MasterGainBeforeMute = 1.0f;
+    static bool g_MasterMuted = false;
+
     DeviceType* g_FirstDevice = 0;
 
     void SetDefaultInitializeParams(InitializeParams* params)
@@ -463,6 +466,8 @@ namespace dmSound
         SoundGroup* master = &sound->m_Groups[master_index];
         master->m_GainParameter = master_gain;
         master->m_Gain.Reset(GainToScale(master->m_GainParameter));
+        g_MasterGainBeforeMute = master_gain > 0.0f ? master_gain : 1.0f;
+        g_MasterMuted = master_gain <= 0.0f;
 
         dmAtomicStore32(&sound->m_IsRunning, 1);
         dmAtomicStore32(&sound->m_IsPaused, 0);
@@ -891,6 +896,19 @@ namespace dmSound
         SoundGroup* group = &sound->m_Groups[*index];
         group->m_Gain.Set(GainToScale(gain), reset);
         group->m_GainParameter = gain;
+
+        if (group_hash == MASTER_GROUP_HASH)
+        {
+            if (gain > 0.0f)
+            {
+                g_MasterGainBeforeMute = gain;
+                g_MasterMuted = false;
+            }
+            else
+            {
+                g_MasterMuted = true;
+            }
+        }
         return RESULT_OK;
     }
 
@@ -906,6 +924,42 @@ namespace dmSound
         SoundGroup* group = &sound->m_Groups[*index];
         *gain = group->m_GainParameter;
         return RESULT_OK;
+    }
+
+    Result SetMasterMute(bool mute)
+    {
+        if (!g_SoundSystem)
+            return RESULT_OK;
+
+        if (mute)
+        {
+            float current_gain = 0.0f;
+            Result result = GetGroupGain(MASTER_GROUP_HASH, &current_gain);
+            if (result != RESULT_OK)
+                return result;
+            if (current_gain > 0.0f)
+            {
+                g_MasterGainBeforeMute = current_gain;
+            }
+            return SetGroupGain(MASTER_GROUP_HASH, 0.0f);
+        }
+
+        float restore_gain = g_MasterGainBeforeMute > 0.0f ? g_MasterGainBeforeMute : 1.0f;
+        return SetGroupGain(MASTER_GROUP_HASH, restore_gain);
+    }
+
+    Result ToggleMasterMute()
+    {
+        return SetMasterMute(!IsMasterMuted());
+    }
+
+    bool IsMasterMuted()
+    {
+        if (!g_SoundSystem)
+            return false;
+
+        DM_MUTEX_OPTIONAL_SCOPED_LOCK(g_SoundSystem->m_Mutex);
+        return g_MasterMuted;
     }
 
     Result GetGroupHashes(uint32_t* count, dmhash_t* buffer)
