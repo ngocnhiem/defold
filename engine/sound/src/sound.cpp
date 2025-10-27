@@ -231,8 +231,6 @@ namespace dmSound
         bool                    m_IsAudioInterrupted;
         bool                    m_HasWindowFocus;
         bool                    m_UseLinearGain;
-        float                   m_MasterGainBeforeMute;
-        bool                    m_MasterMuted;
 
         float* GetDecoderBufferBase(uint8_t channel) const { assert(channel < SOUND_MAX_DECODE_CHANNELS); return (float*)((uintptr_t)m_DecoderOutput[channel] + SOUND_MAX_HISTORY * sizeof(float)); }
     };
@@ -473,8 +471,6 @@ namespace dmSound
         master->m_Gain.Reset(GainToScale(master->m_GainParameter));
         master->m_GainBeforeMute = master->m_GainParameter > 0.0f ? master->m_GainParameter : 1.0f;
         master->m_IsMuted = master->m_GainParameter <= 0.0f;
-        sound->m_MasterGainBeforeMute = master_gain > 0.0f ? master_gain : 1.0f;
-        sound->m_MasterMuted = master_gain <= 0.0f;
 
         dmAtomicStore32(&sound->m_IsRunning, 1);
         dmAtomicStore32(&sound->m_IsPaused, 0);
@@ -913,18 +909,6 @@ namespace dmSound
             group->m_IsMuted = true;
         }
 
-        if (group_hash == MASTER_GROUP_HASH)
-        {
-            if (gain > 0.0f)
-            {
-                sound->m_MasterGainBeforeMute = gain;
-                sound->m_MasterMuted = false;
-            }
-            else
-            {
-                sound->m_MasterMuted = true;
-            }
-        }
         return RESULT_OK;
     }
 
@@ -962,10 +946,6 @@ namespace dmSound
                 if (group->m_GainParameter > 0.0f)
                 {
                     group->m_GainBeforeMute = group->m_GainParameter;
-                    if (group_hash == MASTER_GROUP_HASH)
-                    {
-                        sound->m_MasterGainBeforeMute = group->m_GainParameter;
-                    }
                 }
                 group->m_IsMuted = true;
                 target_gain = 0.0f;
@@ -974,10 +954,6 @@ namespace dmSound
             {
                 target_gain = group->m_GainBeforeMute > 0.0f ? group->m_GainBeforeMute : 1.0f;
                 group->m_IsMuted = false;
-                if (group_hash == MASTER_GROUP_HASH)
-                {
-                    sound->m_MasterGainBeforeMute = target_gain;
-                }
             }
         }
 
@@ -1018,8 +994,7 @@ namespace dmSound
         if (!g_SoundSystem)
             return false;
 
-        DM_MUTEX_OPTIONAL_SCOPED_LOCK(g_SoundSystem->m_Mutex);
-        return g_SoundSystem->m_MasterMuted;
+        return IsGroupMuted(MASTER_GROUP_HASH);
     }
 
     Result GetGroupHashes(uint32_t* count, dmhash_t* buffer)
