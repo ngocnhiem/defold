@@ -144,6 +144,9 @@ namespace dmSound
     Result AddGroup(const char* group);
     Result SetGroupGain(dmhash_t group_hash, float gain);
     Result GetGroupGain(dmhash_t group_hash, float* gain);
+    Result SetGroupMute(dmhash_t group_hash, bool mute);
+    Result ToggleGroupMute(dmhash_t group_hash);
+    bool IsGroupMuted(dmhash_t group_hash);
     Result SetMasterMute(bool mute);
     Result ToggleMasterMute();
     bool IsMasterMuted();
