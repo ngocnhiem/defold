@@ -131,6 +131,7 @@ def build(bld):
                            source   = source_null)
 
     bld.install_files('${PREFIX}/include/sound', 'sound.h')
+    dmsdk_add_files(bld, '${PREFIX}/sdk/include/dmsdk', 'dmsdk')
 
     if sys.platform == 'win32':
         #NOTE: _XBOX to get static lib and avoid dllimport/dllexport stuff
