@@ -330,7 +330,9 @@
             ],
             "mergecommit": "95b8485af48c0bb5c93caa83058ca081a624dca7",
             "pr_number": 11369,
-            "referencecommits": [],
+            "referencecommits": [
+                "4a765cd6400b9d8d7a573ba4df7e3853e4960ecc"
+            ],
             "title": "Fix frustrum culling for sprites with pivot point",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11369"
@@ -355,8 +357,29 @@
             "title": "Fix for when bitmap font uses 4 channels which caused a crash",
             "type": "FIX",
             "url": "https://github.com/defold/defold/pull/11398"
+        },
+        {
+            "author": "matgis",
+            "body": "Fix issue where paged Materials were erroneously detected as unpaged when inspecting Sprite properties.",
+            "closed_issues": [
+                11438
+            ],
+            "duplicate": false,
+            "issue_number": 11438,
+            "labels": [
+                "bug",
+                "editor"
+            ],
+            "mergecommit": "439f2f04cec7a26dc9b14a1bc575fd251d3ee480",
+            "pr_number": 11438,
+            "referencecommits": [
+                "1bdbe4f422756204ee4a56ecfdbc862cd3502c3d"
+            ],
+            "title": "Editor: Fix page count mismatch detection and error message for sprites",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11438"
         }
     ],
-    "timestamp": 1761204714.4051268,
+    "timestamp": 1761744389.4488251,
     "version": "1.11.2"
 }
