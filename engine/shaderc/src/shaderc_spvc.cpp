@@ -359,6 +359,9 @@ namespace dmShaderc
             case SHADER_LANGUAGE_HLSL:
                 backend = SPVC_BACKEND_HLSL;
                 break;
+            case SHADER_LANGUAGE_METAL:
+                backend = SPVC_BACKEND_MSL;
+                break;
             default:break;
         }
 
@@ -545,6 +548,13 @@ namespace dmShaderc
                     }
                 }
             }
+        }
+        else if (compiler->m_BaseCompiler.m_Language == SHADER_LANGUAGE_METAL)
+        {
+            spvc_compiler_options_set_uint(spv_options, SPVC_COMPILER_OPTION_MSL_VERSION, SPVC_MAKE_MSL_VERSION(2, 3, 0));
+            spvc_compiler_options_set_uint(spv_options, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_MACOS);
+            spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_MSL_ARGUMENT_BUFFERS, SPVC_TRUE);
+            spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_MSL_EMULATE_CUBEMAP_ARRAY, SPVC_FALSE);
         }
         else
         {
