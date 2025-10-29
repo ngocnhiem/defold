@@ -15,14 +15,32 @@
 #ifndef DMGRAPHICS_GRAPHICS_DEVICE_METAL_H
 #define DMGRAPHICS_GRAPHICS_DEVICE_METAL_H
 
+#include <Metal.hpp>
+
 namespace dmGraphics
 {
-	struct MetalContext
-	{
-		MetalContext(const ContextParams& params);
+    struct MetalContext
+    {
+        MetalContext(const ContextParams& params);
 
-		dmPlatform::HWindow m_Window;
-	};
+        dmPlatform::HWindow m_Window;
+
+        NSView*                    m_View;
+        CAMetalLayer*              m_Layer;
+
+        MTL::Device*               m_Device;
+        MTL::CommandQueue*         m_CommandQueue;
+
+        // Per-frame resources
+        CA::MetalDrawable*         m_Drawable;
+        NS::AutoreleasePool*       m_AutoReleasePool;
+        MTL::CommandBuffer*        m_CommandBuffer;
+        MTL::RenderPassDescriptor* m_RenderPassDescriptor;
+        MTL::RenderCommandEncoder* m_RenderCommandEncoder;
+
+        uint32_t                   m_Width;
+        uint32_t                   m_Height;
+    };
 }
 
 #endif // DMGRAPHICS_GRAPHICS_DEVICE_METAL_H

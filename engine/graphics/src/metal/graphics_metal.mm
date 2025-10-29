@@ -21,6 +21,7 @@
 // Metal.hpp is Taken from https://github.com/bkaradzic/metal-cpp/blob/metal-cpp_macOS15.2_iOS18.2/SingleHeader/Metal.hpp
 #include <Metal.hpp>
 #include <QuartzCore/QuartzCore.h>
+#import <Cocoa/Cocoa.h>
 
 #include "../graphics_private.h"
 #include "../graphics_native.h"
@@ -48,9 +49,9 @@ namespace dmGraphics
         // m_DefaultTextureMagFilter = params.m_DefaultTextureMagFilter;
         // m_VerifyGraphicsCalls     = params.m_VerifyGraphicsCalls;
         // m_PrintDeviceInfo         = params.m_PrintDeviceInfo;
-        // m_Window                  = params.m_Window;
-        // m_Width                   = params.m_Width;
-        // m_Height                  = params.m_Height;
+        m_Window                  = params.m_Window;
+        m_Width                   = params.m_Width;
+        m_Height                  = params.m_Height;
         // m_UseValidationLayers     = params.m_UseValidationLayers;
 
         assert(dmPlatform::GetWindowStateParam(m_Window, dmPlatform::WINDOW_STATE_OPENED));
@@ -79,6 +80,9 @@ namespace dmGraphics
         {
             MetalContext* context = (MetalContext*) _context;
 
+            context->m_Device->release();
+            context->m_CommandQueue->release();
+
             // for (uint8_t i=0; i < DM_ARRAY_SIZE(context->m_FrameResources); i++)
             // {
             //     FlushResourcesToDestroy(context->m_FrameResources[i]);
@@ -101,6 +105,21 @@ namespace dmGraphics
 
     static bool MetalInitialize(HContext _context)
     {
+        MetalContext* context   = (MetalContext*) _context;
+        context->m_Device       = MTL::CreateSystemDefaultDevice();
+        context->m_CommandQueue = context->m_Device->newCommandQueue();
+
+        NSWindow* mative_window = (NSWindow*) dmGraphics::GetNativeOSXNSWindow();
+        context->m_View         = [mative_window contentView];
+
+        context->m_Layer               = [CAMetalLayer layer];
+        context->m_Layer.device        = (__bridge id<MTLDevice>) context->m_Device;
+        context->m_Layer.pixelFormat   = MTLPixelFormatBGRA8Unorm;
+        context->m_Layer.drawableSize  = CGSizeMake(context->m_Width, context->m_Height);
+
+        [context->m_View setLayer:context->m_Layer];
+        [context->m_View setWantsLayer:YES];
+
         return true;
     }
 
@@ -150,14 +169,36 @@ namespace dmGraphics
 
     }
 
-    static void MetalBeginFrame(HContext context)
+    static void MetalBeginFrame(HContext _context)
     {
+        MetalContext* context = (MetalContext*) _context;
 
+        context->m_Drawable = (__bridge CA::MetalDrawable*)[context->m_Layer nextDrawable];
+
+        context->m_AutoReleasePool = NS::AutoreleasePool::alloc()->init();
+        context->m_CommandBuffer = context->m_CommandQueue->commandBuffer();
+
+        context->m_RenderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+
+        auto colorAttachment = context->m_RenderPassDescriptor->colorAttachments()->object(0);
+        colorAttachment->setTexture(context->m_Drawable->texture());
+        colorAttachment->setLoadAction(MTL::LoadActionClear);
+        colorAttachment->setStoreAction(MTL::StoreActionStore);
+        colorAttachment->setClearColor(MTL::ClearColor(0.1, 0.2, 0.4, 1.0));
+
+        context->m_RenderCommandEncoder = context->m_CommandBuffer->renderCommandEncoder( context->m_RenderPassDescriptor );
     }
 
-    static void MetalFlip(HContext context)
+    static void MetalFlip(HContext _context)
     {
+        MetalContext* context = (MetalContext*) _context;
 
+        context->m_RenderCommandEncoder->endEncoding();
+
+        context->m_CommandBuffer->presentDrawable(context->m_Drawable);
+        context->m_CommandBuffer->commit();
+
+        context->m_AutoReleasePool->release();
     }
 
     static void MetalClear(HContext context, uint32_t flags, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, float depth, uint32_t stencil)
