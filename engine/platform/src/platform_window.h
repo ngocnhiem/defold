@@ -48,6 +48,7 @@ namespace dmPlatform
         PLATFORM_GRAPHICS_API_VENDOR   = 4,
         PLATFORM_GRAPHICS_API_WEBGPU   = 5,
         PLATFORM_GRAPHICS_API_DIRECTX  = 6,
+        PLATFORM_GRAPHICS_API_METAL    = 7,
     };
 
     enum DeviceState

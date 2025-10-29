@@ -489,6 +489,10 @@ static void* EngineCreate(int argc, char** argv)
     {
         window_params.m_GraphicsApi = dmPlatform::PLATFORM_GRAPHICS_API_OPENGLES;
     }
+    else if (dmGraphics::GetInstalledAdapterFamily() == dmGraphics::ADAPTER_FAMILY_METAL)
+    {
+        window_params.m_GraphicsApi = dmPlatform::PLATFORM_GRAPHICS_API_METAL;
+    }
 
     dmPlatform::OpenWindow(engine->m_Window, window_params);
     dmPlatform::ShowWindow(engine->m_Window);
@@ -512,8 +516,8 @@ static void* EngineCreate(int argc, char** argv)
     //engine->m_Test = new ComputeTest();
     //engine->m_Test = new StorageBufferTest();
     //engine->m_Test = new ReadPixelsTest();
-    engine->m_Test = new AsyncTextureUploadTest();
-    // engine->m_Test = new ClearBackbufferTest();
+    //engine->m_Test = new AsyncTextureUploadTest();
+    engine->m_Test = new ClearBackbufferTest();
     engine->m_Test->Initialize(engine);
 
     engine->m_WasCreated++;
@@ -585,6 +589,10 @@ static void InstallAdapter(int argc, char **argv)
         if (strcmp(argv[i], "opengl") == 0)
         {
             family = dmGraphics::ADAPTER_FAMILY_OPENGL;
+        }
+        else if (strcmp(argv[i], "metal") == 0)
+        {
+            family = dmGraphics::ADAPTER_FAMILY_METAL;
         }
     }
 
