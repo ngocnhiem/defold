@@ -155,6 +155,10 @@ def platform_graphics_libs_and_symbols(platform):
         graphics_libs += ['GRAPHICS_WEBGPU']
         graphics_lib_symbols.append('GraphicsAdapterWebGPU')
 
+    if Options.options.with_metal and platform_supports_feature(platform, 'metal', {}):
+        graphics_libs += ['GRAPHICS_METAL']
+        graphics_lib_symbols.append('GraphicsAdapterMetal')
+
     if platform in ('arm64-nx64'):
         graphics_libs = ['GRAPHICS_VULKAN', 'DMGLFW', 'VULKAN']
         graphics_lib_symbols = ['GraphicsAdapterVulkan']

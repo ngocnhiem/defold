@@ -19,6 +19,15 @@
 
 namespace dmGraphics
 {
+    struct MetalProgram
+    {
+        Program                   m_BaseProgram;
+        MTL::RenderPipelineState* m_PipelineState;
+        MTL::Function*            m_VertexFunction;
+        MTL::Function*            m_FragmentFunction;
+        MTL::Library*             m_Library;
+    };
+
     struct MetalContext
     {
         MetalContext(const ContextParams& params);
@@ -38,6 +47,8 @@ namespace dmGraphics
         MTL::RenderPassDescriptor* m_RenderPassDescriptor;
         MTL::RenderCommandEncoder* m_RenderCommandEncoder;
 
+        TextureFilter              m_DefaultTextureMinFilter;
+        TextureFilter              m_DefaultTextureMagFilter;
         uint32_t                   m_Width;
         uint32_t                   m_Height;
     };

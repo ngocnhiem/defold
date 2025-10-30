@@ -672,6 +672,7 @@ namespace dmEngine
             case dmGraphics::ADAPTER_FAMILY_VENDOR:   return dmPlatform::PLATFORM_GRAPHICS_API_VENDOR;
             case dmGraphics::ADAPTER_FAMILY_WEBGPU:   return dmPlatform::PLATFORM_GRAPHICS_API_WEBGPU;
             case dmGraphics::ADAPTER_FAMILY_DIRECTX:  return dmPlatform::PLATFORM_GRAPHICS_API_DIRECTX;
+            case dmGraphics::ADAPTER_FAMILY_METAL:    return dmPlatform::PLATFORM_GRAPHICS_API_METAL;
             default:break;
         }
         assert(0);
