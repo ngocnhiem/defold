@@ -156,12 +156,22 @@ namespace dmGraphics
 
     static void MetalSetWindowSize(HContext context, uint32_t width, uint32_t height)
     {
-
+        assert(_context);
+        MetalContext* context = (MetalContext*) _context;
+        if (dmPlatform::GetWindowStateParam(context->m_Window, dmPlatform::WINDOW_STATE_OPENED))
+        {
+            dmPlatform::SetWindowSize(context->m_Window, width, height);
+        }
     }
 
     static void MetalResizeWindow(HContext context, uint32_t width, uint32_t height)
     {
-
+        assert(_context);
+        MetalContext* context = (MetalContext*) _context;
+        if (dmPlatform::GetWindowStateParam(context->m_Window, dmPlatform::WINDOW_STATE_OPENED))
+        {
+            dmPlatform::SetWindowSize(context->m_Window, width, height);
+        }
     }
 
     static void MetalGetDefaultTextureFilters(HContext context, TextureFilter& out_min_filter, TextureFilter& out_mag_filter)
