@@ -218,7 +218,7 @@ PACKAGES_LINUX_X86_64=[
     "luajit-2.1.0-a4f56a4",
     "bullet-2.77",
     "glslang-ba5c010c",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-d24a39a7",
     "vpx-1.7.0",
     "vulkan-v1.4.307",
