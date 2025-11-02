@@ -483,10 +483,10 @@ TEST(Shaderc, TestMetal)
 
     dmShaderc::HShaderContext shader_ctx = dmShaderc::NewShaderContext(dmShaderc::SHADER_STAGE_FRAGMENT, data, data_size);
 
-    dmShaderc::HShaderCompiler compiler = dmShaderc::NewShaderCompiler(shader_ctx, dmShaderc::SHADER_LANGUAGE_METAL);
+    dmShaderc::HShaderCompiler compiler = dmShaderc::NewShaderCompiler(shader_ctx, dmShaderc::SHADER_LANGUAGE_MSL);
 
     dmShaderc::ShaderCompilerOptions options;
-    options.m_Version    = 51;
+    options.m_Version    = 22;
     options.m_EntryPoint = "main";
 
     dmShaderc::ShaderCompileResult* dst = dmShaderc::Compile(shader_ctx, compiler, options);
