@@ -201,7 +201,7 @@ PACKAGES_WIN32_64=[
     "sassc-5472db213ec223a67482df2226622be372921847",
     "bullet-2.77",
     "glslang-42d9adf5",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-d24a39a7",
     "vulkan-v1.4.307",
     "lipo-4c7c275",
