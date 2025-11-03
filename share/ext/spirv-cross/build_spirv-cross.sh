@@ -55,6 +55,10 @@ case $PLATFORM in
         CMAKE_FLAGS="-DCMAKE_OSX_ARCHITECTURES=x86_64 ${CMAKE_FLAGS}"
         CMAKE_FLAGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=${OSX_MIN_SDK_VERSION} ${CMAKE_FLAGS}"
         ;;
+    x86_64-win32)
+        # We might have to force MT on windows, something like this:
+        # CMAKE_FLAGS="-DCMAKE_C_FLAGS_RELEASE=\"/MT /O2\" -DCMAKE_CXX_FLAGS_RELEASE=\"/MT /O2\" ${CMAKE_FLAGS}"
+        ;;
 esac
 
 # Follow the build instructions on https://github.com/KhronosGroup/SPIRV-Cross.git
@@ -69,7 +73,7 @@ mkdir -p ${BUILD_DIR}
 
 pushd $BUILD_DIR
 
-echo "CMAKE_FLAGS: '${CMAKE_FLAGS}"
+echo "CMAKE_FLAGS: ${CMAKE_FLAGS}"
 
 cmake ${CMAKE_FLAGS} ${SOURCE_DIR}
 cmake --build . --config Release
