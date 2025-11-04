@@ -12,9 +12,16 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-#ifndef DM_DOUBLE_LINKED_LIST_H
-#define DM_DOUBLE_LINKED_LIST_H
+#ifndef DM_SCRIPT_ENGINE_H
+#define DM_SCRIPT_ENGINE_H
 
-#include <dmsdk/dlib/double_linked_list.h>
+#include <dmsdk/script/script.h>
+#include "../engine.h"
 
-#endif
+namespace dmEngine
+{
+    void ScriptSysEngineInitialize(lua_State* L, dmEngine::HEngine engine);
+    void ScriptSysEngineFinalize(lua_State* L, dmEngine::HEngine engine);
+}
+
+#endif // #ifndef DM_SCRIPT_ENGINE_H
