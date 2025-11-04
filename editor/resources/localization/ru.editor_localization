@@ -1216,7 +1216,7 @@ outline.collection-proxy = Прокси коллекции
 outline.collision-object = Объект коллизий
 outline.game-object = Игровой объект
 outline.gui.fonts = Шрифты
-outline.gui.layouts = Макеты
+outline.gui.layouts = Компоновки
 outline.gui.layers = Слои
 outline.gui.nodes = Элементы
 outline.gui.materials = Материалы
@@ -1306,6 +1306,220 @@ resource.type.unknown = Неизвестно
 resource.type.vp = Вершинный шейдер
 resource.type.zig = Zig
 resource.type.zon = Нотация объектов Zig
+
+# Forms
+
+form.filter = Фильтр
+
+form.label.project.project = Проект
+form.help.project.project = Общие настройки проекта
+
+form.label.project.project.title = Название
+form.help.project.project.title = Название приложения
+form.label.project.project.version = Версия
+form.help.project.project.version = Версия приложения
+form.label.project.project.publisher = Издатель
+form.help.project.project.publisher = Название издателя
+form.label.project.project.developer = Разработчик
+form.help.project.project.developer = Название разработчика
+form.label.project.project.write_log = Запись лога
+form.help.project.project.write_log = Записывать файл журнала на диск
+form.label.project.project.write_log_file = Лог в файл
+form.help.project.project.write_log_file = Записывать логи в файл на диске
+form.label.project.project.minimum_log_level = Мин. уровень логов
+form.help.project.project.minimum_log_level = Будут показаны только сообщения этого уровня и выше
+form.label.project.project.compress_archive = Сжимать архив
+form.help.project.project.compress_archive = Сжимать архив (не для Android)
+form.label.project.project.dependencies = Зависимости
+form.help.project.project.dependencies = Список URL проектов, необходимых для этого проекта
+form.label.project.project.custom_resources = Дополнительные ресурсы
+form.help.project.project.custom_resources = Список ресурсов через запятую, которые будут включены в проект. Если указаны папки, все файлы и вложенные папки будут добавлены
+form.label.project.project.bundle_resources = Ресурсы сборки
+form.help.project.project.bundle_resources = Папка с файлами и папками, которые будут скопированы как есть в итоговый пакет при сборке
+form.label.project.project.bundle_exclude_resources = Исключения сборки
+form.help.project.project.bundle_exclude_resources = Список ресурсов через запятую, которые не должны быть включены в сборку
+
+form.label.animationset = Набор анимаций
+form.label.animationset.animations = Анимации
+
+form.label.camera = Камера
+form.label.camera.aspect-ratio = Пропорция сторон
+form.label.camera.fov = Угол обзора
+form.label.camera.near-z = Ближняя Z
+form.label.camera.far-z = Дальняя Z
+form.label.camera.auto-aspect-ratio = Авто-пропорция сторон
+form.label.camera.orthographic-projection = Ортопроекция
+form.label.camera.orthographic-mode = Режим ортозума
+form.label.camera.orthographic-zoom = Ортографический зум
+
+form.label.collectionproxy = Прокси коллекции
+form.label.collectionproxy.collection = Коллекция
+
+form.label.render = Рендер
+form.label.render.script = Скрипт
+form.label.render.render-resources = Ресурсы
+form.label.render.render-resources.name = Имя
+form.label.render.render-resources.resource = Ресурс
+
+form.label.render-target = Рендер-таргет
+form.label.render-target.color-attachments = Цветовые буферы
+form.label.render-target.color-attachments.width = Ширина
+form.label.render-target.color-attachments.height = Высота
+form.label.render-target.color-attachments.format = Формат
+form.label.render-target.depth-stencil-attachment-width = Ширина depth / stencil
+form.label.render-target.depth-stencil-attachment-height = Высота depth / stencil
+form.label.render-target.depth-stencil-attachment-texture-storage = Хранение depth
+
+form.label.display-profiles = Профили отображения
+form.label.display-profiles.auto-layout-selection = Авто-выбор компоновки
+form.label.display-profiles.profile = Профиль
+form.label.display-profiles.profile.qualifiers = Критерии
+form.label.display-profiles.profile.qualifiers.width = Ширина
+form.label.display-profiles.profile.qualifiers.height = Высота
+form.label.display-profiles.profile.qualifiers.device-models = Модели устройств
+
+form.label.input-binding = Привязки ввода
+form.label.input-binding.key-trigger = Триггеры клавиатуры
+form.label.input-binding.key-trigger.input = Ввод
+form.label.input-binding.key-trigger.action = Действие
+form.label.input-binding.mouse-trigger = Триггеры мыши
+form.label.input-binding.mouse-trigger.input = Ввод
+form.label.input-binding.mouse-trigger.action = Действие
+form.label.input-binding.gamepad-trigger = Триггеры геймпада
+form.label.input-binding.gamepad-trigger.input = Ввод
+form.label.input-binding.gamepad-trigger.action = Действие
+form.label.input-binding.touch-trigger = Триггеры касаний
+form.label.input-binding.touch-trigger.input = Ввод
+form.label.input-binding.touch-trigger.action = Действие
+form.label.input-binding.text-trigger = Текстовые триггеры
+form.label.input-binding.text-trigger.input = Ввод
+form.label.input-binding.text-trigger.action = Действие
+
+form.label.gamepads = Геймпады
+form.label.gamepads.driver = Геймпад
+form.label.gamepads.driver.device = Устройство
+form.label.gamepads.driver.platform = Платформа
+form.label.gamepads.driver.dead-zone = Мёртвая зона
+form.label.gamepads.driver.map = Сопоставление
+form.label.gamepads.driver.map.input = Ввод
+form.label.gamepads.driver.map.type = Тип
+form.label.gamepads.driver.map.index = Индекс
+form.label.gamepads.driver.map.negate = Инверсия
+form.label.gamepads.driver.map.scale = Масштаб
+form.label.gamepads.driver.map.clamp = Ограничение
+form.label.gamepads.driver.map.hat-mask = Маска крестовины
+
+form.label.texture-profiles = Профили текстур
+form.label.texture-profiles.path-settings = Настройки путей
+form.label.texture-profiles.path-settings.path = Путь
+form.label.texture-profiles.path-settings.profile = Профиль
+form.label.texture-profiles.profiles = Профили
+form.label.texture-profiles.profiles.platforms = Платформы
+form.label.texture-profiles.profiles.platforms.formats = Форматы
+form.label.texture-profiles.profiles.platforms.formats.format = Формат
+form.label.texture-profiles.profiles.platforms.formats.compressor = Компрессор
+form.label.texture-profiles.profiles.platforms.formats.compressor-preset = Пресет компрессора
+form.label.texture-profiles.profiles.platforms.mipmaps = Мипмапы
+form.label.texture-profiles.profiles.platforms.max-texture-size = Макс. текстура
+form.label.texture-profiles.profiles.platforms.premultiply-alpha = Предумн. альфа
+
+form.label.factory = Фабрика
+form.label.factory.prototype = Прототип
+form.label.factory.load-dynamically = Динамическая загрузка
+form.label.factory.dynamic-prototype = Динамический прототип
+
+form.label.collectionfactory = Фабрика коллекций
+form.label.collectionfactory.prototype = Прототип
+form.label.collectionfactory.load-dynamically = Динамическая загрузка
+form.label.collectionfactory.dynamic-prototype = Динамический прототип
+
+form.label.sound = Звук
+form.label.sound.sound = Звук
+form.label.sound.looping = Зациклить
+form.label.sound.loopcount = Повторы
+form.label.sound.group = Группа
+form.label.sound.gain = Усиление
+form.label.sound.pan = Панорама
+form.label.sound.speed = Скорость
+
+form.label.liveupdate.liveupdate = Live Update
+form.label.liveupdate.liveupdate.mode = Режим
+form.help.liveupdate.liveupdate.mode = Назначение
+form.label.liveupdate.amazon = Amazon
+form.label.liveupdate.liveupdate.amazon-credential-profile = Профиль
+form.help.liveupdate.liveupdate.amazon-credential-profile = Профиль учетных данных Amazon
+form.label.liveupdate.liveupdate.amazon-bucket = Бакет
+form.help.liveupdate.liveupdate.amazon-bucket = Бакет Amazon
+form.label.liveupdate.liveupdate.amazon-prefix = Префикс
+form.help.liveupdate.liveupdate.amazon-prefix = Префикс Amazon
+form.label.liveupdate.zip = Zip
+form.label.liveupdate.liveupdate.save-zip-in-bundle-folder = Zip в папке сборки
+form.help.liveupdate.liveupdate.save-zip-in-bundle-folder = Перемещает zip в папку сборки после процесса сборки
+form.label.liveupdate.liveupdate.zip-filepath = Папка для zip
+form.help.liveupdate.liveupdate.zip-filepath = Папка для zip
+form.label.liveupdate.liveupdate.zip-filename = Имя файла
+form.help.liveupdate.liveupdate.zip-filename = Имя zip-файла
+form.label.liveupdate.liveupdate.zip-compression-level = Уровень сжатия
+form.help.liveupdate.liveupdate.zip-compression-level = Уровень сжатия, который используется при создании архива Live Update
+form.label.liveupdate.folder = Папка
+form.label.liveupdate.liveupdate.save-folder-in-bundle-folder = Папка в папке сборки
+form.help.liveupdate.liveupdate.save-folder-in-bundle-folder = Перемещает выходную папку в папку сборки после процесса сборки
+form.label.liveupdate.liveupdate.output-directory = Папка для папки
+form.help.liveupdate.liveupdate.output-directory = Папка, где будет создана папка
+form.label.liveupdate.liveupdate.output-folder-name = Имя папки
+form.help.liveupdate.liveupdate.output-folder-name = Имя выходной папки
+form.label.liveupdate.manifest = Манифест
+form.label.liveupdate.liveupdate.publickey = Открытый ключ
+form.help.liveupdate.liveupdate.publickey = Открытый ключ для подписи манифеста
+form.label.liveupdate.liveupdate.privatekey = Закрытый ключ
+form.help.liveupdate.liveupdate.privatekey = Закрытый ключ для подписи манифеста
+form.label.liveupdate.liveupdate.supported-versions = Поддерживаемые версии
+form.help.liveupdate.liveupdate.supported-versions = Список поддерживаемых версий движка
+
+form.label.material = Материал
+form.label.material.name = Имя
+form.label.material.vertex-program = Вершинная программа
+form.label.material.fragment-program = Фрагментная программа
+form.label.material.attributes = Атрибуты вершин
+form.label.material.attributes.semantic-type = Семантический тип
+form.label.material.attributes.step-function = Функция шага
+form.label.material.attributes.coordinate-space = Система координат
+form.label.material.attributes.data-type = Тип данных
+form.label.material.attributes.vector-type = Тип вектора
+form.label.material.attributes.value = Значение
+form.label.material.attributes.normalize = Нормализовать
+form.label.material.vertex-constants = Вершинные константы
+form.label.material.vertex-constants.name = Имя
+form.label.material.vertex-constants.type = Тип
+form.label.material.vertex-constants.value = Значение
+form.label.material.fragment-constants = Фрагментные константы
+form.label.material.fragment-constants.name = Имя
+form.label.material.fragment-constants.type = Тип
+form.label.material.fragment-constants.value = Значение
+form.label.material.samplers = Семплеры
+form.label.material.samplers.name = Имя
+form.label.material.samplers.wrap-u = Обёртка U
+form.label.material.samplers.wrap-v = Обёртка V
+form.label.material.samplers.filter-min = Мин. фильтр
+form.label.material.samplers.filter-mag = Макс. фильтр
+form.label.material.samplers.max-anisotropy = Макс. анизотропия
+form.label.material.tags = Теги
+form.label.material.vertex-space = Пространство вершин
+form.label.material.max-page-count = Макс. страницы атласа
+
+form.label.compute = Вычисление
+form.label.compute.compute-program = Программа
+form.label.compute.constants = Константы
+form.label.compute.constants.name = Имя
+form.label.compute.constants.type = Тип
+form.label.compute.constants.value = Значение
+form.label.compute.samplers = Семплеры
+form.label.compute.samplers.name = Имя
+form.label.compute.samplers.wrap-u = Обёртка U
+form.label.compute.samplers.wrap-v = Обёртка V
+form.label.compute.samplers.filter-min = Мин. фильтр
+form.label.compute.samplers.filter-mag = Макс. фильтр
+form.label.compute.samplers.max-anisotropy = Макс. анизотропия
 
 # Quick Help
 

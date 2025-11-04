@@ -1307,6 +1307,220 @@ resource.type.vp = Vertex Program
 resource.type.zig = Zig
 resource.type.zon = Zig Object Notation
 
+# Forms
+
+form.filter = Filter
+
+form.label.project.project = Project
+form.help.project.project = General project settings
+
+form.label.project.project.title = Title
+form.help.project.project.title = The title of the application
+form.label.project.project.version = Version
+form.help.project.project.version = Application version
+form.label.project.project.publisher = Publisher
+form.help.project.project.publisher = Publisher name
+form.label.project.project.developer = Developer
+form.help.project.project.developer = Developer name
+form.label.project.project.write_log = Write Log
+form.help.project.project.write_log = Write log file to disk
+form.label.project.project.write_log_file = Write Log File
+form.help.project.project.write_log_file = Write log file to disk
+form.label.project.project.minimum_log_level = Minimum Log Level
+form.help.project.project.minimum_log_level = Only the minimum log level and higher levels will be shown
+form.label.project.project.compress_archive = Compress Archive
+form.help.project.project.compress_archive = Compress archive (not for Android)
+form.label.project.project.dependencies = Dependencies
+form.help.project.project.dependencies = A list of URLs to projects required by this project
+form.label.project.project.custom_resources = Custom Resources
+form.help.project.project.custom_resources = A comma separated list of resources that will be included in the project. If directories are specified, all files and directories in that directory are recursively included
+form.label.project.project.bundle_resources = Bundle Resources
+form.help.project.project.bundle_resources = A directory containing resource files and folders that should be copied as-is into the resulting package when bundling
+form.label.project.project.bundle_exclude_resources = Bundle Exclude Resources
+form.help.project.project.bundle_exclude_resources = A comma separated list of resources that should not be included in the bundle
+
+form.label.animationset = Animation Set
+form.label.animationset.animations = Animations
+
+form.label.camera = Camera
+form.label.camera.aspect-ratio = Aspect Ratio
+form.label.camera.fov = FOV
+form.label.camera.near-z = Near Z
+form.label.camera.far-z = Far Z
+form.label.camera.auto-aspect-ratio = Auto Aspect Ratio
+form.label.camera.orthographic-projection = Orthographic Projection
+form.label.camera.orthographic-mode = Orthographic Zoom Mode
+form.label.camera.orthographic-zoom = Orthographic Zoom
+
+form.label.collectionproxy = Collection Proxy
+form.label.collectionproxy.collection = Collection
+
+form.label.render = Render
+form.label.render.script = Script
+form.label.render.render-resources = Resources
+form.label.render.render-resources.name = Name
+form.label.render.render-resources.resource = Resource
+
+form.label.render-target = Render Target
+form.label.render-target.color-attachments = Color Attachments
+form.label.render-target.color-attachments.width = Width
+form.label.render-target.color-attachments.height = Height
+form.label.render-target.color-attachments.format = Format
+form.label.render-target.depth-stencil-attachment-width = Depth/Stencil Width
+form.label.render-target.depth-stencil-attachment-height = Depth/Stencil Height
+form.label.render-target.depth-stencil-attachment-texture-storage = Depth Texture Storage
+
+form.label.display-profiles = Display Profiles
+form.label.display-profiles.auto-layout-selection = Auto Layout Selection
+form.label.display-profiles.profile = Profile
+form.label.display-profiles.profile.qualifiers = Qualifiers
+form.label.display-profiles.profile.qualifiers.width = Width
+form.label.display-profiles.profile.qualifiers.height = Height
+form.label.display-profiles.profile.qualifiers.device-models = Device Models
+
+form.label.input-binding = Input Bindings
+form.label.input-binding.key-trigger = Key Triggers
+form.label.input-binding.key-trigger.input = Input
+form.label.input-binding.key-trigger.action = Action
+form.label.input-binding.mouse-trigger = Mouse Triggers
+form.label.input-binding.mouse-trigger.input = Input
+form.label.input-binding.mouse-trigger.action = Action
+form.label.input-binding.gamepad-trigger = Gamepad Triggers
+form.label.input-binding.gamepad-trigger.input = Input
+form.label.input-binding.gamepad-trigger.action = Action
+form.label.input-binding.touch-trigger = Touch Triggers
+form.label.input-binding.touch-trigger.input = Input
+form.label.input-binding.touch-trigger.action = Action
+form.label.input-binding.text-trigger = Text Triggers
+form.label.input-binding.text-trigger.input = Input
+form.label.input-binding.text-trigger.action = Action
+
+form.label.gamepads = Gamepads
+form.label.gamepads.driver = Gamepad
+form.label.gamepads.driver.device = Device
+form.label.gamepads.driver.platform = Platform
+form.label.gamepads.driver.dead-zone = Dead zone
+form.label.gamepads.driver.map = Map
+form.label.gamepads.driver.map.input = Input
+form.label.gamepads.driver.map.type = Type
+form.label.gamepads.driver.map.index = Index
+form.label.gamepads.driver.map.negate = Negate
+form.label.gamepads.driver.map.scale = Scale
+form.label.gamepads.driver.map.clamp = Clamp
+form.label.gamepads.driver.map.hat-mask = Hat Mask
+
+form.label.texture-profiles = Texture Profiles
+form.label.texture-profiles.path-settings = Path Settings
+form.label.texture-profiles.path-settings.path = Path
+form.label.texture-profiles.path-settings.profile = Profile
+form.label.texture-profiles.profiles = Profiles
+form.label.texture-profiles.profiles.platforms = Platforms
+form.label.texture-profiles.profiles.platforms.formats = Formats
+form.label.texture-profiles.profiles.platforms.formats.format = Format
+form.label.texture-profiles.profiles.platforms.formats.compressor = Compressor
+form.label.texture-profiles.profiles.platforms.formats.compressor-preset = Compressor Preset
+form.label.texture-profiles.profiles.platforms.mipmaps = Mipmaps
+form.label.texture-profiles.profiles.platforms.max-texture-size = Max Texture Size
+form.label.texture-profiles.profiles.platforms.premultiply-alpha = Premultiply Alpha
+
+form.label.factory = Factory
+form.label.factory.prototype = Prototype
+form.label.factory.load-dynamically = Load Dynamically
+form.label.factory.dynamic-prototype = Dynamic Prototype
+
+form.label.collectionfactory = Collection Factory
+form.label.collectionfactory.prototype = Prototype
+form.label.collectionfactory.load-dynamically = Load Dynamically
+form.label.collectionfactory.dynamic-prototype = Dynamic Prototype
+
+form.label.sound = Sound
+form.label.sound.sound = Sound
+form.label.sound.looping = Loop
+form.label.sound.loopcount = Loop Count
+form.label.sound.group = Group
+form.label.sound.gain = Gain
+form.label.sound.pan = Pan
+form.label.sound.speed = Speed
+
+form.label.liveupdate.liveupdate = Live Update
+form.label.liveupdate.liveupdate.mode = Mode
+form.help.liveupdate.liveupdate.mode = Target
+form.label.liveupdate.amazon = Amazon
+form.label.liveupdate.liveupdate.amazon-credential-profile = Credential Profile
+form.help.liveupdate.liveupdate.amazon-credential-profile = Amazon credentials profile
+form.label.liveupdate.liveupdate.amazon-bucket = Bucket
+form.help.liveupdate.liveupdate.amazon-bucket = Amazon Bucket
+form.label.liveupdate.liveupdate.amazon-prefix = Prefix
+form.help.liveupdate.liveupdate.amazon-prefix = Amazon Prefix
+form.label.liveupdate.zip = Zip
+form.label.liveupdate.liveupdate.save-zip-in-bundle-folder = Save in Bundle Folder
+form.help.liveupdate.liveupdate.save-zip-in-bundle-folder = Moves zip into bundle directory after the bundle process
+form.label.liveupdate.liveupdate.zip-filepath = Output Directory
+form.help.liveupdate.liveupdate.zip-filepath = Zip output directory
+form.label.liveupdate.liveupdate.zip-filename = Filename
+form.help.liveupdate.liveupdate.zip-filename = Zip filename
+form.label.liveupdate.liveupdate.zip-compression-level = Compression Level
+form.help.liveupdate.liveupdate.zip-compression-level = Compression level used when creating the Live Update zip archive
+form.label.liveupdate.folder = Folder
+form.label.liveupdate.liveupdate.save-folder-in-bundle-folder = Save in Bundle Folder
+form.help.liveupdate.liveupdate.save-folder-in-bundle-folder = Moves output folder into bundle directory after the bundle process
+form.label.liveupdate.liveupdate.output-directory = Output Directory
+form.help.liveupdate.liveupdate.output-directory = Output directory
+form.label.liveupdate.liveupdate.output-folder-name = Output Folder
+form.help.liveupdate.liveupdate.output-folder-name = Output folder name
+form.label.liveupdate.manifest = Manifest
+form.label.liveupdate.liveupdate.publickey = Public Key
+form.help.liveupdate.liveupdate.publickey = Public key for manifest signing
+form.label.liveupdate.liveupdate.privatekey = Private Key
+form.help.liveupdate.liveupdate.privatekey = Private key for manifest signing
+form.label.liveupdate.liveupdate.supported-versions = Supported Engine Versions
+form.help.liveupdate.liveupdate.supported-versions = List of supported engine versions
+
+form.label.material = Material
+form.label.material.name = Name
+form.label.material.vertex-program = Vertex Program
+form.label.material.fragment-program = Fragment Program
+form.label.material.attributes = Vertex Attributes
+form.label.material.attributes.semantic-type = Semantic Type
+form.label.material.attributes.step-function = Step Function
+form.label.material.attributes.coordinate-space = Coordinate Space
+form.label.material.attributes.data-type = Data Type
+form.label.material.attributes.vector-type = Vector Type
+form.label.material.attributes.value = Value
+form.label.material.attributes.normalize = Normalize
+form.label.material.vertex-constants = Vertex Constants
+form.label.material.vertex-constants.name = Name
+form.label.material.vertex-constants.type = Type
+form.label.material.vertex-constants.value = Value
+form.label.material.fragment-constants = Fragment Constants
+form.label.material.fragment-constants.name = Name
+form.label.material.fragment-constants.type = Type
+form.label.material.fragment-constants.value = Value
+form.label.material.samplers = Samplers
+form.label.material.samplers.name = Name
+form.label.material.samplers.wrap-u = Wrap U
+form.label.material.samplers.wrap-v = Wrap V
+form.label.material.samplers.filter-min = Min Filter
+form.label.material.samplers.filter-mag = Mag Filter
+form.label.material.samplers.max-anisotropy = Max Anisotropy
+form.label.material.tags = Tags
+form.label.material.vertex-space = Vertex Space
+form.label.material.max-page-count = Max Atlas Pages
+
+form.label.compute = Compute
+form.label.compute.compute-program = Program
+form.label.compute.constants = Constants
+form.label.compute.constants.name = Name
+form.label.compute.constants.type = Type
+form.label.compute.constants.value = Value
+form.label.compute.samplers = Samplers
+form.label.compute.samplers.name = Name
+form.label.compute.samplers.wrap-u = Wrap U
+form.label.compute.samplers.wrap-v = Wrap V
+form.label.compute.samplers.filter-min = Min Filter
+form.label.compute.samplers.filter-mag = Mag Filter
+form.label.compute.samplers.max-anisotropy = Max Anisotropy
+
 # Quick Help
 
 quick-help.open-asset = Open Asset
