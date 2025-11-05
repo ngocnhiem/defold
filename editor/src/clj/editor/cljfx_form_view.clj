@@ -617,9 +617,9 @@
                :resource (resource/resource->proj-path v)
                (str v))})))
 
-(def add-message (localization/message "form.context-menu.add"))
+(def ^:private add-message (localization/message "form.context-menu.add"))
 
-(def remove-message (localization/message "form.context-menu.remove"))
+(def ^:private remove-message (localization/message "form.context-menu.remove"))
 
 (defn- list-input [{:keys [;; state
                            state
@@ -1445,10 +1445,9 @@
     [((:to-string field str) value)]))
 
 (defn- annotate-field [field values filter-term section-visible localization-state]
-  (let [label (get-label-text localization-state field)
-        value (get values (:path field) ::no-value)
+  (let [value (get values (:path field) ::no-value)
         visible (and (or section-visible
-                         (text-util/includes-ignore-case? label filter-term)
+                         (text-util/includes-ignore-case? (get-label-text localization-state field) filter-term)
                          (boolean (some #(text-util/includes-ignore-case? % filter-term)
                                         (filterable-strings
                                           (assoc field :value (if (= value ::no-value)
