@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import com.dynamo.bob.fs.IResource;
+import com.dynamo.bob.fs.ResourceUtil;
 
 import com.dynamo.bob.pipeline.ShaderUtil.VariantTextureArrayFallback;
 import com.dynamo.bob.util.MurmurHash;
@@ -257,7 +258,7 @@ public class MaterialBuilder extends ProtoBuilder<MaterialDesc.Builder> {
         getShaderProgram(materialBuilder);
         IResource shaderResource = getShaderProgram(materialBuilder);
 
-        materialBuilder.setProgram("/" + BuilderUtil.replaceExt(shaderResource.getPath(), ".spc"));
+        materialBuilder.setProgram("/" + ResourceUtil.replaceExt(shaderResource.getPath(), ".spc"));
         materialBuilder.setVertexProgram("");
         materialBuilder.setFragmentProgram("");
 

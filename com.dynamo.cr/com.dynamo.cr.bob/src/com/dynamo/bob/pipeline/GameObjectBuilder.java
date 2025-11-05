@@ -37,6 +37,7 @@ import com.dynamo.bob.Task;
 import com.dynamo.bob.ProtoParams;
 import com.dynamo.bob.Task.TaskBuilder;
 import com.dynamo.bob.fs.IResource;
+import com.dynamo.bob.fs.ResourceUtil;
 import com.dynamo.bob.util.MurmurHash;
 import com.dynamo.bob.util.PropertiesUtil;
 import com.dynamo.bob.util.ComponentsCounter;
@@ -237,7 +238,7 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
                 throw new CompileExceptionError(resource, 0, BobNLS.bind(Messages.BuilderUtil_WRONG_RESOURCE_TYPE,
                         new String[] { c, ext, "script" } ));
             }
-            c = BuilderUtil.replaceExt(c, inExt, outExt);
+            c = ResourceUtil.replaceExt(c, inExt, outExt);
 
             PropertyDeclarations.Builder properties = PropertyDeclarations.newBuilder();
             for (PropertyDesc desc : cd.getPropertiesList()) {

@@ -43,4 +43,19 @@ public class ResourceUtil {
         }
         return fileName.substring(i);
     }
+
+    public static String replaceExt(String str, String from, String to) {
+        if (str.endsWith(from)) {
+            return str.substring(0, str.lastIndexOf(from)).concat(to);
+        }
+        return str;
+    }
+
+    public static String replaceExt(String str, String to) {
+        int lastDot = str.lastIndexOf(".");
+        if (lastDot != -1) {
+            return str.substring(0, lastDot).concat(to);
+        }
+        return str.concat(to);
+    }
 }

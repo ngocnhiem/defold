@@ -6,6 +6,7 @@ import com.dynamo.bob.ProtoBuilder;
 import com.dynamo.bob.ProtoParams;
 import com.dynamo.bob.Task;
 import com.dynamo.bob.fs.IResource;
+import com.dynamo.bob.fs.ResourceUtil;
 import com.dynamo.bob.util.BobNLS;
 import com.dynamo.bob.util.MurmurHash;
 import com.dynamo.gamesys.proto.Physics.ConvexShape;
