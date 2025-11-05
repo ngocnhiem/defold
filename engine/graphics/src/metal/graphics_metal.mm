@@ -33,6 +33,9 @@
 
 #include "graphics_metal_private.h"
 
+DM_PROPERTY_EXTERN(rmtp_DrawCalls);
+DM_PROPERTY_EXTERN(rmtp_DispatchCalls);
+
 namespace dmGraphics
 {
     static GraphicsAdapterFunctionTable MetalRegisterFunctionTable();
@@ -107,6 +110,28 @@ namespace dmGraphics
         return true;
     }
 
+    static void SetupMainRenderTarget(MetalContext* context)
+    {
+        // Initialize the dummy rendertarget for the main framebuffer
+        // The m_Framebuffer construct will be rotated sequentially
+        // with the framebuffer objects created per swap chain.
+
+        MetalRenderTarget* rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_MainRenderTarget);
+        if (rt == 0x0)
+        {
+            rt                          = new MetalRenderTarget(DM_RENDERTARGET_BACKBUFFER_ID);
+            context->m_MainRenderTarget = StoreAssetInContainer(context->m_AssetHandleContainer, rt, ASSET_TYPE_RENDER_TARGET);
+        }
+
+        // rt->m_Handle.m_RenderPass  = context->m_MainRenderPass;
+        // rt->m_Handle.m_Framebuffer = context->m_MainFrameBuffers[0];
+        // rt->m_Extent               = context->m_SwapChain->m_ImageExtent;
+
+        rt->m_ColorFormat[0]       = MTL::PixelFormatBGRA8Unorm;
+        rt->m_DepthStencilFormat   = MTL::PixelFormatDepth32Float_Stencil8;
+        rt->m_ColorAttachmentCount = 1;
+    }
+
     static bool MetalInitialize(HContext _context)
     {
         MetalContext* context        = (MetalContext*) _context;
@@ -114,7 +139,13 @@ namespace dmGraphics
         context->m_CommandQueue      = context->m_Device->newCommandQueue();
         context->m_NumFramesInFlight = MAX_FRAMES_IN_FLIGHT;
 
+        SetupMainRenderTarget(context);
+        context->m_CurrentRenderTarget = context->m_MainRenderTarget;
+
         context->m_PipelineCache.SetCapacity(32,64);
+
+        uint32_t window_width = dmPlatform::GetWindowWidth(context->m_Window);
+        uint32_t window_height = dmPlatform::GetWindowHeight(context->m_Window);
 
         // Create main resources-to-destroy lists, one for each command buffer
         for (uint32_t i = 0; i < context->m_NumFramesInFlight; ++i)
@@ -129,10 +160,22 @@ namespace dmGraphics
         context->m_Layer               = [CAMetalLayer layer];
         context->m_Layer.device        = (__bridge id<MTLDevice>) context->m_Device;
         context->m_Layer.pixelFormat   = MTLPixelFormatBGRA8Unorm;
-        context->m_Layer.drawableSize  = CGSizeMake(context->m_Width, context->m_Height);
+        context->m_Layer.drawableSize  = CGSizeMake(window_width, window_height);
 
         [context->m_View setLayer:context->m_Layer];
         [context->m_View setWantsLayer:YES];
+
+        MTL::TextureDescriptor* depthDesc = MTL::TextureDescriptor::texture2DDescriptor(
+            MTL::PixelFormatDepth32Float_Stencil8,
+            window_width,
+            window_height,
+            false
+        );
+
+        depthDesc->setStorageMode(MTL::StorageModePrivate);
+        depthDesc->setUsage(MTL::TextureUsageRenderTarget);
+        context->m_MainDepthStencilTexture = context->m_Device->newTexture(depthDesc);
+        depthDesc->release();
 
         return true;
     }
@@ -270,15 +313,28 @@ namespace dmGraphics
         context->m_Drawable             = (__bridge CA::MetalDrawable*)[context->m_Layer nextDrawable];
         context->m_AutoReleasePool      = NS::AutoreleasePool::alloc()->init();
         context->m_RenderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+        context->m_FrameBegun           = 1;
 
         frame.m_CommandBuffer = context->m_CommandQueue->commandBuffer();
 
-        // TODO:
         auto colorAttachment = context->m_RenderPassDescriptor->colorAttachments()->object(0);
         colorAttachment->setTexture(context->m_Drawable->texture());
         colorAttachment->setLoadAction(MTL::LoadActionClear);
         colorAttachment->setStoreAction(MTL::StoreActionStore);
         colorAttachment->setClearColor(MTL::ClearColor(0.1, 0.2, 0.4, 1.0));
+
+        // Depth/stencil attachment
+        auto depthAttachment = context->m_RenderPassDescriptor->depthAttachment();
+        depthAttachment->setTexture(context->m_MainDepthStencilTexture);
+        depthAttachment->setLoadAction(MTL::LoadActionClear);
+        depthAttachment->setStoreAction(MTL::StoreActionDontCare);
+        depthAttachment->setClearDepth(1.0);
+
+        auto stencilAttachment = context->m_RenderPassDescriptor->stencilAttachment();
+        stencilAttachment->setTexture(context->m_MainDepthStencilTexture);
+        stencilAttachment->setLoadAction(MTL::LoadActionClear);
+        stencilAttachment->setStoreAction(MTL::StoreActionDontCare);
+        stencilAttachment->setClearStencil(0);
 
         context->m_RenderCommandEncoder = frame.m_CommandBuffer->renderCommandEncoder(context->m_RenderPassDescriptor);
     }
@@ -357,6 +413,7 @@ namespace dmGraphics
         MetalContext* context = (MetalContext*) _context;
         MetalDeviceBuffer* buffer = new MetalDeviceBuffer();
 
+        /*
         switch (buffer_usage)
         {
             case BUFFER_USAGE_STATIC_DRAW:
@@ -369,6 +426,8 @@ namespace dmGraphics
                 buffer->m_StorageMode = MTL::StorageModeShared;
                 break;
         }
+        */
+        buffer->m_StorageMode = MTL::StorageModeShared;
 
         if (size > 0)
         {
@@ -438,6 +497,7 @@ namespace dmGraphics
         MetalContext* context = (MetalContext*) _context;
         MetalDeviceBuffer* buffer = new MetalDeviceBuffer();
 
+        /*
         switch (buffer_usage)
         {
             case BUFFER_USAGE_STATIC_DRAW:
@@ -450,6 +510,9 @@ namespace dmGraphics
                 buffer->m_StorageMode = MTL::StorageModeShared;
                 break;
         }
+        */
+
+        buffer->m_StorageMode = MTL::StorageModeShared;
 
         if (size > 0)
         {
@@ -757,7 +820,7 @@ namespace dmGraphics
         return MTL::VertexFormatInvalid;
     }
 
-    static bool CreatePipeline(MetalContext* context,const PipelineState pipeline_state,  MetalProgram* program, VertexDeclaration** vertexDeclaration, uint32_t vertexDeclarationCount, MetalPipeline* pipeline)
+    static bool CreatePipeline(MetalContext* context, MetalRenderTarget* rt, const PipelineState pipeline_state,  MetalProgram* program, VertexDeclaration** vertexDeclaration, uint32_t vertexDeclarationCount, MetalPipeline* pipeline)
     {
         MTL::VertexDescriptor* vertex_desc = MTL::VertexDescriptor::alloc()->init();
         uint32_t attribute_index = 0;
@@ -791,16 +854,14 @@ namespace dmGraphics
         pipeline_desc->setFragmentFunction(program->m_FragmentModule->m_Function);
         pipeline_desc->setVertexDescriptor(vertex_desc);
 
-        /*
         for (uint32_t i = 0; i < rt->m_ColorAttachmentCount; ++i)
         {
-            MTL::RenderPipelineColorAttachmentDescriptor* colorAttachment =
-                pipeline_desc->colorAttachments()->object(i);
-            colorAttachment->setPixelFormat(rt->m_ColorFormats[i]);
+            MTL::RenderPipelineColorAttachmentDescriptor* colorAttachment = pipeline_desc->colorAttachments()->object(i);
+            colorAttachment->setPixelFormat(rt->m_ColorFormat[i]);
             colorAttachment->setBlendingEnabled(pipeline_state.m_BlendEnabled);
         }
-        pipeline_desc->setDepthAttachmentPixelFormat(rt->m_DepthFormat);
-        */
+        pipeline_desc->setDepthAttachmentPixelFormat(rt->m_DepthStencilFormat);
+        pipeline_desc->setStencilAttachmentPixelFormat(rt->m_DepthStencilFormat);
 
         NS::Error* error = nullptr;
         pipeline->m_RenderPipelineState = context->m_Device->newRenderPipelineState(pipeline_desc, &error);
@@ -849,7 +910,7 @@ namespace dmGraphics
             // Create the pipeline here!
             MetalPipeline new_pipeline = {};
 
-            if (!CreatePipeline(context, pipeline_state, program, vertexDeclaration, vertexDeclarationCount, &new_pipeline))
+            if (!CreatePipeline(context, rt, pipeline_state, program, vertexDeclaration, vertexDeclarationCount, &new_pipeline))
             {
                 return 0;
             }
@@ -866,14 +927,151 @@ namespace dmGraphics
         return cached_pipeline;
     }
 
+    static void DrawSetup(MetalContext* context)
+    {
+        assert(context->m_RenderCommandEncoder);
+        MTL::RenderCommandEncoder* encoder = context->m_RenderCommandEncoder;
+
+        MetalRenderTarget* current_rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_CurrentRenderTarget);
+
+        VertexDeclaration* vx_declarations[MAX_VERTEX_BUFFERS] = {};
+        uint32_t num_vx_buffers = 0;
+
+        for (int i = 0; i < MAX_VERTEX_BUFFERS; ++i)
+        {
+            if (context->m_CurrentVertexBuffer[i] && context->m_CurrentVertexDeclaration[i])
+            {
+                vx_declarations[num_vx_buffers] = context->m_CurrentVertexDeclaration[i];
+
+                encoder->setVertexBuffer(context->m_CurrentVertexBuffer[i]->m_Buffer, 0, num_vx_buffers);
+
+                num_vx_buffers++;
+            }
+        }
+
+        PipelineState pipeline_state_draw = context->m_PipelineState;
+
+        // If the culling, or viewport has changed, make sure to flip the
+        // culling flag if we are rendering to the backbuffer.
+        // This is needed because we are rendering with a negative viewport
+        // which means that the face direction is inverted.
+        if (current_rt->m_Id != DM_RENDERTARGET_BACKBUFFER_ID)
+        {
+            if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_BACK)
+            {
+                pipeline_state_draw.m_CullFaceType = FACE_TYPE_FRONT;
+            }
+            else if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_FRONT)
+            {
+                pipeline_state_draw.m_CullFaceType = FACE_TYPE_BACK;
+            }
+        }
+
+        MetalPipeline* pipeline = GetOrCreatePipeline(context, pipeline_state_draw,
+            context->m_CurrentProgram, current_rt, vx_declarations, num_vx_buffers);
+        assert(pipeline);
+
+        encoder->setRenderPipelineState(pipeline->m_RenderPipelineState);
+        if (pipeline->m_DepthStencilState)
+        {
+            encoder->setDepthStencilState(pipeline->m_DepthStencilState);
+        }
+
+        if (context->m_ViewportChanged)
+        {
+            MTL::Viewport metal_vp;
+            metal_vp.originX = context->m_MainViewport.m_X;
+            metal_vp.originY = context->m_MainViewport.m_Y;
+            metal_vp.width   = context->m_MainViewport.m_W;
+            metal_vp.height  = context->m_MainViewport.m_H;
+            metal_vp.znear   = 0.0;
+            metal_vp.zfar    = 1.0;
+            encoder->setViewport(metal_vp);
+
+            // MTL::ScissorRect scissor;
+            // scissor.x      = current_rt->m_Scissor.offset.x;
+            // scissor.y      = current_rt->m_Scissor.offset.y;
+            // scissor.width  = current_rt->m_Scissor.extent.width;
+            // scissor.height = current_rt->m_Scissor.extent.height;
+            // encoder->setScissorRect(scissor);
+        }
+
+        // if (context->m_UniformBuffer && context->m_UniformDataSize > 0)
+        // {
+        //     encoder->setVertexBytes(context->m_UniformBuffer, context->m_UniformDataSize, 0);
+        //     encoder->setFragmentBytes(context->m_UniformBuffer, context->m_UniformDataSize, 0);
+        // }
+    }
+
+    static MTL::PrimitiveType ConvertPrimitiveType(PrimitiveType prim_type)
+    {
+        switch (prim_type)
+        {
+            case PRIMITIVE_TRIANGLES:      return MTL::PrimitiveTypeTriangle;
+            case PRIMITIVE_TRIANGLE_STRIP: return MTL::PrimitiveTypeTriangleStrip;
+            case PRIMITIVE_LINES:          return MTL::PrimitiveTypeLine;
+            //case PRIMITIVE_LINE_STRIP:     return MTL::PrimitiveTypeLineStrip;
+            //case PRIMITIVE_POINTS:         return MTL::PrimitiveTypePoint;
+            default: break;
+        }
+        return MTL::PrimitiveTypeTriangle;
+    }
+
     static void MetalDrawElements(HContext _context, PrimitiveType prim_type, uint32_t first, uint32_t count, Type type, HIndexBuffer index_buffer, uint32_t instance_count)
     {
+        DM_PROFILE(__FUNCTION__);
+        DM_PROPERTY_ADD_U32(rmtp_DrawCalls, 1);
 
+        MetalContext* context = (MetalContext*)_context;
+        assert(context->m_FrameBegun);
+
+        DrawSetup(context);
+
+        // Index buffer setup
+        MetalDeviceBuffer* ib = (MetalDeviceBuffer*) index_buffer;
+        assert(ib);
+        assert(ib->m_Buffer);
+
+        MTL::IndexType metal_index_type = (type == TYPE_UNSIGNED_INT)
+            ? MTL::IndexTypeUInt32
+            : MTL::IndexTypeUInt16;
+
+        // The `first` value is a byte offset, similar to Vulkan’s.
+        NSUInteger index_offset = first;
+
+        MTL::PrimitiveType metal_prim_type = ConvertPrimitiveType(prim_type);
+
+        // Perform the draw
+        if (instance_count > 1)
+        {
+            context->m_RenderCommandEncoder->drawIndexedPrimitives(metal_prim_type, count, metal_index_type, ib->m_Buffer, index_offset, instance_count);
+        }
+        else
+        {
+            context->m_RenderCommandEncoder->drawIndexedPrimitives(metal_prim_type, count, metal_index_type, ib->m_Buffer, index_offset);
+        }
     }
 
     static void MetalDraw(HContext _context, PrimitiveType prim_type, uint32_t first, uint32_t count, uint32_t instance_count)
     {
+        DM_PROFILE(__FUNCTION__);
+        DM_PROPERTY_ADD_U32(rmtp_DrawCalls, 1);
 
+        MetalContext* context = (MetalContext*)_context;
+        assert(context->m_FrameBegun);
+
+        DrawSetup(context);
+
+        MTL::PrimitiveType metal_prim_type = ConvertPrimitiveType(prim_type);
+
+        if (instance_count > 1)
+        {
+            context->m_RenderCommandEncoder->drawPrimitives(metal_prim_type, first, count, instance_count);
+        }
+        else
+        {
+            context->m_RenderCommandEncoder->drawPrimitives(metal_prim_type, first, count);
+        }
     }
 
     static void MetalDispatchCompute(HContext _context, uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z)
@@ -893,7 +1091,7 @@ namespace dmGraphics
 
         MetalShaderModule* module = new MetalShaderModule;
         module->m_Library = library;
-        module->m_Function = library->newFunction(NS::String::string("main", NS::StringEncoding::UTF8StringEncoding));
+        module->m_Function = library->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
         return module;
     }
 

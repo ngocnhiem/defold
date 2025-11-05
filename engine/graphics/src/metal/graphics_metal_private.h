@@ -77,7 +77,21 @@ namespace dmGraphics
 
     struct MetalRenderTarget
     {
+        MetalRenderTarget(const uint32_t rtId) : m_Id(rtId) {}
+
+        TextureParams         m_ColorTextureParams[MAX_BUFFER_COLOR_ATTACHMENTS];
+        TextureParams         m_DepthStencilTextureParams;
+
+        HTexture              m_TextureColor[MAX_BUFFER_COLOR_ATTACHMENTS];
+        HTexture              m_TextureDepthStencil;
+
+        MTL::PixelFormat      m_ColorFormat[MAX_BUFFER_COLOR_ATTACHMENTS];
+        MTL::PixelFormat      m_DepthStencilFormat;
+
         const uint16_t m_Id;
+        uint32_t       m_Destroyed            : 1;
+        uint32_t       m_IsBound              : 1;
+        uint32_t       m_ColorAttachmentCount : 4;
     };
 
     struct MetalStorageBufferBinding
@@ -111,41 +125,45 @@ namespace dmGraphics
     {
         MetalContext(const ContextParams& params);
 
-        dmPlatform::HWindow        m_Window;
-
-        NSView*                    m_View;
-        CAMetalLayer*              m_Layer;
-        MetalFrameResource         m_FrameResources[MAX_FRAMES_IN_FLIGHT];
-        MTL::Device*               m_Device;
-        MTL::CommandQueue*         m_CommandQueue;
-        PipelineState              m_PipelineState;
-        PipelineCache              m_PipelineCache;
-        VertexDeclaration          m_MainVertexDeclaration[MAX_VERTEX_BUFFERS];
-        MetalViewport              m_MainViewport;
+        dmPlatform::HWindow                m_Window;
+        NSView*                            m_View;
+        CAMetalLayer*                      m_Layer;
+        MetalFrameResource                 m_FrameResources[MAX_FRAMES_IN_FLIGHT];
+        MTL::Device*                       m_Device;
+        MTL::CommandQueue*                 m_CommandQueue;
+        PipelineState                      m_PipelineState;
+        PipelineCache                      m_PipelineCache;
+        dmOpaqueHandleContainer<uintptr_t> m_AssetHandleContainer;
+        VertexDeclaration                  m_MainVertexDeclaration[MAX_VERTEX_BUFFERS];
+        MetalViewport                      m_MainViewport;
+        HRenderTarget                      m_MainRenderTarget;
+        MTL::Texture*                      m_MainDepthStencilTexture;
 
         // Per-frame metal resources
-        CA::MetalDrawable*         m_Drawable;
-        NS::AutoreleasePool*       m_AutoReleasePool;
-        MTL::RenderPassDescriptor* m_RenderPassDescriptor;
-        MTL::RenderCommandEncoder* m_RenderCommandEncoder;
+        CA::MetalDrawable*                 m_Drawable;
+        NS::AutoreleasePool*               m_AutoReleasePool;
+        MTL::RenderPassDescriptor*         m_RenderPassDescriptor;
+        MTL::RenderCommandEncoder*         m_RenderCommandEncoder;
 
         // Per-frame render state
-        MetalDeviceBuffer*         m_CurrentVertexBuffer[MAX_VERTEX_BUFFERS];
-        VertexDeclaration*         m_CurrentVertexDeclaration[MAX_VERTEX_BUFFERS];
-        uint32_t                   m_CurrentVertexBufferOffset[MAX_VERTEX_BUFFERS];
-        MetalStorageBufferBinding  m_CurrentStorageBuffers[MAX_STORAGE_BUFFERS];
-        MetalProgram*              m_CurrentProgram;
-        MetalPipeline*             m_CurrentPipeline;
+        MetalDeviceBuffer*                 m_CurrentVertexBuffer[MAX_VERTEX_BUFFERS];
+        VertexDeclaration*                 m_CurrentVertexDeclaration[MAX_VERTEX_BUFFERS];
+        uint32_t                           m_CurrentVertexBufferOffset[MAX_VERTEX_BUFFERS];
+        MetalStorageBufferBinding          m_CurrentStorageBuffers[MAX_STORAGE_BUFFERS];
+        MetalProgram*                      m_CurrentProgram;
+        MetalPipeline*                     m_CurrentPipeline;
+        HRenderTarget                      m_CurrentRenderTarget;
 
-        TextureFilter              m_DefaultTextureMinFilter;
-        TextureFilter              m_DefaultTextureMagFilter;
-        uint32_t                   m_Width;
-        uint32_t                   m_Height;
+        TextureFilter                      m_DefaultTextureMinFilter;
+        TextureFilter                      m_DefaultTextureMagFilter;
+        uint32_t                           m_Width;
+        uint32_t                           m_Height;
 
-        uint32_t                   m_CurrentFrameInFlight : 2;
-        uint32_t                   m_NumFramesInFlight    : 2;
-        uint32_t                   m_ViewportChanged      : 1;
-        uint32_t                   m_CullFaceChanged      : 1;
+        uint32_t                           m_CurrentFrameInFlight : 2;
+        uint32_t                           m_NumFramesInFlight    : 2;
+        uint32_t                           m_ViewportChanged      : 1;
+        uint32_t                           m_CullFaceChanged      : 1;
+        uint32_t                           m_FrameBegun           : 1;
     };
 }
 
