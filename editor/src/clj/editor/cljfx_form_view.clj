@@ -516,13 +516,19 @@
     [[:dispatch (assoc on-added :fx/event added-list-elements)]
      [:set-ui-state (assoc-in ui-state (conj state-path :selected-indices) added-indices)]]))
 
-(defmethod handle-event :add-list-element [{:keys [element fx/event project workspace localization] :as map-event}]
+(defn- dialog-title-text [localization-state localization-key title fallback-message]
+  (or (when localization-key
+        (let [title-key (str "form.title." localization-key)]
+          (when (localization/defines-message-key? localization-state title-key)
+            (localization-state (localization/message title-key)))))
+      title
+      (localization-state fallback-message)))
+
+(defmethod handle-event :add-list-element [{:keys [element fx/event project workspace localization localization-key] :as map-event}]
   (case (:type element)
     :directory
     (when-some [selected-directory (dialogs/make-directory-dialog
-                                     (localization
-                                       (or (:title element)
-                                           (localization/message "dialog.directory.title.select")))
+                                     (dialog-title-text @localization localization-key (:title element) (localization/message "dialog.directory.title.select"))
                                      (workspace/project-directory workspace)
                                      (fxui/event->window event))]
       (if-some [valid-directory-path (absolute-or-maybe-proj-path selected-directory workspace (:in-project element))]
@@ -531,7 +537,7 @@
 
     :file
     (when-some [selected-file (dialogs/make-file-dialog
-                                (or (:title element) (localization/message "dialog.file.title.select"))
+                                (dialog-title-text @localization localization-key (:title element) (localization/message "dialog.file.title.select"))
                                 (:filter element)
                                 nil
                                 (fxui/event->window event))]
@@ -611,6 +617,10 @@
                :resource (resource/resource->proj-path v)
                (str v))})))
 
+(def add-message (localization/message "form.context-menu.add"))
+
+(def remove-message (localization/message "form.context-menu.remove"))
+
 (defn- list-input [{:keys [;; state
                            state
                            state-path
@@ -620,7 +630,9 @@
                            on-edited                        ;; {:index int :item item}
                            on-removed                       ;; #{index ...}
                            ;; field
-                           element]
+                           element
+                           localization-key
+                           localization-state]
                     :or {state {:selected-indices []}
                          value []}
                     :as field}]
@@ -631,7 +643,8 @@
                    :value value
                    :on-added on-added
                    :state-path state-path
-                   :element element}
+                   :element element
+                   :localization-key localization-key}
         remove-event {:event-type :remove-list-selection
                       :on-removed on-removed
                       :state-path state-path}]
@@ -673,11 +686,11 @@
                            :fixed-cell-size cell-height
                            :context-menu {:fx/type fx.context-menu/lifecycle
                                           :items [{:fx/type fx.menu-item/lifecycle
-                                                   :text "Add"
+                                                   :text (localization-state add-message)
                                                    :disable disable-add
                                                    :on-action add-event}
                                                   {:fx/type fx.menu-item/lifecycle
-                                                   :text "Remove"
+                                                   :text (localization-state remove-message)
                                                    :disable disable-remove
                                                    :on-action remove-event}]}}}}}}
                 {:fx/type fx.h-box/lifecycle
@@ -781,16 +794,18 @@
                                                    title
                                                    in-project
                                                    workspace
-                                                   localization]}]
-  (when-some [selected-file (dialogs/make-file-dialog (localization (or title (localization/message "dialog.file.title.select")))
-                                                      filter
-                                                      nil
-                                                      (fxui/event->window event))]
+                                                   localization
+                                                   localization-key]}]
+  (when-some [selected-file (dialogs/make-file-dialog
+                              (dialog-title-text @localization localization-key title (localization/message "dialog.file.title.select"))
+                              filter
+                              nil
+                              (fxui/event->window event))]
     (if-some [valid-file-path (absolute-or-maybe-proj-path selected-file workspace in-project)]
       {:dispatch (assoc on-value-changed :fx/event valid-file-path)}
       {:show-dialog :file-not-in-project})))
 
-(defmethod form-input-view :file [{:keys [on-value-changed value filter title in-project]}]
+(defmethod form-input-view :file [{:keys [on-value-changed value filter title in-project localization-key]}]
   {:fx/type fx.h-box/lifecycle
    :spacing 4
    :max-width normal-field-width
@@ -803,6 +818,7 @@
               {:fx/type icon-button
                :text "\u2026"
                :on-action {:event-type :on-file-selected
+                           :localization-key localization-key
                            :on-value-changed on-value-changed
                            :filter filter
                            :in-project in-project
@@ -812,16 +828,16 @@
 
 ;; region directory input
 
-(defmethod handle-event :on-directory-selected [{:keys [on-value-changed title fx/event in-project workspace localization]}]
+(defmethod handle-event :on-directory-selected [{:keys [on-value-changed title fx/event in-project workspace localization localization-key]}]
   (when-some [selected-directory (dialogs/make-directory-dialog
-                                   (localization (or title (localization/message "dialog.directory.title.select")))
+                                   (dialog-title-text @localization localization-key title (localization/message "dialog.directory.title.select"))
                                    nil
                                    (fxui/event->window event))]
     (if-some [valid-directory-path (absolute-or-maybe-proj-path selected-directory workspace in-project)]
       {:dispatch (assoc on-value-changed :fx/event valid-directory-path)}
       {:show-dialog :directory-not-in-project})))
 
-(defmethod form-input-view :directory [{:keys [on-value-changed value title in-project]}]
+(defmethod form-input-view :directory [{:keys [on-value-changed value title in-project localization-key]}]
   {:fx/type fx.h-box/lifecycle
    :spacing 4
    :max-width normal-field-width
@@ -834,6 +850,7 @@
               {:fx/type icon-button
                :text "\u2026"
                :on-action {:event-type :on-directory-selected
+                           :localization-key localization-key
                            :on-value-changed on-value-changed
                            :in-project in-project
                            :title title}}]})
@@ -987,10 +1004,8 @@
       (let [label-key (str "form.label." localization-key)]
         (if (localization/defines-message-key? localization-state label-key)
           (localization-state (localization/message label-key))
-          ;; TODO just fallback
-          (str "!" label-key "!" fallback)))
-      ;; TODO just fallback
-      (str "!NO KEY!" fallback))))
+          fallback))
+      fallback)))
 
 (defn- get-help-text [localization-state {:keys [localization-key help]}]
   (let [help (coll/not-empty help)]
@@ -998,10 +1013,8 @@
       (let [help-key (str "form.help." localization-key)]
         (if (localization/defines-message-key? localization-state help-key)
           (localization-state (localization/message help-key))
-          ;; TODO just fallback
-          (when help (str "!" help-key "!"))))
-      ;; TODO just fallback
-      (str "!NO KEY!" help))))
+          help))
+      help)))
 
 (defn- table-column [{:keys [path type] :as column}
                      {:keys [state state-path value on-value-changed localization-state]
@@ -1055,7 +1068,8 @@
                                            on-value-changed
                                            columns
                                            state
-                                           state-path]
+                                           state-path
+                                           localization-state]
                                     :or {value []}
                                     :as field}]
   (let [{:keys [selected-indices edit]} state
@@ -1107,11 +1121,11 @@
                                         :items (into [] (map-indexed vector) value)
                                         :context-menu {:fx/type fx.context-menu/lifecycle
                                                        :items [{:fx/type fx.menu-item/lifecycle
-                                                                :text "Add"
+                                                                :text (localization-state add-message)
                                                                 :disable disable-add
                                                                 :on-action on-added}
                                                                {:fx/type fx.menu-item/lifecycle
-                                                                :text "Remove"
+                                                                :text (localization-state remove-message)
                                                                 :disable disable-remove
                                                                 :on-action on-removed}]}}}}]}
                        {:fx/type fx.h-box/lifecycle
@@ -1365,48 +1379,46 @@
                                       (not= ::no-value state)
                                       (assoc :state state))]}))))
 
-(defn- section-view [{:keys [fields values ui-state resource-string-converter visible localization-state] :as section}]
-  (let [help-text (get-help-text localization-state section)]
-    {:fx/type fx.v-box/lifecycle
-     :visible visible
-     :managed visible
-     :children (cond-> []
+(defn- section-view [{:keys [title help fields values ui-state resource-string-converter visible localization-state]}]
+  {:fx/type fx.v-box/lifecycle
+   :visible visible
+   :managed visible
+   :children (cond-> []
 
-                       :always
-                       (conj {:fx/type fx.label/lifecycle
-                              :style-class ["label" "cljfx-form-title"]
-                              :text (get-label-text localization-state section)})
+                     :always
+                     (conj {:fx/type fx.label/lifecycle
+                            :style-class ["label" "cljfx-form-title"]
+                            :text title})
 
-                       help-text
-                       (conj {:fx/type fx.label/lifecycle
-                              :text help-text})
+                     help
+                     (conj {:fx/type fx.label/lifecycle :text help})
 
-                       :always
-                       (conj {:fx/type fx.grid-pane/lifecycle
-                              :style-class "cljfx-form-fields"
-                              :vgap line-spacing
-                              :column-constraints [{:fx/type fx.column-constraints/lifecycle
-                                                    :min-width 150
-                                                    :max-width 150}
-                                                   {:fx/type fx.column-constraints/lifecycle
-                                                    :min-width line-height
-                                                    :max-width line-height}
-                                                   {:fx/type fx.column-constraints/lifecycle
-                                                    :hgrow :always
-                                                    :min-width 200
-                                                    :max-width large-field-width}]
-                              :children (first
-                                          (reduce
-                                            (fn [[acc row] field]
-                                              [(into acc (make-row values
-                                                                   ui-state
-                                                                   resource-string-converter
-                                                                   row
-                                                                   field
-                                                                   localization-state))
-                                               (if (:visible field) (inc row) row)])
-                                            [[] 0]
-                                            fields))}))}))
+                     :always
+                     (conj {:fx/type fx.grid-pane/lifecycle
+                            :style-class "cljfx-form-fields"
+                            :vgap line-spacing
+                            :column-constraints [{:fx/type fx.column-constraints/lifecycle
+                                                  :min-width 150
+                                                  :max-width 150}
+                                                 {:fx/type fx.column-constraints/lifecycle
+                                                  :min-width line-height
+                                                  :max-width line-height}
+                                                 {:fx/type fx.column-constraints/lifecycle
+                                                  :hgrow :always
+                                                  :min-width 200
+                                                  :max-width large-field-width}]
+                            :children (first
+                                        (reduce
+                                          (fn [[acc row] field]
+                                            [(into acc (make-row values
+                                                                 ui-state
+                                                                 resource-string-converter
+                                                                 row
+                                                                 field
+                                                                 localization-state))
+                                             (if (:visible field) (inc row) row)])
+                                          [[] 0]
+                                          fields))}))})
 
 ;; region filtering
 
@@ -1432,10 +1444,11 @@
   (when (some? value)
     [((:to-string field str) value)]))
 
-(defn- set-field-visibility [field values filter-term section-visible]
-  (let [value (get values (:path field) ::no-value)
+(defn- annotate-field [field values filter-term section-visible localization-state]
+  (let [label (get-label-text localization-state field)
+        value (get values (:path field) ::no-value)
         visible (and (or section-visible
-                         (text-util/includes-ignore-case? (:label field) filter-term)
+                         (text-util/includes-ignore-case? label filter-term)
                          (boolean (some #(text-util/includes-ignore-case? % filter-term)
                                         (filterable-strings
                                           (assoc field :value (if (= value ::no-value)
@@ -1448,17 +1461,22 @@
                                   :build-targets))))]
     (assoc field :visible visible)))
 
-(defn- set-section-visibility [{:keys [title help fields] :as section} values filter-term]
-  (let [visible (or (text-util/includes-ignore-case? title filter-term)
+(defn- annotate-section [{:keys [fields] :as section} values filter-term localization-state]
+  (let [title (get-label-text localization-state section)
+        help (get-help-text localization-state section)
+        visible (or (text-util/includes-ignore-case? title filter-term)
                     (and (some? help)
                          (text-util/includes-ignore-case? help filter-term)))
         fields (into []
                      (comp
                        (remove :hidden)
-                       (map #(set-field-visibility % values filter-term visible)))
+                       (map #(annotate-field % values filter-term visible localization-state)))
                      fields)]
-    (assoc section :visible (boolean (some :visible fields))
-                   :fields fields)))
+    (-> section
+        (assoc :visible (boolean (some :visible fields))
+               :title title
+               :fields fields)
+        (cond-> help (assoc :help help)))))
 
 (defmethod handle-event :filter-text-changed [{:keys [ui-state fx/event]}]
   {:set-ui-state (assoc ui-state :filter-term event)})
@@ -1534,7 +1552,13 @@
 (defmethod handle-event :jump-to [{:keys [section ui-state]}]
   {:set-ui-state (assoc ui-state :selected-section-title section)})
 
-(defn- form-sections [{:keys [groups sections selected-section-title]}]
+(defn- section-group-text [localization-state group]
+  (let [group-key (str "form.group." (string/lower-case group))]
+    (if (localization/defines-message-key? localization-state group-key)
+      (localization-state (localization/message group-key))
+      group)))
+
+(defn- form-sections [{:keys [groups sections selected-section-title localization-state]}]
   {:fx/type fx/ext-let-refs
    :refs (into {}
                (comp
@@ -1566,7 +1590,7 @@
                                                           :fill-width true
                                                           :children (into [{:fx/type fx.label/lifecycle
                                                                             :style-class "cljfx-form-section-header"
-                                                                            :text group}]
+                                                                            :text (section-group-text localization-state group)}]
                                                                           (map
                                                                             (fn [title]
                                                                               {:fx/type fx/ext-get-ref :ref title}))
@@ -1578,13 +1602,13 @@
 (defn- form-view [{:keys [parent form-data ui-state resource-string-converter localization-state]}]
   (let [{:keys [sections values group-order default-section-name]} form-data
         filter-term (:filter-term ui-state)
-        sections-with-visibility (mapv #(set-section-visibility % values filter-term) sections)
+        annotated-sections (mapv #(annotate-section % values filter-term localization-state) sections)
         navigation (:navigation form-data true)]
     {:fx/type fxui/ext-with-anchor-pane-props
      :desc {:fx/type fxui/ext-value
             :value parent}
      :props {:children [(if navigation
-                          (let [visible-sections (filterv :visible sections-with-visibility)
+                          (let [visible-sections (filterv :visible annotated-sections)
                                 groups (->> visible-sections
                                             (util/group-into
                                               {}
@@ -1612,6 +1636,7 @@
                                                      :sections (mapcat val groups)
                                                      :selected-section-title selected-section-title}
                                                     {:fx/type form-sections
+                                                     :localization-state localization-state
                                                      :sections (mapcat val groups)
                                                      :selected-section-title selected-section-title
                                                      :groups groups}]}
@@ -1624,7 +1649,7 @@
                                                                           :ui-state ui-state
                                                                           :localization-state localization-state
                                                                           :resource-string-converter resource-string-converter)))
-                                                     sections-with-visibility)
+                                                     annotated-sections)
                                          :desc {:fx/type fx/ext-on-instance-lifecycle
                                                 :on-created #(ui/context! % :form {:root parent} nil)
                                                 :desc {:fx/type fx.scroll-pane/lifecycle
@@ -1651,7 +1676,7 @@
                                   :content {:fx/type fx.v-box/lifecycle
                                             :style-class "cljfx-form"
                                             :children (make-section-views
-                                                        sections-with-visibility
+                                                        annotated-sections
                                                         values
                                                         ui-state
                                                         resource-string-converter
