@@ -120,10 +120,10 @@
    :fields (mapv #(make-form-field % localization-prefix) settings)})
 
 (defn- make-form-data [form-ops meta-info settings]
-  (let [meta-settings (:settings meta-info)
+  (let [{meta-settings :settings meta-categories :categories :keys [localization-prefix]} meta-info
         categories (distinct (mapv settings-core/presentation-category meta-settings))
         category->settings (group-by settings-core/presentation-category meta-settings)
-        sections (mapv #(make-form-section (:localization-prefix meta-info) % (get-in meta-info [:categories %]) (category->settings %)) categories)
+        sections (mapv #(make-form-section localization-prefix % (get meta-categories %) (category->settings %)) categories)
         values (make-form-values-map settings)
         group-order (into {}
                           (map-indexed (fn [i v]
