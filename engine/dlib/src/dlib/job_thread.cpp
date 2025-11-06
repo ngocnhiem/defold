@@ -333,7 +333,6 @@ static void PutDone(JobThreadContext* ctx, HJob hjob, JobStatus status, int32_t 
     JobItem& item = ctx->m_Items.Get(index);
     assert(item.m_Generation == generation);
 
-    int prev_status = item.m_Status;
     item.m_Status = status;
     item.m_Result = result;
 
