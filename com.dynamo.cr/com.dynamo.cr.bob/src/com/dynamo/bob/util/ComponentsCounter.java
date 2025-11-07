@@ -327,7 +327,7 @@ public class ComponentsCounter {
         for (Map.Entry<String, Integer> entry : components.entrySet()) {
             // different input component names may have the same output name
             // for example wav and sound both are soundc
-            String name = project.replaceExt("." + entry.getKey()).substring(1);
+            String name = ResourceUtil.getOutputExt("." + entry.getKey()).substring(1);
             Integer value = entry.getValue();
             if (mergedComponents.containsKey(name)) {
                 Integer mergedValue = mergedComponents.get(name);

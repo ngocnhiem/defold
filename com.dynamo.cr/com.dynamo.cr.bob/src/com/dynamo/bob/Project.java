@@ -54,14 +54,7 @@ import com.defold.extension.pipeline.ILuaTranspiler;
 import com.defold.extension.pipeline.texture.TextureCompressorPreset;
 import com.dynamo.bob.archive.ArchiveBuilder;
 import com.dynamo.bob.archive.publisher.FolderPublisher;
-import com.dynamo.bob.fs.ClassLoaderMountPoint;
-import com.dynamo.bob.fs.DefaultFileSystem;
-import com.dynamo.bob.fs.DefaultResource;
-import com.dynamo.bob.fs.FileSystemMountPoint;
-import com.dynamo.bob.fs.FileSystemWalker;
-import com.dynamo.bob.fs.IFileSystem;
-import com.dynamo.bob.fs.IResource;
-import com.dynamo.bob.fs.ZipMountPoint;
+import com.dynamo.bob.fs.*;
 import com.dynamo.bob.plugin.PluginScanner;
 import com.dynamo.bob.util.BuildInputDataCollector;
 import org.apache.commons.io.FileUtils;
@@ -126,7 +119,6 @@ public class Project {
     private ResourceCache resourceCache = new ResourceCache();
     private IFileSystem fileSystem;
     private Map<String, Class<? extends Builder>> extToBuilder = new HashMap<String, Class<? extends Builder>>();
-    private Map<String, String> inextToOutext = new HashMap<>();
     private List<String> inputs = new ArrayList<String>();
     private HashMap<String, EnumSet<OutputFlags>> outputs = new HashMap<String, EnumSet<OutputFlags>>();
     private HashMap<String, Task> tasks;
@@ -378,7 +370,7 @@ public class Project {
                 if (builderParams != null) {
                     for (String inExt : builderParams.inExts()) {
                         extToBuilder.put(inExt, (Class<? extends Builder>) klass);
-                        inextToOutext.put(inExt, builderParams.outExt());
+                        ResourceUtil.registerMapping(inExt, builderParams.outExt());
                     }
                     Builder.addParamsDigest(klass, this.getOptions(), builderParams);
                     ProtoParams protoParams = klass.getAnnotation(ProtoParams.class);
@@ -425,29 +417,6 @@ public class Project {
         TimeProfiler.stop(); // Final stop after plugin registration
     }
 
-    static String[][] extensionMapping = new String[][] {
-        {".camera", ".camerac"},
-        {".buffer", ".bufferc"},
-        {".mesh", ".meshc"},
-        {".collectionproxy", ".collectionproxyc"},
-        {".collisionobject", ".collisionobjectc"},
-        {".particlefx", ".particlefxc"},
-        {".gui", ".guic"},
-        {".model", ".modelc"},
-        {".script", ".scriptc"},
-        {".sound", ".soundc"},
-        {".wav", ".soundc"},
-        {".ogg", ".soundc"},
-        {".opus", ".soundc"},
-        {".collectionfactory", ".collectionfactoryc"},
-        {".factory", ".factoryc"},
-        {".light", ".lightc"},
-        {".label", ".labelc"},
-        {".sprite", ".spritec"},
-        {".tilegrid", ".tilemapc"},
-        {".tilemap", ".tilemapc"},
-    };
-
     private String generateCircularDependencyErrorMessage(String dependency) {
         StringBuilder errorMessage = new StringBuilder("\nCircular dependency detected:\n");
 
@@ -461,19 +430,6 @@ public class Project {
         errorMessage.append("-> ").append(dependency).append(" (Circular Point)");
 
         return errorMessage.toString();
-    }
-
-    public String replaceExt(String inExt) {
-        for (int i = 0; i < extensionMapping.length; i++) {
-            if (extensionMapping[i][0].equals(inExt))
-            {
-                return extensionMapping[i][1];
-            }
-        }
-        String outExt = inextToOutext.get(inExt); // Get the output ext, or use the inExt as default
-        if (outExt != null)
-            return outExt;
-        return inExt;
     }
 
     private Class<? extends Builder> getBuilderFromExtension(String input) {

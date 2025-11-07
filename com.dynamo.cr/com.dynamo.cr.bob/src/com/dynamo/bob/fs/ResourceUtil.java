@@ -14,7 +14,15 @@
 
 package com.dynamo.bob.fs;
 
+import java.util.HashMap;
+
 public class ResourceUtil {
+
+    protected static HashMap<String, String> extensionMapping = new HashMap<>();
+
+    public static void registerMapping(String inExt, String outExt) {
+        extensionMapping.put(inExt, outExt);
+    }
 
     /**
      * Change extension of filename
@@ -32,30 +40,28 @@ public class ResourceUtil {
     }
 
     /**
-     * Get extension of filename
-     * @param fileName file-name to get extension for
-     * @return the ext, including the '.' character
+     * Optionally change suffix of filename if the requested input suffix matches
+     * @param path path to change suffix for
+     * @param from input suffix
+     * @param to output suffix
+     * @return modified path if input suffix matched, otherwise the original input path
      */
-    public static String getExt(String fileName) {
-        int i = fileName.lastIndexOf(".");
-        if (i == -1) {
-            throw new IllegalArgumentException(String.format("Missing extension in name '%s'", fileName));
+    public static String replaceExt(String path, String from, String to) {
+        if (path.endsWith(from)) {
+            return path.substring(0, path.lastIndexOf(from)).concat(to);
         }
-        return fileName.substring(i);
+        return path;
     }
 
-    public static String replaceExt(String str, String from, String to) {
-        if (str.endsWith(from)) {
-            return str.substring(0, str.lastIndexOf(from)).concat(to);
-        }
-        return str;
-    }
-
-    public static String replaceExt(String str, String to) {
-        int lastDot = str.lastIndexOf(".");
-        if (lastDot != -1) {
-            return str.substring(0, lastDot).concat(to);
-        }
-        return str.concat(to);
+   /**
+    * Get the output suffix from an input siffix
+    * @param inExt the input file suffix (including the '.')
+    * @return the output suffix (including the '.')
+    */
+    public static String getOutputExt(String inExt) {
+        String outExt = extensionMapping.get(inExt); // Get the output ext, or use the inExt as default
+        if (outExt != null)
+            return outExt;
+        return inExt;
     }
 }

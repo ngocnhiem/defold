@@ -72,9 +72,9 @@ public class CollisionObjectBuilder extends ProtoBuilder<CollisionObjectDesc.Bui
             shapeBuilder.setIdHash(MurmurHash.hash64(shapeBuilder.getId()));
         }
 
-        messageBuilder.setCollisionShape(BuilderUtil.replaceExt(messageBuilder.getCollisionShape(), ".convexshape", ".convexshapec"));
-        messageBuilder.setCollisionShape(BuilderUtil.replaceExt(messageBuilder.getCollisionShape(), ".tilegrid", ".tilemapc"));
-        messageBuilder.setCollisionShape(BuilderUtil.replaceExt(messageBuilder.getCollisionShape(), ".tilemap", ".tilemapc"));
+        messageBuilder.setCollisionShape(ResourceUtil.replaceExt(messageBuilder.getCollisionShape(), ".convexshape", ".convexshapec"));
+        messageBuilder.setCollisionShape(ResourceUtil.replaceExt(messageBuilder.getCollisionShape(), ".tilegrid", ".tilemapc"));
+        messageBuilder.setCollisionShape(ResourceUtil.replaceExt(messageBuilder.getCollisionShape(), ".tilemap", ".tilemapc"));
         return messageBuilder;
     }
 }

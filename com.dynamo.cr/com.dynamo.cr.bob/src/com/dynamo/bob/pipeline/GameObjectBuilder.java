@@ -232,7 +232,7 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
             String ext = FilenameUtils.getExtension(c);
             compStorage.add(ext);
             String inExt = "." + ext;
-            String outExt = project.replaceExt(inExt);
+            String outExt = ResourceUtil.getOutputExt(inExt);
             if (ext.equals("gui_script") || ext.equals("render_script"))
             {
                 throw new CompileExceptionError(resource, 0, BobNLS.bind(Messages.BuilderUtil_WRONG_RESOURCE_TYPE,
