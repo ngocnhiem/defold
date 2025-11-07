@@ -12,6 +12,8 @@ defold_log("functions_libs.cmake:")
 #   with "lib" unless it already starts with "lib", is an absolute path,
 #   is a generator expression (starts with "$<"), is a linker flag (starts with "-"),
 #   or already ends with ".lib".
+# - Exceptions (these already follow Windows naming): hid, hid_null, input,
+#   platform, platform_null, platform_vulkan.
 # - Other platforms link the names as-is.
 
 function(defold_target_link_libraries target platform)

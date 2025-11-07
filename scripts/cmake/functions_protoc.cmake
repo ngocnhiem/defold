@@ -59,7 +59,7 @@ function(defold_protoc_gen_cpp OUT_CPP SRC_PROTO)
     if(NOT DEFOLD_SDK_ROOT)
         message(FATAL_ERROR "defold_protoc_gen_cpp: DEFOLD_SDK_ROOT must be set to locate ddfc_cxx plugin")
     endif()
-    if(WIN32)
+    if(HOST_PLATFORM_IS_WINDOWS)
         set(_ddf_plugin_path "${DEFOLD_SDK_ROOT}/bin/ddfc_cxx.bat")
     else()
         set(_ddf_plugin_path "${DEFOLD_SDK_ROOT}/bin/ddfc_cxx")
@@ -69,7 +69,7 @@ function(defold_protoc_gen_cpp OUT_CPP SRC_PROTO)
     endif()
 
     # Build plugin argument as a single token so paths with spaces work.
-    if(WIN32)
+    if(HOST_PLATFORM_IS_WINDOWS)
         file(TO_NATIVE_PATH "${_ddf_plugin_path}" _ddf_plugin_native)
         set(_ddf_plugin_arg "--plugin=protoc-gen-ddf=${_ddf_plugin_native}")
     else()
@@ -191,6 +191,89 @@ function(defold_protoc_encode OUT_FILE SRC_FILE SCHEMA_PROTO MESSAGE_NAME)
     set_source_files_properties("${_out_abs}" PROPERTIES GENERATED TRUE)
 endfunction()
 
+# Convert a protobuf text file into binary form, mirroring the behaviour of
+# build_tools/waf_content.proto_compile_task.
+#
+# Usage:
+#   defold_protoc_text_to_binary(
+#     "${CMAKE_CURRENT_BINARY_DIR}/example.collectionc"   # OUT_FILE
+#     "${CMAKE_CURRENT_SOURCE_DIR}/example.collection"    # SRC_FILE
+#     "gameobject_ddf_pb2"                                 # PY_MODULE
+#     "CollectionDesc"                                     # MESSAGE_NAME
+#     CONTENT_ROOT "${CMAKE_SOURCE_DIR}"
+#     PYTHONPATH "${CMAKE_CURRENT_BINARY_DIR}/proto"
+#     DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/proto/gameobject_ddf_pb2.py"
+#   )
+function(defold_protoc_text_to_binary OUT_FILE SRC_FILE PY_MODULE MESSAGE_NAME)
+    set(options)
+    set(oneValueArgs CONTENT_ROOT TRANSFORM)
+    set(multiValueArgs PYTHONPATH DEPENDS)
+    cmake_parse_arguments(DPTB "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    if(NOT OUT_FILE OR NOT SRC_FILE OR NOT PY_MODULE OR NOT MESSAGE_NAME)
+        message(FATAL_ERROR "defold_protoc_text_to_binary: require OUT_FILE, SRC_FILE, PY_MODULE, MESSAGE_NAME")
+    endif()
+
+    get_filename_component(_src_abs "${SRC_FILE}" ABSOLUTE)
+    get_filename_component(_out_abs "${OUT_FILE}" ABSOLUTE)
+    get_filename_component(_out_dir "${_out_abs}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_out_dir}")
+
+    set(Python3_EXECUTABLE "python")
+    # 30 seconds!?!?!!
+    # if(NOT Python3_EXECUTABLE)
+    #     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    # endif()
+
+    set(_helper "${DEFOLD_CMAKE_DIR}/proto_text_to_binary.py")
+    if(NOT EXISTS "${_helper}")
+        message(FATAL_ERROR "defold_protoc_text_to_binary: helper script not found at ${_helper}")
+    endif()
+
+    set(_cmd ${Python3_EXECUTABLE} "${_helper}" "--src" "${_src_abs}" "--out" "${_out_abs}" "--module" "${PY_MODULE}" "--message" "${MESSAGE_NAME}")
+
+    if(DPTB_CONTENT_ROOT)
+        get_filename_component(_content_root "${DPTB_CONTENT_ROOT}" ABSOLUTE)
+        list(APPEND _cmd "--content-root" "${_content_root}")
+    endif()
+
+    foreach(_pp IN LISTS DPTB_PYTHONPATH)
+        if(NOT _pp)
+            continue()
+        endif()
+        if(IS_ABSOLUTE "${_pp}")
+            set(_pp_abs "${_pp}")
+        else()
+            get_filename_component(_pp_abs "${_pp}" ABSOLUTE)
+        endif()
+        list(APPEND _cmd "--pythonpath" "${_pp_abs}")
+    endforeach()
+
+    if(DPTB_TRANSFORM)
+        list(APPEND _cmd "--transform" "${DPTB_TRANSFORM}")
+    endif()
+
+    set(_deps "${_src_abs}")
+    foreach(_dep IN LISTS DPTB_DEPENDS)
+        if(IS_ABSOLUTE "${_dep}")
+            list(APPEND _deps "${_dep}")
+        else()
+            get_filename_component(_dep_abs "${_dep}" ABSOLUTE)
+            list(APPEND _deps "${_dep_abs}")
+        endif()
+    endforeach()
+
+    add_custom_command(
+        OUTPUT "${_out_abs}"
+        COMMAND ${_cmd}
+        DEPENDS ${_deps}
+        COMMENT "Encoding ${SRC_FILE} -> ${OUT_FILE}"
+        VERBATIM
+    )
+
+    set_source_files_properties("${_out_abs}" PROPERTIES GENERATED TRUE)
+endfunction()
+
 # Generate Python bindings from a .proto file using protoc.
 #
 # Usage:
@@ -248,15 +331,39 @@ function(defold_protoc_gen_py OUT_PY SRC_PROTO)
         set(_PROTOC_BIN "${DEFOLD_PROTOC_EXECUTABLE}")
     endif()
 
-    add_custom_command(
-        OUTPUT "${_gen_py}" "${_init_py}"
-        COMMAND ${_PROTOC_BIN} --python_out=${_out_dir} ${_inc_flags} ${_src_abs}
-        COMMAND ${CMAKE_COMMAND} -E touch "${_init_py}"
-        DEPENDS "${_src_abs}"
-        VERBATIM
-        COMMENT "Generating Python from ${SRC_PROTO} and ensuring package __init__.py"
-    )
-    set_source_files_properties("${_gen_py}" "${_init_py}" PROPERTIES GENERATED TRUE)
+    get_property(_defold_proto_py_init_dirs GLOBAL PROPERTY DEFOLD_PROTO_PY_INIT_DIRS)
+    if(NOT _defold_proto_py_init_dirs)
+        set(_defold_proto_py_init_dirs "")
+    endif()
+    list(FIND _defold_proto_py_init_dirs "${_out_dir}" _init_dir_index)
+    if(_init_dir_index EQUAL -1)
+        set(_produce_init TRUE)
+        list(APPEND _defold_proto_py_init_dirs "${_out_dir}")
+        set_property(GLOBAL PROPERTY DEFOLD_PROTO_PY_INIT_DIRS "${_defold_proto_py_init_dirs}")
+    else()
+        set(_produce_init FALSE)
+    endif()
+
+    if(_produce_init)
+        add_custom_command(
+            OUTPUT "${_gen_py}" "${_init_py}"
+            COMMAND ${_PROTOC_BIN} --python_out=${_out_dir} ${_inc_flags} ${_src_abs}
+            COMMAND ${CMAKE_COMMAND} -E touch "${_init_py}"
+            DEPENDS "${_src_abs}"
+            VERBATIM
+            COMMENT "Generating Python from ${SRC_PROTO} and ensuring package __init__.py"
+        )
+        set_source_files_properties("${_init_py}" PROPERTIES GENERATED TRUE)
+    else()
+        add_custom_command(
+            OUTPUT "${_gen_py}"
+            COMMAND ${_PROTOC_BIN} --python_out=${_out_dir} ${_inc_flags} ${_src_abs}
+            DEPENDS "${_src_abs}"
+            VERBATIM
+            COMMENT "Generating Python from ${SRC_PROTO}"
+        )
+    endif()
+    set_source_files_properties("${_gen_py}" PROPERTIES GENERATED TRUE)
 
     # Optional copy if OUT_PY differs from protoc default
     if(NOT "${OUT_PY}" STREQUAL "${_gen_py}")

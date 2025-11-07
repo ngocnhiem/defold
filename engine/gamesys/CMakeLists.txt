@@ -7,14 +7,14 @@ include(defold)
 
 project(defold_gamesys LANGUAGES C CXX)
 
-include(../../scripts/cmake/defold.cmake)
-
 # Log domain for this module
 add_compile_definitions(DLIB_LOG_DOMAIN="GAMESYS")
 
 set(GS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 set(GS_SRC_DIR "${GS_ROOT}/src/gamesys")
+set(GS_DMSDK_SRC_DIR "${GS_ROOT}/src")
 set(GS_PROTO_DIR "${GS_ROOT}/proto/gamesys")
+set(GS_BUILD_DIR "${GS_ROOT}/build")
 
 # ========= Protobuf (DDF) =========
 # Mirror wscript: include all proto files under proto/gamesys except model_ddf.proto
@@ -33,6 +33,43 @@ foreach(_pf IN LISTS GS_PROTO_FILES)
   defold_protoc_gen_cpp("${_out_cc}" "${_pf}" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
   list(APPEND GS_PROTO_CC "${_out_cc}")
 endforeach()
+
+# Generate Python protobuf modules required by content tooling
+set(GS_PROTO_PY_DIR "${CMAKE_CURRENT_BINARY_DIR}/proto/gamesys")
+file(MAKE_DIRECTORY "${GS_PROTO_PY_DIR}")
+set(GS_PROTO_PY)
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/physics_ddf_pb2.py" "${GS_PROTO_DIR}/physics_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/gamesys_ddf_pb2.py" "${GS_PROTO_DIR}/gamesys_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/gui_ddf_pb2.py" "${GS_PROTO_DIR}/gui_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/tile_ddf_pb2.py" "${GS_PROTO_DIR}/tile_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/label_ddf_pb2.py" "${GS_PROTO_DIR}/label_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/camera_ddf_pb2.py" "${GS_PROTO_DIR}/camera_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/sprite_ddf_pb2.py" "${GS_PROTO_DIR}/sprite_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/texture_set_ddf_pb2.py" "${GS_PROTO_DIR}/texture_set_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/sound_ddf_pb2.py" "${GS_PROTO_DIR}/sound_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/mesh_ddf_pb2.py" "${GS_PROTO_DIR}/mesh_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/atlas_ddf_pb2.py" "${GS_PROTO_DIR}/atlas_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/buffer_ddf_pb2.py" "${GS_PROTO_DIR}/buffer_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+defold_protoc_gen_py("${GS_PROTO_PY_DIR}/model_ddf_pb2.py" "${GS_PROTO_DIR}/model_ddf.proto" INCLUDES "${GS_ROOT}/proto" "${DEFOLD_SDK_ROOT}/share/proto")
+list(APPEND GS_PROTO_PY
+  "${GS_PROTO_PY_DIR}/physics_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/gamesys_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/gui_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/tile_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/label_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/camera_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/sprite_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/texture_set_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/sound_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/mesh_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/atlas_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/buffer_ddf_pb2.py"
+  "${GS_PROTO_PY_DIR}/model_ddf_pb2.py"
+)
+
+add_custom_target(gamesys_proto_py DEPENDS ${GS_PROTO_PY})
+
+set(GAMESYS_PROTO_PY_DIR "${GS_PROTO_PY_DIR}" CACHE INTERNAL "Generated gamesys python protobuf modules")
 
 # ========= gamesys (main) =========
 
@@ -81,6 +118,7 @@ endif()
 defold_add_library(gamesys STATIC ${GS_SOURCES} ${GS_PROTO_CC})
 target_include_directories(gamesys PUBLIC
     "${GS_SRC_DIR}"
+    "${GS_DMSDK_SRC_DIR}"
     "${GS_ROOT}/src"
     "${GS_ROOT}/proto"
     "${CMAKE_CURRENT_BINARY_DIR}")
@@ -95,19 +133,19 @@ defold_add_library(gamesys_model STATIC
     "${GS_SRC_DIR}/components/comp_model.cpp"
     "${GS_SRC_DIR}/scripts/script_model.cpp"
     "${GS_MODEL_CC}")
-target_include_directories(gamesys_model PUBLIC "${GS_SRC_DIR}" "${GS_ROOT}/proto" "${CMAKE_CURRENT_BINARY_DIR}")
+target_include_directories(gamesys_model PUBLIC "${GS_SRC_DIR}" "${GS_DMSDK_SRC_DIR}" "${GS_ROOT}/proto" "${CMAKE_CURRENT_BINARY_DIR}")
 
 defold_add_library(gamesys_model_null STATIC
     "${GS_SRC_DIR}/resources/res_model_null.cpp"
     "${GS_SRC_DIR}/components/comp_model_null.cpp")
-target_include_directories(gamesys_model_null PUBLIC "${GS_SRC_DIR}")
+target_include_directories(gamesys_model_null PUBLIC "${GS_SRC_DIR}" "${GS_DMSDK_SRC_DIR}")
 
 # ========= gamesys_rig =========
 defold_add_library(gamesys_rig STATIC "${GS_SRC_DIR}/resources/res_rig_scene.cpp")
-target_include_directories(gamesys_rig PUBLIC "${GS_SRC_DIR}")
+target_include_directories(gamesys_rig PUBLIC "${GS_SRC_DIR}" "${GS_DMSDK_SRC_DIR}")
 
 defold_add_library(gamesys_rig_null STATIC "${GS_SRC_DIR}/resources/res_rig_scene_null.cpp")
-target_include_directories(gamesys_rig_null PUBLIC "${GS_SRC_DIR}")
+target_include_directories(gamesys_rig_null PUBLIC "${GS_SRC_DIR}" "${GS_DMSDK_SRC_DIR}")
 
 # ========= script_box2d =========
 defold_add_library(script_box2d STATIC
@@ -116,7 +154,9 @@ defold_add_library(script_box2d STATIC
 # Default to the Defold-provided Box2D headers
 target_include_directories(script_box2d PUBLIC
     "${GS_SRC_DIR}"
-    "${DEFOLD_EXT_INCLUDE_DIR}/box2d")
+    "${GS_DMSDK_SRC_DIR}"
+    "${DEFOLD_EXT_INCLUDE_DIR}/box2d"
+    "${GS_BUILD_DIR}")
 
 
 
@@ -125,7 +165,9 @@ defold_add_library(script_box2d_defold STATIC
     "${GS_SRC_DIR}/scripts/box2d/script_box2d_body_defold.cpp")
 target_include_directories(script_box2d_defold PUBLIC
     "${GS_SRC_DIR}"
-    "${DEFOLD_EXT_INCLUDE_DIR}/box2d_defold")
+    "${GS_DMSDK_SRC_DIR}"
+    "${DEFOLD_EXT_INCLUDE_DIR}/box2d_defold"
+    "${GS_BUILD_DIR}")
 
 # ========= Android Java (optional) =========
 if (TARGET_PLATFORM MATCHES "armv7-android|arm64-android")

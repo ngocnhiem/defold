@@ -863,6 +863,16 @@ class Configuration(object):
         if not result:
             self.fatal("Failed sdk check")
 
+        cmake = shutil.which('cmake')
+        if not cmake:
+            self.fatal("CMake not found in PATH")
+        self._log(f"Found CMake: {cmake}")
+
+        ninja = shutil.which('ninja')
+        if not ninja:
+            self.fatal("Ninja not found in PATH")
+        self._log(f"Found Ninja: {ninja}")
+
         args = ["cmake", f"-DTARGET_PLATFORM={target_platform}", "-P", join(self.defold_root, "scripts/cmake/check_install.cmake")]
         if self.verbose:
             args.insert(1, '-DDEFOLD_VERBOSE=ON')

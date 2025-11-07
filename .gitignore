@@ -18,6 +18,7 @@
 .oracle*
 .bash*
 *.pyc
+__pycache__
 
 /.ccache
 *.iml
