@@ -497,6 +497,49 @@ namespace dmShaderc
     }
     #undef MAX_BINDINGS
 
+    void GenerateMSLResourceMappings(HShaderContext context, ShaderCompilerSPVC* compiler, ShaderCompileResult* result)
+    {
+        // We only care about these resource mappings
+        uint32_t resource_count = context->m_Reflection.m_UniformBuffers.Size() +
+            context->m_Reflection.m_StorageBuffers.Size() +
+            context->m_Reflection.m_Textures.Size();
+
+        result->m_MSLResourceMappings.SetCapacity(resource_count);
+
+        for (int i = 0; i < context->m_Reflection.m_UniformBuffers.Size(); ++i)
+        {
+            MSLResourceMapping mapping      = {};
+            mapping.m_Name                  = context->m_Reflection.m_UniformBuffers[i].m_Name;
+            mapping.m_NameHash              = context->m_Reflection.m_UniformBuffers[i].m_NameHash;
+            mapping.m_MetalResourceIndex    = spvc_compiler_msl_get_automatic_resource_binding(compiler->m_SPVCCompiler, context->m_Reflection.m_UniformBuffers[i].m_Id);
+            mapping.m_ShaderResourceSet     = context->m_Reflection.m_UniformBuffers[i].m_Set;
+            mapping.m_ShaderResourceBinding = context->m_Reflection.m_UniformBuffers[i].m_Binding;
+            result->m_MSLResourceMappings.Push(mapping);
+        }
+
+        for (int i = 0; i < context->m_Reflection.m_StorageBuffers.Size(); ++i)
+        {
+            MSLResourceMapping mapping      = {};
+            mapping.m_Name                  = context->m_Reflection.m_StorageBuffers[i].m_Name;
+            mapping.m_NameHash              = context->m_Reflection.m_StorageBuffers[i].m_NameHash;
+            mapping.m_MetalResourceIndex    = spvc_compiler_msl_get_automatic_resource_binding(compiler->m_SPVCCompiler, context->m_Reflection.m_StorageBuffers[i].m_Id);
+            mapping.m_ShaderResourceSet     = context->m_Reflection.m_StorageBuffers[i].m_Set;
+            mapping.m_ShaderResourceBinding = context->m_Reflection.m_StorageBuffers[i].m_Binding;
+            result->m_MSLResourceMappings.Push(mapping);
+        }
+
+        for (int i = 0; i < context->m_Reflection.m_Textures.Size(); ++i)
+        {
+            MSLResourceMapping mapping      = {};
+            mapping.m_Name                  = context->m_Reflection.m_Textures[i].m_Name;
+            mapping.m_NameHash              = context->m_Reflection.m_Textures[i].m_NameHash;
+            mapping.m_MetalResourceIndex    = spvc_compiler_msl_get_automatic_resource_binding(compiler->m_SPVCCompiler, context->m_Reflection.m_Textures[i].m_Id);
+            mapping.m_ShaderResourceSet     = context->m_Reflection.m_Textures[i].m_Set;
+            mapping.m_ShaderResourceBinding = context->m_Reflection.m_Textures[i].m_Binding;
+            result->m_MSLResourceMappings.Push(mapping);
+        }
+    }
+
     ShaderCompileResult* CompileSPVC(HShaderContext context, ShaderCompilerSPVC* compiler, const ShaderCompilerOptions& options)
     {
         spvc_compiler_options spv_options = NULL;
@@ -604,6 +647,11 @@ namespace dmShaderc
         result->m_Data.SetSize(compile_result_size);
         result->m_LastError = "";
         result->m_HLSLNumWorkGroupsId = hlsl_num_workgroups_id_binding;
+
+        if (compiler->m_BaseCompiler.m_Language == SHADER_LANGUAGE_MSL)
+        {
+            GenerateMSLResourceMappings(context, compiler, result);
+        }
 
         if (compile_result)
         {

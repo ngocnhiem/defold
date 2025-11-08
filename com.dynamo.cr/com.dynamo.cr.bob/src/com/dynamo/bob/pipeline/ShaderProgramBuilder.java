@@ -527,6 +527,17 @@ public class ShaderProgramBuilder extends Builder {
             }
         }
 
+        if (result.mSLResourceMappings != null) {
+            for (Shaderc.MSLResourceMapping mapping : result.mSLResourceMappings) {
+                ShaderDesc.MSLResourceMapping.Builder mslResourceMappingBuilder = ShaderDesc.MSLResourceMapping.newBuilder();
+                mslResourceMappingBuilder.setNameHash(mapping.nameHash);
+                mslResourceMappingBuilder.setBinding(mapping.shaderResourceBinding);
+                mslResourceMappingBuilder.setSet(mapping.shaderResourceSet);
+                mslResourceMappingBuilder.setMslIndex(mapping.metalResourceIndex);
+                builder.addMslResourceMapping(mslResourceMappingBuilder);
+            }
+        }
+
         return builder;
     }
 

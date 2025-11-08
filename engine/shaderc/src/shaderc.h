@@ -217,10 +217,22 @@ namespace dmShaderc
         uint8_t     m_ShaderResourceBinding;
     };
 
+    struct MSLResourceMapping
+    {
+        const char* m_Name;
+        uint64_t    m_NameHash;
+
+        uint32_t    m_MetalResourceIndex;
+        uint8_t     m_ShaderResourceSet;
+        uint8_t     m_ShaderResourceBinding;
+    };
+
     struct ShaderCompileResult
     {
         dmArray<uint8_t> m_Data;
         const char*      m_LastError;
+
+        dmArray<MSLResourceMapping> m_MSLResourceMappings;
 
         // In case of compiling HLSL, we generate a separate reflection structure
         // that embeds a list of resources (called root signature) and their HLSL bind points (registers)

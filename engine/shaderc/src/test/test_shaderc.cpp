@@ -492,6 +492,20 @@ TEST(Shaderc, TestMetal)
     dmShaderc::ShaderCompileResult* dst = dmShaderc::Compile(shader_ctx, compiler, options);
     ASSERT_NE((void*) 0, dst->m_Data.Begin());
 
+    dmLogInfo("Result: %s", (const char*) dst->m_Data.Begin());
+
+    const dmShaderc::ShaderReflection* reflection = dmShaderc::GetReflection(shader_ctx);
+
+    dmShaderc::DebugPrintReflection(reflection);
+
+    for (int i = 0; i < dst->m_MSLResourceMappings.Size(); ++i)
+    {
+        dmLogInfo("res[%d] - Name: %s", i, dst->m_MSLResourceMappings[i].m_Name);
+        dmLogInfo("res[%d] - MetalResourceIndex: %d", i, dst->m_MSLResourceMappings[i].m_MetalResourceIndex);
+        dmLogInfo("res[%d] - ShaderResourceSet: %d", i, dst->m_MSLResourceMappings[i].m_ShaderResourceSet);
+        dmLogInfo("res[%d] - ShaderResourceBinding: %d", i, dst->m_MSLResourceMappings[i].m_ShaderResourceBinding);
+    }
+
     dmShaderc::FreeShaderCompileResult(dst);
 
     dmShaderc::DeleteShaderCompiler(compiler);

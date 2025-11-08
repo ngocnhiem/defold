@@ -28,7 +28,9 @@ namespace dmGraphics
     typedef dmHashTable64<MetalPipeline> PipelineCache;
     typedef dmArray<ResourceToDestroy>   ResourcesToDestroyList;
 
-    const static uint8_t MAX_FRAMES_IN_FLIGHT = 2; // In flight frames - number of concurrent frames being processed
+    const static uint8_t  MAX_FRAMES_IN_FLIGHT     = 2; // In flight frames - number of concurrent frames being processed
+    const static uint32_t UNIFORM_BUFFER_ALIGNMENT = 256;
+    const static uint32_t STORAGE_BUFFER_ALIGNMENT = 16;
 
     enum MetalResourceType
     {
@@ -108,17 +110,36 @@ namespace dmGraphics
 
     struct MetalProgram
     {
-        Program            m_BaseProgram;
-        MetalShaderModule* m_VertexModule;
-        MetalShaderModule* m_FragmentModule;
-        MetalShaderModule* m_ComputeModule;
-        uint64_t           m_Hash;
+        Program               m_BaseProgram;
+        MetalShaderModule*    m_VertexModule;
+        MetalShaderModule*    m_FragmentModule;
+        MetalShaderModule*    m_ComputeModule;
+        MTL::ArgumentEncoder* m_ArgumentEncoders[MAX_SET_COUNT];
+        MTL::Buffer*          m_ArgumentBuffers[MAX_SET_COUNT];
+        uint32_t              m_ResourceToMslIndex[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
+        uint8_t*              m_UniformData;
+        uint64_t              m_Hash;
+        uint32_t              m_UniformDataSizeAligned;
+        uint16_t              m_UniformBufferCount;
+        uint16_t              m_StorageBufferCount;
+        uint16_t              m_TextureSamplerCount;
+        uint8_t               m_ArgumentEncodersCreated : 1;
+    };
+
+    struct MetalConstantScratchBuffer
+    {
+        MetalDeviceBuffer m_DeviceBuffer;
+        uint32_t          m_MappedDataCursor;
+
+        inline bool CanAllocate(uint32_t size) { return size < (m_DeviceBuffer.m_Size - m_MappedDataCursor); }
+        inline void Rewind() { m_MappedDataCursor = 0; }
     };
 
     struct MetalFrameResource
     {
-        MTL::CommandBuffer*     m_CommandBuffer;
-        ResourcesToDestroyList* m_ResourcesToDestroy;
+        MetalConstantScratchBuffer m_ConstantScratchBuffer;
+        MTL::CommandBuffer*        m_CommandBuffer;
+        ResourcesToDestroyList*    m_ResourcesToDestroy;
     };
 
     struct MetalContext

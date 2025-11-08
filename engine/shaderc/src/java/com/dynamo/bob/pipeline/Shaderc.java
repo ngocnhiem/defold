@@ -264,9 +264,17 @@ public class Shaderc {
         public byte shaderResourceSet = 0;
         public byte shaderResourceBinding = 0;
     };
+    public static class MSLResourceMapping {
+        public String name;
+        public long nameHash = 0;
+        public int metalResourceIndex = 0;
+        public byte shaderResourceSet = 0;
+        public byte shaderResourceBinding = 0;
+    };
     public static class ShaderCompileResult {
         public byte[] data;
         public String lastError;
+        public MSLResourceMapping[] mSLResourceMappings;
         public HLSLResourceMapping[] hLSLResourceMappings;
         public byte hLSLNumWorkGroupsId = 0;
     };

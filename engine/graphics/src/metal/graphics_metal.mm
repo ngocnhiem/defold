@@ -110,6 +110,120 @@ namespace dmGraphics
         return true;
     }
 
+    template <typename T>
+    static void DestroyResourceDeferred(MetalContext* context, T* resource)
+    {
+        if (resource == 0x0 || resource->m_Destroyed)
+        {
+            return;
+        }
+
+        ResourceToDestroy resource_to_destroy;
+        resource_to_destroy.m_ResourceType = resource->GetType();
+
+        switch(resource_to_destroy.m_ResourceType)
+        {
+            case RESOURCE_TYPE_DEVICE_BUFFER:
+                resource_to_destroy.m_DeviceBuffer = ((MetalDeviceBuffer*) resource)->m_Buffer;
+                break;
+            case RESOURCE_TYPE_TEXTURE:
+            case RESOURCE_TYPE_PROGRAM:
+            case RESOURCE_TYPE_RENDER_TARGET:
+                break;
+            default:
+                assert(0);
+                break;
+        }
+
+        MetalFrameResource& frame = context->m_FrameResources[context->m_CurrentFrameInFlight];
+
+        if (frame.m_ResourcesToDestroy->Full())
+        {
+            frame.m_ResourcesToDestroy->OffsetCapacity(8);
+        }
+
+        frame.m_ResourcesToDestroy->Push(resource_to_destroy);
+        resource->m_Destroyed = 1;
+    }
+
+    static void FlushResourcesToDestroy(MetalContext* context, ResourcesToDestroyList* resource_list)
+    {
+        if (resource_list->Size() > 0)
+        {
+            for (uint32_t i = 0; i < resource_list->Size(); ++i)
+            {
+                switch(resource_list->Begin()[i].m_ResourceType)
+                {
+                    case RESOURCE_TYPE_DEVICE_BUFFER:
+                        resource_list->Begin()[i].m_DeviceBuffer->release();
+                        break;
+                    case RESOURCE_TYPE_TEXTURE:
+                    case RESOURCE_TYPE_PROGRAM:
+                    case RESOURCE_TYPE_RENDER_TARGET:
+                        break;
+                    default:
+                        assert(0);
+                        break;
+                }
+            }
+
+            resource_list->SetSize(0);
+        }
+    }
+
+    static inline MTL::ResourceOptions GetResourceOptions(MTL::StorageMode storageMode)
+    {
+        switch (storageMode)
+        {
+            case MTL::StorageModePrivate:
+                return MTL::ResourceStorageModePrivate | MTL::ResourceCPUCacheModeDefaultCache;
+            case MTL::StorageModeManaged:
+                return MTL::ResourceStorageModeManaged | MTL::ResourceCPUCacheModeDefaultCache;
+            case MTL::StorageModeShared:
+            default:
+                return MTL::ResourceStorageModeShared | MTL::ResourceCPUCacheModeDefaultCache;
+        }
+    }
+
+    static void DeviceBufferUploadHelper(MetalContext* context, const void* data, uint32_t size, uint32_t offset, MetalDeviceBuffer* device_buffer)
+    {
+        if (size == 0)
+            return;
+
+        if (device_buffer->m_Destroyed || device_buffer->m_Buffer == 0x0)
+        {
+            device_buffer->m_Buffer = context->m_Device->newBuffer(size, GetResourceOptions(device_buffer->m_StorageMode));
+            device_buffer->m_Size = size;
+        }
+
+        if (data == 0)
+        {
+            memset(device_buffer->m_Buffer->contents(), 0, (size_t) size);
+        }
+        else
+        {
+            memcpy(device_buffer->m_Buffer->contents(), data, size);
+        }
+    }
+
+    static void ResizeConstantScratchBuffer(MetalContext* context, uint32_t new_size, MetalConstantScratchBuffer* scratch_buffer)
+    {
+        DestroyResourceDeferred(context, &scratch_buffer->m_DeviceBuffer);
+        DeviceBufferUploadHelper(context, 0, new_size, 0, &scratch_buffer->m_DeviceBuffer);
+        scratch_buffer->Rewind();
+    }
+
+    static void EnsureConstantScratchBufferSize(MetalContext* context, MetalConstantScratchBuffer* scratch_buffer, MetalProgram* program)
+    {
+        const uint32_t num_uniform_buffers = program->m_UniformBufferCount;
+
+        if (!scratch_buffer->CanAllocate(program->m_UniformDataSizeAligned))
+        {
+            const uint32_t bytes_increase = 1024 * 8;
+            ResizeConstantScratchBuffer(context, scratch_buffer->m_DeviceBuffer.m_Size + bytes_increase, scratch_buffer);
+        }
+    }
+
     static void SetupMainRenderTarget(MetalContext* context)
     {
         // Initialize the dummy rendertarget for the main framebuffer
@@ -122,10 +236,6 @@ namespace dmGraphics
             rt                          = new MetalRenderTarget(DM_RENDERTARGET_BACKBUFFER_ID);
             context->m_MainRenderTarget = StoreAssetInContainer(context->m_AssetHandleContainer, rt, ASSET_TYPE_RENDER_TARGET);
         }
-
-        // rt->m_Handle.m_RenderPass  = context->m_MainRenderPass;
-        // rt->m_Handle.m_Framebuffer = context->m_MainFrameBuffers[0];
-        // rt->m_Extent               = context->m_SwapChain->m_ImageExtent;
 
         rt->m_ColorFormat[0]       = MTL::PixelFormatBGRA8Unorm;
         rt->m_DepthStencilFormat   = MTL::PixelFormatDepth32Float_Stencil8;
@@ -152,6 +262,11 @@ namespace dmGraphics
         {
             context->m_FrameResources[i].m_ResourcesToDestroy = new ResourcesToDestroyList;
             context->m_FrameResources[i].m_ResourcesToDestroy->SetCapacity(8);
+
+            // This is just the starting point size for the constant scratch buffer,
+            // the buffers can grow as needed.
+            const uint32_t constant_buffer_size = 1024 * 64;
+            DeviceBufferUploadHelper(context, 0, constant_buffer_size, 0, &context->m_FrameResources[i].m_ConstantScratchBuffer.m_DeviceBuffer);
         }
 
         NSWindow* mative_window = (NSWindow*) dmGraphics::GetNativeOSXNSWindow();
@@ -237,67 +352,6 @@ namespace dmGraphics
         }
     }
 
-    template <typename T>
-    static void DestroyResourceDeferred(MetalContext* context, T* resource)
-    {
-        if (resource == 0x0 || resource->m_Destroyed)
-        {
-            return;
-        }
-
-        ResourceToDestroy resource_to_destroy;
-        resource_to_destroy.m_ResourceType = resource->GetType();
-
-        switch(resource_to_destroy.m_ResourceType)
-        {
-            case RESOURCE_TYPE_DEVICE_BUFFER:
-                resource_to_destroy.m_DeviceBuffer = ((MetalDeviceBuffer*) resource)->m_Buffer;
-                break;
-            case RESOURCE_TYPE_TEXTURE:
-            case RESOURCE_TYPE_PROGRAM:
-            case RESOURCE_TYPE_RENDER_TARGET:
-                break;
-            default:
-                assert(0);
-                break;
-        }
-
-        MetalFrameResource& frame = context->m_FrameResources[context->m_CurrentFrameInFlight];
-
-        if (frame.m_ResourcesToDestroy->Full())
-        {
-            frame.m_ResourcesToDestroy->OffsetCapacity(8);
-        }
-
-        frame.m_ResourcesToDestroy->Push(resource_to_destroy);
-        resource->m_Destroyed = 1;
-    }
-
-    static void FlushResourcesToDestroy(MetalContext* context, ResourcesToDestroyList* resource_list)
-    {
-        if (resource_list->Size() > 0)
-        {
-            for (uint32_t i = 0; i < resource_list->Size(); ++i)
-            {
-                switch(resource_list->Begin()[i].m_ResourceType)
-                {
-                    case RESOURCE_TYPE_DEVICE_BUFFER:
-                        resource_list->Begin()[i].m_DeviceBuffer->release();
-                        break;
-                    case RESOURCE_TYPE_TEXTURE:
-                    case RESOURCE_TYPE_PROGRAM:
-                    case RESOURCE_TYPE_RENDER_TARGET:
-                        break;
-                    default:
-                        assert(0);
-                        break;
-                }
-            }
-
-            resource_list->SetSize(0);
-        }
-    }
-
     static void MetalGetDefaultTextureFilters(HContext _context, TextureFilter& out_min_filter, TextureFilter& out_mag_filter)
     {
         MetalContext* context = (MetalContext*) _context;
@@ -371,41 +425,6 @@ namespace dmGraphics
     static void MetalClear(HContext _context, uint32_t flags, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, float depth, uint32_t stencil)
     {
 
-    }
-
-    static inline MTL::ResourceOptions GetResourceOptions(MTL::StorageMode storageMode)
-    {
-        switch (storageMode)
-        {
-            case MTL::StorageModePrivate:
-                return MTL::ResourceStorageModePrivate | MTL::ResourceCPUCacheModeDefaultCache;
-            case MTL::StorageModeManaged:
-                return MTL::ResourceStorageModeManaged | MTL::ResourceCPUCacheModeDefaultCache;
-            case MTL::StorageModeShared:
-            default:
-                return MTL::ResourceStorageModeShared | MTL::ResourceCPUCacheModeDefaultCache;
-        }
-    }
-
-    static void DeviceBufferUploadHelper(MetalContext* context, const void* data, uint32_t size, uint32_t offset, MetalDeviceBuffer* device_buffer)
-    {
-        if (data == 0 || size == 0)
-            return;
-
-        if (device_buffer->m_Destroyed || device_buffer->m_Buffer == 0x0)
-        {
-            device_buffer->m_Buffer = context->m_Device->newBuffer(size, GetResourceOptions(device_buffer->m_StorageMode));
-            device_buffer->m_Size = size;
-        }
-
-        if (data == 0)
-        {
-            memset(device_buffer->m_Buffer->contents(), 0, (size_t) size);
-        }
-        else
-        {
-            memcpy(device_buffer->m_Buffer->contents(), data, size);
-        }
     }
 
     static HVertexBuffer MetalNewVertexBuffer(HContext _context, uint32_t size, const void* data, BufferUsage buffer_usage)
@@ -927,6 +946,114 @@ namespace dmGraphics
         return cached_pipeline;
     }
 
+    static void PrepareProgram(MetalContext* context, MetalProgram* program)
+    {
+        if (program->m_ArgumentEncodersCreated)
+        {
+            return;
+        }
+
+        uint8_t set_stage_flags[MAX_SET_COUNT] = {0};
+
+        for (int i = 0; i < program->m_BaseProgram.m_MaxSet; ++i)
+        {
+            for (int j = 0; j < program->m_BaseProgram.m_MaxBinding; ++j)
+            {
+                ProgramResourceBinding* res = &program->m_BaseProgram.m_ResourceBindings[i][j];
+
+                if (res->m_Res)
+                {
+                    set_stage_flags[i] |= res->m_Res->m_StageFlags;
+                }
+            }
+
+            if (set_stage_flags[i] == 0)
+            {
+                continue;
+            }
+
+            if (set_stage_flags[i] & SHADER_STAGE_FLAG_VERTEX)
+            {
+                program->m_ArgumentEncoders[i] = program->m_VertexModule->m_Function->newArgumentEncoder(i);
+            }
+            else if (set_stage_flags[i] & SHADER_STAGE_FLAG_FRAGMENT)
+            {
+                program->m_ArgumentEncoders[i] = program->m_FragmentModule->m_Function->newArgumentEncoder(i);
+            }
+            else if (set_stage_flags[i] & SHADER_STAGE_FLAG_COMPUTE)
+            {
+                program->m_ArgumentEncoders[i] = program->m_ComputeModule->m_Function->newArgumentEncoder(i);
+            }
+
+            MTL::ResourceOptions storage_mode = context->m_Device->hasUnifiedMemory()
+                ? MTL::ResourceStorageModeShared
+                : MTL::ResourceStorageModeManaged;
+
+            uint32_t encode_length = program->m_ArgumentEncoders[i]->encodedLength();
+
+            program->m_ArgumentBuffers[i] = context->m_Device->newBuffer(encode_length, storage_mode);
+            program->m_ArgumentEncoders[i]->setArgumentBuffer(program->m_ArgumentBuffers[i], 0);
+        }
+        program->m_ArgumentEncodersCreated = true;
+    }
+
+    static void CommitUniforms(MetalContext* context, MTL::RenderCommandEncoder* encoder, MetalConstantScratchBuffer* scratch_buffer, MetalProgram* program, uint32_t alignment)
+    {
+        ProgramResourceBindingIterator it(&program->m_BaseProgram);
+        const ProgramResourceBinding* next;
+        while((next = it.Next()))
+        {
+            ShaderResourceBinding* res = next->m_Res;
+
+            MTL::ArgumentEncoder* arg_encoder = program->m_ArgumentEncoders[res->m_Set];
+            assert(arg_encoder);
+
+            uint32_t msl_index = program->m_ResourceToMslIndex[res->m_Set][res->m_Binding];
+
+            switch(res->m_BindingFamily)
+            {
+                case ShaderResourceBinding::BINDING_FAMILY_TEXTURE:
+                {
+                    // TODO
+                } break;
+                case ShaderResourceBinding::BINDING_FAMILY_STORAGE_BUFFER:
+                {
+                    // TODO
+                } break;
+                case ShaderResourceBinding::BINDING_FAMILY_UNIFORM_BUFFER:
+                {
+                    const uint32_t uniform_size_nonalign = res->m_BindingInfo.m_BlockSize;
+                    const uint32_t uniform_size_align = DM_ALIGN(uniform_size_nonalign, alignment);
+
+                    uint32_t offset = DM_ALIGN(scratch_buffer->m_MappedDataCursor, alignment);
+
+                    memcpy(reinterpret_cast<uint8_t*>(scratch_buffer->m_DeviceBuffer.m_Buffer->contents()) + offset,
+                           &program->m_UniformData[next->m_DataOffset],
+                           uniform_size_nonalign);
+
+                    arg_encoder->setBuffer(scratch_buffer->m_DeviceBuffer.m_Buffer, offset, msl_index);
+
+                    // advance cursor by the aligned size
+                    scratch_buffer->m_MappedDataCursor = offset + uniform_size_align;
+                } break;
+                case ShaderResourceBinding::BINDING_FAMILY_GENERIC:
+                default: continue;
+            }
+        }
+
+        for (uint32_t set = 0; set < program->m_BaseProgram.m_MaxSet; ++set)
+        {
+            if (program->m_ArgumentEncoders[set])
+            {
+                MTL::Buffer* arg_buffer = program->m_ArgumentBuffers[set];
+                if (program->m_VertexModule)
+                    encoder->setVertexBuffer(arg_buffer, 0, set); // set = argument buffer index
+                if (program->m_FragmentModule)
+                    encoder->setFragmentBuffer(arg_buffer, 0, set);
+            }
+        }
+    }
+
     static void DrawSetup(MetalContext* context)
     {
         assert(context->m_RenderCommandEncoder);
@@ -948,6 +1075,10 @@ namespace dmGraphics
                 num_vx_buffers++;
             }
         }
+
+        MetalFrameResource& frame = context->m_FrameResources[context->m_CurrentFrameInFlight];
+
+        EnsureConstantScratchBufferSize(context, &frame.m_ConstantScratchBuffer, context->m_CurrentProgram);
 
         PipelineState pipeline_state_draw = context->m_PipelineState;
 
@@ -995,6 +1126,10 @@ namespace dmGraphics
             // scissor.height = current_rt->m_Scissor.extent.height;
             // encoder->setScissorRect(scissor);
         }
+
+        PrepareProgram(context, context->m_CurrentProgram);
+
+        CommitUniforms(context, encoder, &frame.m_ConstantScratchBuffer, context->m_CurrentProgram, UNIFORM_BUFFER_ALIGNMENT);
 
         // if (context->m_UniformBuffer && context->m_UniformDataSize > 0)
         // {
@@ -1092,7 +1227,41 @@ namespace dmGraphics
         MetalShaderModule* module = new MetalShaderModule;
         module->m_Library = library;
         module->m_Function = library->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
+
+        dmLogInfo("-----------------");
+        dmLogInfo("Shader: \n%s", src);
+        dmLogInfo("-----------------");
+
         return module;
+    }
+
+    static void CreateProgramResourceBindings(MetalProgram* program, ResourceBindingDesc bindings[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT], MetalShaderModule** shaders, ShaderDesc::Shader** ddf_shaders, uint32_t num_shaders)
+    {
+        ProgramResourceBindingsInfo binding_info = {};
+        FillProgramResourceBindings(&program->m_BaseProgram, bindings, UNIFORM_BUFFER_ALIGNMENT, STORAGE_BUFFER_ALIGNMENT, binding_info);
+
+        for (int i = 0; i < num_shaders; ++i)
+        {
+            ShaderDesc::Shader* ddf = ddf_shaders[i];
+
+            for (int j = 0; j < ddf->m_MslResourceMapping.m_Count; ++j)
+            {
+                ShaderDesc::MSLResourceMapping* entry = &ddf->m_MslResourceMapping[j];
+                program->m_ResourceToMslIndex[entry->m_Set][entry->m_Binding] = entry->m_MslIndex;
+            }
+        }
+
+        program->m_UniformData = new uint8_t[binding_info.m_UniformDataSize];
+        memset(program->m_UniformData, 0, binding_info.m_UniformDataSize);
+
+        program->m_UniformDataSizeAligned   = binding_info.m_UniformDataSizeAligned;
+        program->m_UniformBufferCount       = binding_info.m_UniformBufferCount;
+        program->m_StorageBufferCount       = binding_info.m_StorageBufferCount;
+        program->m_TextureSamplerCount      = binding_info.m_TextureCount;
+        program->m_BaseProgram.m_MaxSet     = binding_info.m_MaxSet;
+        program->m_BaseProgram.m_MaxBinding = binding_info.m_MaxBinding;
+
+        BuildUniforms(&program->m_BaseProgram);
     }
 
     static HProgram MetalNewProgram(HContext _context, ShaderDesc* ddf, char* error_buffer, uint32_t error_buffer_size)
@@ -1108,8 +1277,13 @@ namespace dmGraphics
 
         MetalContext* context = (MetalContext*) _context;
         MetalProgram* program = new MetalProgram;
+        memset(program, 0, sizeof(MetalProgram));
 
         CreateShaderMeta(&ddf->m_Reflection, &program->m_BaseProgram.m_ShaderMeta);
+
+        MetalShaderModule* shaders[] = { 0x0, 0x0 };
+        ShaderDesc::Shader* ddf_shaders[] = { 0x0, 0x0 };
+        uint32_t num_shaders = 0;
 
         if (ddf_cp)
         {
@@ -1120,6 +1294,10 @@ namespace dmGraphics
                 DeleteProgram(_context, (HProgram) program);
                 return 0;
             }
+
+            shaders[0]     = program->m_ComputeModule;
+            ddf_shaders[0] = ddf_cp;
+            num_shaders    = 1;
         }
         else
         {
@@ -1136,7 +1314,16 @@ namespace dmGraphics
                 DeleteProgram(_context, (HProgram) program);
                 return 0;
             }
+
+            shaders[0]     = program->m_VertexModule;
+            shaders[1]     = program->m_FragmentModule;
+            ddf_shaders[0] = ddf_vp;
+            ddf_shaders[1] = ddf_fp;
+            num_shaders    = 2;
         }
+
+        ResourceBindingDesc bindings[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT] = {};
+        CreateProgramResourceBindings(program, bindings, shaders, ddf_shaders, num_shaders);
 
         return (HProgram) program;
     }
@@ -1210,19 +1397,60 @@ namespace dmGraphics
         }
     }
 
+    static inline void WriteConstantData(uint32_t offset, uint8_t* uniform_data_ptr, uint8_t* data_ptr, uint32_t data_size)
+    {
+        memcpy(&uniform_data_ptr[offset], data_ptr, data_size);
+    }
+
     static void MetalSetConstantV4(HContext _context, const dmVMath::Vector4* data, int count, HUniformLocation base_location)
     {
+        MetalContext* context = (MetalContext*) _context;
+        assert(context->m_CurrentProgram);
+        assert(base_location != INVALID_UNIFORM_LOCATION);
 
+        MetalProgram* program_ptr = (MetalProgram*) context->m_CurrentProgram;
+        uint32_t set               = UNIFORM_LOCATION_GET_OP0(base_location);
+        uint32_t binding           = UNIFORM_LOCATION_GET_OP1(base_location);
+        uint32_t buffer_offset     = UNIFORM_LOCATION_GET_OP2(base_location);
+        assert(!(set == UNIFORM_LOCATION_MAX && binding == UNIFORM_LOCATION_MAX));
+
+        ProgramResourceBinding& pgm_res = program_ptr->m_BaseProgram.m_ResourceBindings[set][binding];
+
+        uint32_t offset = pgm_res.m_DataOffset + buffer_offset;
+        WriteConstantData(offset, program_ptr->m_UniformData, (uint8_t*) data, sizeof(dmVMath::Vector4) * count);
     }
 
     static void MetalSetConstantM4(HContext _context, const dmVMath::Vector4* data, int count, HUniformLocation base_location)
     {
+        MetalContext* context = (MetalContext*) _context;
+        assert(context->m_CurrentProgram);
+        assert(base_location != INVALID_UNIFORM_LOCATION);
 
+        MetalProgram* program_ptr    = (MetalProgram*) context->m_CurrentProgram;
+        uint32_t set            = UNIFORM_LOCATION_GET_OP0(base_location);
+        uint32_t binding        = UNIFORM_LOCATION_GET_OP1(base_location);
+        uint32_t buffer_offset  = UNIFORM_LOCATION_GET_OP2(base_location);
+        assert(!(set == UNIFORM_LOCATION_MAX && binding == UNIFORM_LOCATION_MAX));
+
+        ProgramResourceBinding& pgm_res = program_ptr->m_BaseProgram.m_ResourceBindings[set][binding];
+
+        uint32_t offset = pgm_res.m_DataOffset + buffer_offset;
+        WriteConstantData(offset, program_ptr->m_UniformData, (uint8_t*) data, sizeof(dmVMath::Vector4) * 4 * count);
     }
 
     static void MetalSetSampler(HContext _context, HUniformLocation location, int32_t unit)
     {
+        MetalContext* context = (MetalContext*) _context;
+        assert(context->m_CurrentProgram);
+        assert(location != INVALID_UNIFORM_LOCATION);
 
+        MetalProgram* program_ptr = (MetalProgram*) context->m_CurrentProgram;
+        uint32_t set         = UNIFORM_LOCATION_GET_OP0(location);
+        uint32_t binding     = UNIFORM_LOCATION_GET_OP1(location);
+        assert(!(set == UNIFORM_LOCATION_MAX && binding == UNIFORM_LOCATION_MAX));
+
+        assert(program_ptr->m_BaseProgram.m_ResourceBindings[set][binding].m_Res);
+        program_ptr->m_BaseProgram.m_ResourceBindings[set][binding].m_TextureUnit = unit;
     }
 
     static void MetalSetViewport(HContext _context, int32_t x, int32_t y, int32_t width, int32_t height)
