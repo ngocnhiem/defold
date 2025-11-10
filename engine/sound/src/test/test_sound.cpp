@@ -2527,15 +2527,15 @@ TEST(SoundSdk, MasterMuteUpdatesGroupGain)
     float master_gain = 0.0f;
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
     EXPECT_NEAR(1.0f, master_gain, 1e-6f);
-    EXPECT_FALSE(dmSound::IsMasterMuted());
+    EXPECT_FALSE(dmSound::IsGroupMuted(master_hash));
 
-    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetMasterMute(true));
-    EXPECT_TRUE(dmSound::IsMasterMuted());
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(master_hash, true));
+    EXPECT_TRUE(dmSound::IsGroupMuted(master_hash));
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
     EXPECT_NEAR(0.0f, master_gain, 1e-6f);
 
-    EXPECT_EQ(dmSound::RESULT_OK, dmSound::ToggleMasterMute());
-    EXPECT_FALSE(dmSound::IsMasterMuted());
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::ToggleGroupMute(master_hash));
+    EXPECT_FALSE(dmSound::IsGroupMuted(master_hash));
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
     EXPECT_NEAR(1.0f, master_gain, 1e-6f);
 
@@ -2555,10 +2555,10 @@ TEST(SoundSdk, MasterMuteRestoresPreviousGain)
     const dmhash_t master_hash = dmHashString64("master");
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::SetGroupGain(master_hash, 0.35f));
 
-    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetMasterMute(true));
-    EXPECT_TRUE(dmSound::IsMasterMuted());
-    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetMasterMute(false));
-    EXPECT_FALSE(dmSound::IsMasterMuted());
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(master_hash, true));
+    EXPECT_TRUE(dmSound::IsGroupMuted(master_hash));
+    EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(master_hash, false));
+    EXPECT_FALSE(dmSound::IsGroupMuted(master_hash));
 
     float master_gain = 0.0f;
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));

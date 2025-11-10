@@ -991,21 +991,6 @@ namespace dmSound
         return RESULT_OK;
     }
 
-    Result SetMasterMute(bool mute)
-    {
-        return SetGroupMute(MASTER_GROUP_HASH, mute);
-    }
-
-    Result ToggleMasterMute()
-    {
-        return SetMasterMute(!IsMasterMuted());
-    }
-
-    bool IsMasterMuted()
-    {
-        return IsGroupMuted(MASTER_GROUP_HASH);
-    }
-
     static dmSoundCodec::Result GetInstanceProperties(HSoundInstance sound_instance) {
         SoundSystem* sound = g_SoundSystem;
         SoundData &sound_data = sound->m_SoundData[sound_instance->m_SoundDataIndex];

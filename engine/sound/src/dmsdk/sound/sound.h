@@ -29,16 +29,30 @@
 
 namespace dmSound
 {
-    enum Result : int;
-
-    /*# Set master mute state
-     * Mute or unmute the master mixer group.
-     *
-     * @name SetMasterMute
-     * @param mute [type:bool] `true` to mute, `false` to restore audio
-     * @return result [type:Result] RESULT_OK on success
-     */
-    Result SetMasterMute(bool mute);
+    enum Result
+    {
+        RESULT_OK                 =  0,
+        RESULT_PARTIAL_DATA       =  1,
+        RESULT_OUT_OF_SOURCES     = -1,
+        RESULT_EFFECT_NOT_FOUND   = -2,
+        RESULT_OUT_OF_INSTANCES   = -3,
+        RESULT_RESOURCE_LEAK      = -4,
+        RESULT_OUT_OF_BUFFERS     = -5,
+        RESULT_INVALID_PROPERTY   = -6,
+        RESULT_UNKNOWN_SOUND_TYPE = -7,
+        RESULT_INVALID_STREAM_DATA= -8,
+        RESULT_OUT_OF_MEMORY      = -9,
+        RESULT_UNSUPPORTED        = -10,
+        RESULT_DEVICE_NOT_FOUND   = -11,
+        RESULT_OUT_OF_GROUPS      = -12,
+        RESULT_NO_SUCH_GROUP      = -13,
+        RESULT_NOTHING_TO_PLAY    = -14,
+        RESULT_INIT_ERROR         = -15,
+        RESULT_FINI_ERROR         = -16,
+        RESULT_NO_DATA            = -17,
+        RESULT_END_OF_STREAM      = -18,
+        RESULT_UNKNOWN_ERROR      = -1000,
+    };
 
     /*# Set mute state for a mixer group
      * Temporarily mute or restore an individual mixer group.
@@ -66,19 +80,6 @@ namespace dmSound
      */
     bool IsGroupMuted(dmhash_t group);
 
-    /*# Toggle master mute
-     * Toggle the master mixer group mute state.
-     *
-     * @name ToggleMasterMute
-     * @return result [type:Result] RESULT_OK on success
-     */
-    Result ToggleMasterMute();
-
-    /*# Query master mute state
-     * @name IsMasterMuted
-     * @return muted [type:bool] `true` if the mixer master group is muted
-     */
-    bool IsMasterMuted();
 }
 
 #endif // DMSDK_SOUND_SOUND_H

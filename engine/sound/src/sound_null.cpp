@@ -204,28 +204,6 @@ namespace dmSound
         return false;
     }
 
-    Result SetMasterMute(bool mute)
-    {
-        // NOTE: Not supported.
-        // sound_null is deprecated and should be replaced by sound2 with null-device
-        (void)mute;
-        return RESULT_OK;
-    }
-
-    Result ToggleMasterMute()
-    {
-        // NOTE: Not supported.
-        // sound_null is deprecated and should be replaced by sound2 with null-device
-        return RESULT_OK;
-    }
-
-    bool IsMasterMuted()
-    {
-        // NOTE: Not supported.
-        // sound_null is deprecated and should be replaced by sound2 with null-device
-        return false;
-    }
-
     Result GetGroupHashes(uint32_t* count, dmhash_t* buffer)
     {
         return RESULT_OK;

@@ -459,11 +459,6 @@ namespace dmSound
         sound->m_NextOutBuffer = 0;
 
         sound->m_GroupMap.SetCapacity(MAX_GROUPS * 2 + 1, MAX_GROUPS);
-        for (uint32_t i = 0; i < MAX_GROUPS; ++i) {
-            memset(&sound->m_Groups[i], 0, sizeof(SoundGroup));
-            sound->m_Groups[i].m_GainBeforeMute = 1.0f;
-            sound->m_Groups[i].m_IsMuted = false;
-        }
 
         int master_index = GetOrCreateGroup("master");
         SoundGroup* master = &sound->m_Groups[master_index];
@@ -952,7 +947,7 @@ namespace dmSound
             }
             else
             {
-                target_gain = group->m_GainBeforeMute > 0.0f ? group->m_GainBeforeMute : 1.0f;
+                target_gain = group->m_GainBeforeMute;
                 group->m_IsMuted = false;
             }
         }
@@ -977,24 +972,6 @@ namespace dmSound
             return false;
 
         return sound->m_Groups[*index].m_IsMuted;
-    }
-
-    Result SetMasterMute(bool mute)
-    {
-        return SetGroupMute(MASTER_GROUP_HASH, mute);
-    }
-
-    Result ToggleMasterMute()
-    {
-        return SetMasterMute(!IsMasterMuted());
-    }
-
-    bool IsMasterMuted()
-    {
-        if (!g_SoundSystem)
-            return false;
-
-        return IsGroupMuted(MASTER_GROUP_HASH);
     }
 
     Result GetGroupHashes(uint32_t* count, dmhash_t* buffer)
