@@ -284,7 +284,7 @@ TEST(dmLog, TestMaxUntruncatedMessageLength)
     strcpy(expected + expected_size - 2, "\n");
 
     expected[expected_size - 2] = '\0'; // let input length be one short of the output length to leave space for dmLog to append a newline
-    dmLogInfo(expected + prefix_length);
+    dmLogInfo("%s", expected + prefix_length);
     expected[expected_size - 2] = '\n'; // add the expected newline at the end
 
     dmLog::LogFinalize();
@@ -312,7 +312,7 @@ TEST(dmLog, TestMessageTruncationThreshold)
     strcpy(expected + expected_size - 2, "\n");
 
     expected[expected_size - 2] = '!'; // let input length be one too long, i.e. leave no space for dmLog to append a newline
-    dmLogInfo(expected + prefix_length);
+    dmLogInfo("%s", expected + prefix_length);
     const char truncation_msg[] = "...\n[Output truncated]\n"; // copied from log.cpp
     strcpy(expected + expected_size - sizeof(truncation_msg), truncation_msg);
 
