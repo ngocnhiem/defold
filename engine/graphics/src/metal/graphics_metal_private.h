@@ -28,7 +28,7 @@ namespace dmGraphics
     typedef dmHashTable64<MetalPipeline> PipelineCache;
     typedef dmArray<ResourceToDestroy>   ResourcesToDestroyList;
 
-    const static uint8_t  MAX_FRAMES_IN_FLIGHT     = 2; // In flight frames - number of concurrent frames being processed
+    const static uint8_t  MAX_FRAMES_IN_FLIGHT     = 1; // In flight frames - number of concurrent frames being processed
     const static uint32_t UNIFORM_BUFFER_ALIGNMENT = 256;
     const static uint32_t STORAGE_BUFFER_ALIGNMENT = 16;
 
