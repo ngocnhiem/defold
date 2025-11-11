@@ -1032,6 +1032,16 @@ namespace dmGraphics
                            &program->m_UniformData[next->m_DataOffset],
                            res->m_BindingInfo.m_BlockSize);
 
+                    // 2) ensure the encoder writes into the correct backing argument buffer
+                    MTL::ArgumentEncoder* primary_encoder = program->m_ArgumentEncoders[res->m_Set];
+                    MTL::Buffer*          arg_buf         = program->m_ArgumentBuffers[res->m_Set];
+                    assert(primary_encoder && arg_buf);
+                    primary_encoder->setArgumentBuffer(arg_buf, 0);
+
+                    // 3) encode the pointer for this binding (msl_index is the index inside the argument encoder,
+                    //    i.e. the [[id(N)]] for the field inside the argument struct)
+                    primary_encoder->setBuffer(scratch_buffer->m_DeviceBuffer.m_Buffer, (NSUInteger) offset, (NSUInteger) msl_index);
+
                     // Advance cursor in scratch
                     scratch_buffer->m_MappedDataCursor = offset + uniform_size;
                 } break;
@@ -1127,9 +1137,26 @@ namespace dmGraphics
         PrepareProgram(context, context->m_CurrentProgram);
         CommitUniforms(context, encoder, &frame.m_ConstantScratchBuffer, context->m_CurrentProgram, UNIFORM_BUFFER_ALIGNMENT);
 
-        context->m_CurrentProgram->m_ArgumentEncoders[0]->setArgumentBuffer(context->m_CurrentProgram->m_ArgumentBuffers[0], 0);
+        for (uint32_t set = 0; set < context->m_CurrentProgram->m_BaseProgram.m_MaxSet; ++set)
+        {
+            if (context->m_CurrentProgram->m_ArgumentBuffers[set])
+            {
+                MTL::Buffer* ab = context->m_CurrentProgram->m_ArgumentBuffers[set];
 
-        context->m_CurrentProgram->m_ArgumentEncoders[0]->setBuffer(frame.m_ConstantScratchBuffer.m_DeviceBuffer.m_Buffer, 0, 0);
+                // TODO: Support binding for both stages based on stage flags
+                if (set == 0)
+                {
+                    encoder->setVertexBuffer(ab, 0, set);
+                }
+                if (set == 1)
+                {
+                    encoder->setFragmentBuffer(ab, 0, set);
+                }
+            }
+        }
+
+        // context->m_CurrentProgram->m_ArgumentEncoders[0]->setArgumentBuffer(context->m_CurrentProgram->m_ArgumentBuffers[0], 0);
+        // context->m_CurrentProgram->m_ArgumentEncoders[0]->setBuffer(frame.m_ConstantScratchBuffer.m_DeviceBuffer.m_Buffer, 0, 0);
 
         encoder->setVertexBuffer(context->m_CurrentProgram->m_ArgumentBuffers[0], 0, 0);
     }
