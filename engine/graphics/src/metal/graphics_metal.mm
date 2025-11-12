@@ -44,11 +44,13 @@ namespace dmGraphics
     static bool                         MetalIsSupported();
     static HContext                     MetalGetContext();
     static bool                         MetalInitialize(HContext _context);
-    static void                         MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
     static GraphicsAdapter g_Metal_adapter(ADAPTER_FAMILY_METAL);
     static MetalContext*   g_MetalContext = 0x0;
 
     DM_REGISTER_GRAPHICS_ADAPTER(GraphicsAdapterMetal, &g_Metal_adapter, MetalIsSupported, MetalRegisterFunctionTable, MetalGetContext, ADAPTER_FAMILY_PRIORITY_METAL);
+
+    static int16_t CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy);
+    static void    MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
 
     MetalContext::MetalContext(const ContextParams& params)
     {
@@ -62,6 +64,7 @@ namespace dmGraphics
         m_Window                  = params.m_Window;
         m_Width                   = params.m_Width;
         m_Height                  = params.m_Height;
+        m_JobThread               = params.m_JobThread;
         // m_UseValidationLayers     = params.m_UseValidationLayers;
 
         assert(dmPlatform::GetWindowStateParam(m_Window, dmPlatform::WINDOW_STATE_OPENED));
@@ -342,6 +345,9 @@ namespace dmGraphics
             InitializeSetTextureAsyncState(context->m_SetTextureAsyncState);
             context->m_AssetHandleContainerMutex = dmMutex::New();
         }
+
+        // Create default texture sampler
+        CreateTextureSampler(context, TEXTURE_FILTER_LINEAR, TEXTURE_FILTER_LINEAR, TEXTURE_WRAP_REPEAT, TEXTURE_WRAP_REPEAT, 1, 1.0f);
 
         NSWindow* mative_window = (NSWindow*) dmGraphics::GetNativeOSXNSWindow();
         context->m_View         = [mative_window contentView];
@@ -1845,57 +1851,60 @@ namespace dmGraphics
         }
     }
 
-    static void MetalCopyToTexture(MetalContext* context, const TextureParams& params, uint32_t tex_data_size, void* tex_data_ptr, MetalTexture* texture)
+    static void MetalCopyToTexture(MetalContext* context,
+                               const TextureParams& params,
+                               uint32_t tex_data_size,
+                               void* tex_data_ptr,
+                                   MetalTexture* texture)
     {
         using namespace MTL;
 
-        assert(texture->m_LayerCount > 0);
+        MTL::Device* device = context->m_Device;
 
-        // Compute bytes per row and bytes per image
-        uint8_t bpp = GetTextureFormatBitsPerPixel(params.m_Format);
         uint32_t width  = params.m_Width;
         uint32_t height = params.m_Height;
+        uint32_t depth  = dmMath::Max( (uint16_t) 1u, params.m_Depth);
 
+        uint8_t bpp = GetTextureFormatBitsPerPixel(params.m_Format);
         uint32_t bytesPerRow   = (bpp / 8) * width;
         uint32_t bytesPerImage = bytesPerRow * height;
 
-        // Upload **single mip level** (params.m_MipMap) for all layers
+        // Create staging (upload) buffer
+        NS::UInteger bufferSize = tex_data_size;
+        MTL::Buffer* stagingBuffer = device->newBuffer(bufferSize, MTL::ResourceStorageModeShared);
+        memcpy(stagingBuffer->contents(), tex_data_ptr, tex_data_size);
+
+        // Create command buffer + blit encoder
+        MTL::CommandBuffer* commandBuffer = context->m_CommandQueue->commandBuffer();
+        MTL::BlitCommandEncoder* blitEncoder = commandBuffer->blitCommandEncoder();
+
+        // Copy each array layer (or just one)
         for (uint32_t layer = 0; layer < texture->m_LayerCount; ++layer)
         {
-            MTL::Region region;
-            region.origin.x = 0;
-            region.origin.y = 0;
-            region.origin.z = 0;
-            region.size.width  = width;
-            region.size.height = height;
-            region.size.depth  = 1;
+            MTL::Origin origin = { 0, 0, 0 };
+            MTL::Size size = { width, height, depth };
 
-            // For 2D textures
-            if (texture->m_LayerCount == 1 && texture->m_Depth == 1)
-            {
-                texture->m_Texture->replaceRegion(
-                    region,
-                    params.m_MipMap,   // mip level
-                    tex_data_ptr,
-                    bytesPerRow
-                );
-            }
-            else // For 2D arrays or 3D textures
-            {
-                texture->m_Texture->replaceRegion(
-                    region,
-                    params.m_MipMap,   // mip level
-                    layer,             // slice/array layer
-                    tex_data_ptr,
-                    bytesPerRow,
-                    bytesPerImage
-                );
-            }
-
-            // Advance pointer for next layer
-            tex_data_ptr = static_cast<uint8_t*>(tex_data_ptr) + bytesPerImage;
+            // Copy from the staging buffer to the GPU texture
+            blitEncoder->copyFromBuffer(
+                stagingBuffer,
+                layer * bytesPerImage,  // source offset
+                bytesPerRow,
+                bytesPerImage,
+                size,
+                texture->m_Texture,
+                layer,                  // slice
+                params.m_MipMap,        // mip level
+                origin
+            );
         }
+
+        blitEncoder->endEncoding();
+        commandBuffer->commit();
+        commandBuffer->waitUntilCompleted();
+
+        stagingBuffer->release();
     }
+
 
     static void MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params)
     {
