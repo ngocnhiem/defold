@@ -23,9 +23,11 @@
 #include <QuartzCore/QuartzCore.h>
 #import <Cocoa/Cocoa.h>
 
+#include <dlib/math.h>
 #include <dlib/dstrings.h>
 #include <dlib/profile.h>
 #include <dlib/log.h>
+#include <dlib/thread.h>
 
 #include "../graphics_private.h"
 #include "../graphics_native.h"
@@ -42,6 +44,7 @@ namespace dmGraphics
     static bool                         MetalIsSupported();
     static HContext                     MetalGetContext();
     static bool                         MetalInitialize(HContext _context);
+    static void                         MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
     static GraphicsAdapter g_Metal_adapter(ADAPTER_FAMILY_METAL);
     static MetalContext*   g_MetalContext = 0x0;
 
@@ -62,6 +65,13 @@ namespace dmGraphics
         // m_UseValidationLayers     = params.m_UseValidationLayers;
 
         assert(dmPlatform::GetWindowStateParam(m_Window, dmPlatform::WINDOW_STATE_OPENED));
+
+        if (m_DefaultTextureMinFilter == TEXTURE_FILTER_DEFAULT)
+            m_DefaultTextureMinFilter = TEXTURE_FILTER_LINEAR;
+        if (m_DefaultTextureMagFilter == TEXTURE_FILTER_DEFAULT)
+            m_DefaultTextureMagFilter = TEXTURE_FILTER_LINEAR;
+
+        DM_STATIC_ASSERT(sizeof(m_TextureFormatSupport) * 8 >= TEXTURE_FORMAT_COUNT, Invalid_Struct_Size );
     }
 
     static HContext MetalNewContext(const ContextParams& params)
@@ -250,6 +260,51 @@ namespace dmGraphics
         rt->m_ColorAttachmentCount = 1;
     }
 
+    static void SetupSupportedTextureFormats(MetalContext* context)
+    {
+        // PVRTC is always supported on Apple GPUs
+        context->m_TextureFormatSupport |= (1 << TEXTURE_FORMAT_RGB_PVRTC_2BPPV1);
+        context->m_TextureFormatSupport |= (1 << TEXTURE_FORMAT_RGB_PVRTC_4BPPV1);
+        context->m_TextureFormatSupport |= (1 << TEXTURE_FORMAT_RGBA_PVRTC_2BPPV1);
+        context->m_TextureFormatSupport |= (1 << TEXTURE_FORMAT_RGBA_PVRTC_4BPPV1);
+
+        // ETC2 support
+        if (context->m_Device->supportsFamily(MTL::GPUFamilyApple3))  // A8+ class
+        {
+            context->m_TextureFormatSupport |= (1 << TEXTURE_FORMAT_RGB_ETC1);
+            context->m_TextureFormatSupport |= (1 << TEXTURE_FORMAT_RGBA_ETC2);
+        }
+
+        // ASTC support
+        if (context->m_Device->supportsFamily(MTL::GPUFamilyApple3))
+        {
+            context->m_ASTCSupport = 1;
+            context->m_ASTCArrayTextureSupport = 1;
+        }
+
+        // Common uncompressed formats
+        TextureFormat base_formats[] = {
+            TEXTURE_FORMAT_RGBA,
+            TEXTURE_FORMAT_RGBA16F,
+            TEXTURE_FORMAT_RGBA32F,
+            TEXTURE_FORMAT_R16F,
+            TEXTURE_FORMAT_R32F,
+            TEXTURE_FORMAT_RG16F,
+            TEXTURE_FORMAT_RG32F,
+            TEXTURE_FORMAT_RGBA32UI,
+            TEXTURE_FORMAT_R32UI,
+        };
+
+        for (uint32_t i = 0; i < DM_ARRAY_SIZE(base_formats); ++i)
+        {
+            context->m_TextureFormatSupport |= 1 << base_formats[i];
+        }
+
+        // RGB isn't supported as a texture format, but we still need to supply it to the engine
+        // Later in the vulkan pipeline when the texture is created, we will convert it internally to RGBA
+        context->m_TextureFormatSupport |= 1 << TEXTURE_FORMAT_RGB;
+    }
+
     static bool MetalInitialize(HContext _context)
     {
         MetalContext* context        = (MetalContext*) _context;
@@ -259,8 +314,9 @@ namespace dmGraphics
 
         SetupMainRenderTarget(context);
         context->m_CurrentRenderTarget = context->m_MainRenderTarget;
-
         context->m_PipelineCache.SetCapacity(32,64);
+
+        SetupSupportedTextureFormats(context);
 
         uint32_t window_width = dmPlatform::GetWindowWidth(context->m_Window);
         uint32_t window_height = dmPlatform::GetWindowHeight(context->m_Window);
@@ -278,6 +334,13 @@ namespace dmGraphics
             const uint32_t constant_buffer_size = 1024 * 8;
             context->m_FrameResources[i].m_ConstantScratchBuffer.m_DeviceBuffer.m_StorageMode = MTL::StorageModeShared;
             DeviceBufferUploadHelper(context, 0, constant_buffer_size, 0, &context->m_FrameResources[i].m_ConstantScratchBuffer.m_DeviceBuffer);
+        }
+
+        context->m_AsyncProcessingSupport = context->m_JobThread != 0x0 && dmThread::PlatformHasThreadSupport();
+        if (context->m_AsyncProcessingSupport)
+        {
+            InitializeSetTextureAsyncState(context->m_SetTextureAsyncState);
+            context->m_AssetHandleContainerMutex = dmMutex::New();
         }
 
         NSWindow* mative_window = (NSWindow*) dmGraphics::GetNativeOSXNSWindow();
@@ -1014,9 +1077,11 @@ namespace dmGraphics
         const ProgramResourceBinding* next;
         while ((next = it.Next()))
         {
-            ShaderResourceBinding* res = next->m_Res;
+            ShaderResourceBinding* res        = next->m_Res;
             MTL::ArgumentEncoder* arg_encoder = program->m_ArgumentEncoders[res->m_Set];
-            assert(arg_encoder);
+            MTL::Buffer*          arg_buf     = program->m_ArgumentBuffers[res->m_Set];
+            assert(arg_encoder && arg_buf);
+            arg_encoder->setArgumentBuffer(arg_buf, 0);
 
             uint32_t msl_index = program->m_ResourceToMslIndex[res->m_Set][res->m_Binding];
 
@@ -1032,15 +1097,9 @@ namespace dmGraphics
                            &program->m_UniformData[next->m_DataOffset],
                            res->m_BindingInfo.m_BlockSize);
 
-                    // 2) ensure the encoder writes into the correct backing argument buffer
-                    MTL::ArgumentEncoder* primary_encoder = program->m_ArgumentEncoders[res->m_Set];
-                    MTL::Buffer*          arg_buf         = program->m_ArgumentBuffers[res->m_Set];
-                    assert(primary_encoder && arg_buf);
-                    primary_encoder->setArgumentBuffer(arg_buf, 0);
-
                     // 3) encode the pointer for this binding (msl_index is the index inside the argument encoder,
                     //    i.e. the [[id(N)]] for the field inside the argument struct)
-                    primary_encoder->setBuffer(scratch_buffer->m_DeviceBuffer.m_Buffer, (NSUInteger) offset, (NSUInteger) msl_index);
+                    arg_encoder->setBuffer(scratch_buffer->m_DeviceBuffer.m_Buffer, (NSUInteger) offset, (NSUInteger) msl_index);
 
                     // Advance cursor in scratch
                     scratch_buffer->m_MappedDataCursor = offset + uniform_size;
@@ -1653,92 +1712,603 @@ namespace dmGraphics
 
     static bool MetalIsTextureFormatSupported(HContext _context, TextureFormat format)
     {
-        return 0;
+        MetalContext* context = (MetalContext*) _context;
+        return (context->m_TextureFormatSupport & (1 << format)) != 0 || (context->m_ASTCSupport && IsTextureFormatASTC(format));
+    }
+
+    static inline void InitializeMetalTexture(MetalTexture* t)
+    {
+        memset(t, 0, sizeof(MetalTexture));
+        t->m_Type           = TEXTURE_TYPE_2D;
+        t->m_GraphicsFormat = TEXTURE_FORMAT_RGBA;
+        //t->m_Format         = VK_FORMAT_UNDEFINED;
+    }
+
+    static MetalTexture* MetalNewTextureInternal(const TextureCreationParams& params)
+    {
+        MetalTexture* tex = new MetalTexture;
+        InitializeMetalTexture(tex);
+
+        tex->m_Type           = params.m_Type;
+        tex->m_Width          = params.m_Width;
+        tex->m_Height         = params.m_Height;
+        tex->m_Depth          = dmMath::Max((uint16_t)1, params.m_Depth);
+        tex->m_LayerCount     = dmMath::Max((uint8_t)1, params.m_LayerCount);
+        tex->m_MipMapCount    = params.m_MipMapCount;
+        tex->m_UsageHintFlags = params.m_UsageHintBits;
+        tex->m_PageCount      = params.m_LayerCount;
+        tex->m_DataState      = 0;
+
+        // TODO
+        // tex->m_PendingUpload  = INVALID_OPAQUE_HANDLE;
+        // tex->m_UsageFlags     = GetMetalUsageFromHints(params.m_UsageHintBits);
+
+        if (params.m_OriginalWidth == 0)
+        {
+            tex->m_OriginalWidth  = params.m_Width;
+            tex->m_OriginalHeight = params.m_Height;
+            tex->m_OriginalDepth  = params.m_Depth;
+        }
+        else
+        {
+            tex->m_OriginalWidth  = params.m_OriginalWidth;
+            tex->m_OriginalHeight = params.m_OriginalHeight;
+            tex->m_OriginalDepth  = params.m_OriginalDepth;
+        }
+        return tex;
     }
 
     static HTexture MetalNewTexture(HContext _context, const TextureCreationParams& params)
     {
-        return 0;
+        MetalContext* context = (MetalContext*) _context;
+        MetalTexture* texture = MetalNewTextureInternal(params);
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        return StoreAssetInContainer(context->m_AssetHandleContainer, texture, ASSET_TYPE_TEXTURE);
     }
 
-    static void MetalDeleteTexture(HContext _context, HTexture t)
+    static void MetalDeleteTextureInternal(MetalContext* context, MetalTexture* texture)
     {
+        DestroyResourceDeferred(context, texture);
+        delete texture;
+    }
 
+    static void MetalDeleteTexture(HContext _context, HTexture texture)
+    {
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalDeleteTextureInternal(context, GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture));
+        context->m_AssetHandleContainer.Release(texture);
+    }
+
+    static MTL::PixelFormat GetMetalPixelFormat(TextureFormat format)
+    {
+        switch (format)
+        {
+            case TEXTURE_FORMAT_LUMINANCE:         return MTL::PixelFormatR8Unorm;
+            case TEXTURE_FORMAT_LUMINANCE_ALPHA:   return MTL::PixelFormatRG8Unorm;
+            case TEXTURE_FORMAT_RGB:               return MTL::PixelFormatRGBA8Unorm; // expand RGB to RGBA
+            case TEXTURE_FORMAT_RGBA:              return MTL::PixelFormatRGBA8Unorm;
+            case TEXTURE_FORMAT_RGB_16BPP:         return MTL::PixelFormatB5G6R5Unorm; // closest 16-bit
+            //case TEXTURE_FORMAT_RGBA_16BPP:        return MTL::PixelFormatRGBA4Unorm;
+            case TEXTURE_FORMAT_DEPTH:             return MTL::PixelFormatInvalid;
+            case TEXTURE_FORMAT_STENCIL:           return MTL::PixelFormatInvalid;
+
+            // PVRTC
+            case TEXTURE_FORMAT_RGB_PVRTC_2BPPV1:  return MTL::PixelFormatPVRTC_RGB_2BPP;
+            case TEXTURE_FORMAT_RGB_PVRTC_4BPPV1:  return MTL::PixelFormatPVRTC_RGB_4BPP;
+            case TEXTURE_FORMAT_RGBA_PVRTC_2BPPV1: return MTL::PixelFormatPVRTC_RGBA_2BPP;
+            case TEXTURE_FORMAT_RGBA_PVRTC_4BPPV1: return MTL::PixelFormatPVRTC_RGBA_4BPP;
+
+            // ETC2
+            case TEXTURE_FORMAT_RGB_ETC1:          return MTL::PixelFormatETC2_RGB8;
+            //case TEXTURE_FORMAT_RGBA_ETC2:         return MTL::PixelFormatETC2_RGBA8;
+
+            // BC / DXT (macOS only)
+            case TEXTURE_FORMAT_RGB_BC1:           return MTL::PixelFormatBC1_RGBA;
+            case TEXTURE_FORMAT_RGBA_BC3:          return MTL::PixelFormatBC3_RGBA;
+            //case TEXTURE_FORMAT_RGBA_BC7:          return MTL::PixelFormatBC7_RGBA;
+            case TEXTURE_FORMAT_R_BC4:             return MTL::PixelFormatBC4_RUnorm;
+            case TEXTURE_FORMAT_RG_BC5:            return MTL::PixelFormatBC5_RGUnorm;
+
+            // Floating point
+            case TEXTURE_FORMAT_RGB16F:            return MTL::PixelFormatRGBA16Float; // expand RGB -> RGBA
+            case TEXTURE_FORMAT_RGB32F:            return MTL::PixelFormatRGBA32Float; // expand RGB -> RGBA
+            case TEXTURE_FORMAT_RGBA16F:           return MTL::PixelFormatRGBA16Float;
+            case TEXTURE_FORMAT_RGBA32F:           return MTL::PixelFormatRGBA32Float;
+            case TEXTURE_FORMAT_R16F:              return MTL::PixelFormatR16Float;
+            case TEXTURE_FORMAT_RG16F:             return MTL::PixelFormatRG16Float;
+            case TEXTURE_FORMAT_R32F:              return MTL::PixelFormatR32Float;
+            case TEXTURE_FORMAT_RG32F:             return MTL::PixelFormatRG32Float;
+
+            // Unsigned integer
+            case TEXTURE_FORMAT_RGBA32UI:          return MTL::PixelFormatRGBA32Uint;
+            case TEXTURE_FORMAT_R32UI:             return MTL::PixelFormatR32Uint;
+            case TEXTURE_FORMAT_BGRA8U:            return MTL::PixelFormatBGRA8Unorm;
+
+            // ASTC
+            case TEXTURE_FORMAT_RGBA_ASTC_4X4:    return MTL::PixelFormatASTC_4x4_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_5X4:    return MTL::PixelFormatASTC_5x4_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_5X5:    return MTL::PixelFormatASTC_5x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_6X5:    return MTL::PixelFormatASTC_6x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_6X6:    return MTL::PixelFormatASTC_6x6_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_8X5:    return MTL::PixelFormatASTC_8x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_8X6:    return MTL::PixelFormatASTC_8x6_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_8X8:    return MTL::PixelFormatASTC_8x8_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X5:   return MTL::PixelFormatASTC_10x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X6:   return MTL::PixelFormatASTC_10x6_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X8:   return MTL::PixelFormatASTC_10x8_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X10:  return MTL::PixelFormatASTC_10x10_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_12X10:  return MTL::PixelFormatASTC_12x10_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_12X12:  return MTL::PixelFormatASTC_12x12_LDR;
+
+            default: return MTL::PixelFormatInvalid;
+        }
+    }
+
+    static void MetalCopyToTexture(MetalContext* context, const TextureParams& params, uint32_t tex_data_size, void* tex_data_ptr, MetalTexture* texture)
+    {
+        using namespace MTL;
+
+        assert(texture->m_LayerCount > 0);
+
+        // Compute bytes per row and bytes per image
+        uint8_t bpp = GetTextureFormatBitsPerPixel(params.m_Format);
+        uint32_t width  = params.m_Width;
+        uint32_t height = params.m_Height;
+
+        uint32_t bytesPerRow   = (bpp / 8) * width;
+        uint32_t bytesPerImage = bytesPerRow * height;
+
+        // Upload **single mip level** (params.m_MipMap) for all layers
+        for (uint32_t layer = 0; layer < texture->m_LayerCount; ++layer)
+        {
+            MTL::Region region;
+            region.origin.x = 0;
+            region.origin.y = 0;
+            region.origin.z = 0;
+            region.size.width  = width;
+            region.size.height = height;
+            region.size.depth  = 1;
+
+            // For 2D textures
+            if (texture->m_LayerCount == 1 && texture->m_Depth == 1)
+            {
+                texture->m_Texture->replaceRegion(
+                    region,
+                    params.m_MipMap,   // mip level
+                    tex_data_ptr,
+                    bytesPerRow
+                );
+            }
+            else // For 2D arrays or 3D textures
+            {
+                texture->m_Texture->replaceRegion(
+                    region,
+                    params.m_MipMap,   // mip level
+                    layer,             // slice/array layer
+                    tex_data_ptr,
+                    bytesPerRow,
+                    bytesPerImage
+                );
+            }
+
+            // Advance pointer for next layer
+            tex_data_ptr = static_cast<uint8_t*>(tex_data_ptr) + bytesPerImage;
+        }
+    }
+
+    static void MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params)
+    {
+        // Reject unsupported formats
+        if (params.m_Format == TEXTURE_FORMAT_DEPTH || params.m_Format == TEXTURE_FORMAT_STENCIL)
+        {
+            dmLogError("Unable to upload texture data, unsupported type (%s).", GetTextureFormatLiteral(params.m_Format));
+            return;
+        }
+
+        // Clamp size to Metal limits
+        uint32_t maxSize = GetMaxTextureSize(context);
+        assert(params.m_Width  <= maxSize);
+        assert(params.m_Height <= maxSize);
+
+        // Compute layer count, depth, and bits per pixel
+        uint8_t tex_layer_count = dmMath::Max(texture->m_LayerCount, params.m_LayerCount);
+        uint16_t tex_depth      = dmMath::Max(texture->m_Depth, params.m_Depth);
+        uint8_t tex_bpp         = GetTextureFormatBitsPerPixel(params.m_Format);
+        size_t tex_data_size    = params.m_DataSize * tex_layer_count * 8; // bits
+        void* tex_data_ptr      = (void*)params.m_Data;
+
+        // Expand RGB to RGBA if needed
+        TextureFormat format_orig = params.m_Format;
+        if (format_orig == TEXTURE_FORMAT_RGB)
+        {
+            uint32_t pixel_count = params.m_Width * params.m_Height * tex_layer_count;
+            uint8_t* data_new = new uint8_t[pixel_count * 4]; // RGBA
+            RepackRGBToRGBA(pixel_count, (uint8_t*)tex_data_ptr, data_new);
+            tex_data_ptr = data_new;
+            tex_bpp = 32;
+        }
+
+        // Compute tex_data_size in bytes
+        tex_data_size = tex_bpp / 8 * params.m_Width * params.m_Height * tex_depth * tex_layer_count;
+
+        // Recreate texture if needed
+        bool needsRecreate = !texture->m_Texture ||
+                             texture->m_Width  != params.m_Width ||
+                             texture->m_Height != params.m_Height ||
+                             texture->m_Depth  != params.m_Depth ||
+                             texture->m_GraphicsFormat != params.m_Format;
+
+        if (needsRecreate)
+        {
+            MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+
+            // Set type
+            if (tex_depth > 1)
+                desc->setTextureType(MTL::TextureType3D);
+            else if (tex_layer_count > 1)
+                desc->setTextureType(MTL::TextureType2DArray);
+            else
+                desc->setTextureType(MTL::TextureType2D);
+
+            // Set pixel format
+            desc->setPixelFormat(GetMetalPixelFormat(params.m_Format));
+
+            // Set dimensions
+            desc->setWidth(params.m_Width);
+            desc->setHeight(params.m_Height);
+            desc->setDepth(tex_depth);
+            desc->setArrayLength(tex_layer_count);
+            desc->setMipmapLevelCount(params.m_MipMap + 1);
+            desc->setSampleCount(1);
+            desc->setStorageMode(MTL::StorageModePrivate);
+            desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
+
+            // Create Metal texture
+            if (texture->m_Texture)
+                texture->m_Texture->release();
+            texture->m_Texture = context->m_Device->newTexture(desc);
+            desc->release();
+
+            texture->m_Width  = params.m_Width;
+            texture->m_Height = params.m_Height;
+            texture->m_Depth  = params.m_Depth;
+            texture->m_LayerCount = tex_layer_count;
+            texture->m_GraphicsFormat = params.m_Format;
+            texture->m_MipMapCount = params.m_MipMap + 1;
+        }
+
+        if (tex_data_ptr && tex_data_size > 0)
+        {
+            MetalCopyToTexture(context, params, tex_data_size, tex_data_ptr, texture);
+        }
+
+        // Clean up temporary RGB->RGBA conversion
+        if (format_orig == TEXTURE_FORMAT_RGB)
+        {
+            delete[] (uint8_t*)tex_data_ptr;
+        }
     }
 
     static void MetalSetTexture(HContext _context, HTexture texture, const TextureParams& params)
     {
+        DM_PROFILE(__FUNCTION__);
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        MetalSetTextureInternal(context, tex, params);
+    }
 
+    static int16_t GetTextureSamplerIndex(MetalContext* context, TextureFilter minfilter, TextureFilter magfilter, TextureWrap uwrap, TextureWrap vwrap, uint8_t maxLod, float max_anisotropy)
+    {
+        if (minfilter == TEXTURE_FILTER_DEFAULT)
+        {
+            minfilter = context->m_DefaultTextureMinFilter;
+        }
+        if (magfilter == TEXTURE_FILTER_DEFAULT)
+        {
+            magfilter = context->m_DefaultTextureMagFilter;
+        }
+
+        for (uint32_t i=0; i < context->m_TextureSamplers.Size(); i++)
+        {
+            const MetalTextureSampler& sampler = context->m_TextureSamplers[i];
+            if (sampler.m_MagFilter     == magfilter &&
+                sampler.m_MinFilter     == minfilter &&
+                sampler.m_AddressModeU  == uwrap     &&
+                sampler.m_AddressModeV  == vwrap     &&
+                sampler.m_MaxLod        == maxLod    &&
+                sampler.m_MaxAnisotropy == max_anisotropy)
+            {
+                return (uint8_t) i;
+            }
+        }
+
+        return -1;
+    }
+
+    static inline float GetMaxAnisotrophyClamped(float requested)
+    {
+        // Metal does not expose a device query for this, but all Apple GPUs
+        // and modern discrete GPUs support at least 16x anisotropy.
+        const float MAX_SUPPORTED_ANISOTROPY = 16.0f;
+        return (requested < MAX_SUPPORTED_ANISOTROPY) ? requested : MAX_SUPPORTED_ANISOTROPY;
+    }
+
+    static inline MTL::SamplerAddressMode GetMetalSamplerAddressMode(TextureWrap wrap)
+    {
+        switch (wrap)
+        {
+            case TEXTURE_WRAP_REPEAT:          return MTL::SamplerAddressModeRepeat;
+            case TEXTURE_WRAP_MIRRORED_REPEAT: return MTL::SamplerAddressModeMirrorRepeat;
+            case TEXTURE_WRAP_CLAMP_TO_EDGE:   return MTL::SamplerAddressModeClampToEdge;
+            default:                           return MTL::SamplerAddressModeClampToEdge;
+        }
+    }
+
+    static inline MTL::SamplerMinMagFilter GetMetalFilter(TextureFilter filter)
+    {
+        switch (filter)
+        {
+            case TEXTURE_FILTER_NEAREST: return MTL::SamplerMinMagFilterNearest;
+            case TEXTURE_FILTER_LINEAR:  return MTL::SamplerMinMagFilterLinear;
+            default:                     return MTL::SamplerMinMagFilterNearest;
+        }
+    }
+
+    static MTL::SamplerState* CreateMetalTextureSampler(
+        MTL::Device* device,
+        MTL::SamplerMinMagFilter minFilter,
+        MTL::SamplerMinMagFilter magFilter,
+        MTL::SamplerMipFilter mipFilter,
+        MTL::SamplerAddressMode wrapU,
+        MTL::SamplerAddressMode wrapV,
+        float minLod,
+        float maxLod,
+        float maxAnisotropy)
+    {
+        using namespace MTL;
+
+        // Create and configure the sampler descriptor
+        SamplerDescriptor* desc = SamplerDescriptor::alloc()->init();
+        desc->setMinFilter(minFilter);
+        desc->setMagFilter(magFilter);
+        desc->setMipFilter(mipFilter);
+
+        desc->setSAddressMode(wrapU);
+        desc->setTAddressMode(wrapV);
+        desc->setRAddressMode(wrapU); // Metal allows 3D address mode too
+
+        desc->setLodMinClamp(minLod);
+        desc->setLodMaxClamp(maxLod);
+
+        if (maxAnisotropy > 1.0f)
+            desc->setMaxAnisotropy(maxAnisotropy);
+
+        // Metal always normalizes texture coordinates
+        // (no unnormalizedCoordinates option like Vulkan)
+
+        // Metal doesn't support border color — it clamps or repeats instead
+        // so you must pick the appropriate address mode for that
+
+        // Create the sampler state
+        SamplerState* sampler = device->newSamplerState(desc);
+        desc->release();
+
+        return sampler;
+    }
+
+    static int16_t CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy)
+    {
+        // Resolve default filters
+        if (magFilter == TEXTURE_FILTER_DEFAULT)
+        {
+            magFilter = context->m_DefaultTextureMagFilter;
+        }
+        if (minFilter == TEXTURE_FILTER_DEFAULT)
+        {
+            minFilter = context->m_DefaultTextureMinFilter;
+        }
+
+        // Convert filters to Metal types
+        MTL::SamplerMinMagFilter metalMagFilter = GetMetalFilter(magFilter);
+        MTL::SamplerMinMagFilter metalMinFilter = GetMetalFilter(minFilter);
+        MTL::SamplerMipFilter metalMipFilter = MTL::SamplerMipFilterNearest;
+
+        float maxLodFloat = static_cast<float>(maxLod);
+
+        // Match Vulkan-like logic for mip filtering
+        switch (minFilter)
+        {
+            case TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+            case TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+                metalMipFilter = MTL::SamplerMipFilterLinear;
+                break;
+            default:
+                metalMipFilter = MTL::SamplerMipFilterNearest;
+                break;
+        }
+
+        // Convert address modes
+        MTL::SamplerAddressMode wrapU = GetMetalSamplerAddressMode(uWrap);
+        MTL::SamplerAddressMode wrapV = GetMetalSamplerAddressMode(vWrap);
+
+        // Construct sampler struct
+        MetalTextureSampler newSampler = {};
+        newSampler.m_MinFilter     = minFilter;
+        newSampler.m_MagFilter     = magFilter;
+        newSampler.m_AddressModeU  = uWrap;
+        newSampler.m_AddressModeV  = vWrap;
+        newSampler.m_MaxLod        = maxLod;
+        newSampler.m_MaxAnisotropy = maxAnisotropy;
+
+        uint32_t samplerIndex = context->m_TextureSamplers.Size();
+        if (context->m_TextureSamplers.Full())
+        {
+            context->m_TextureSamplers.OffsetCapacity(1);
+        }
+
+        // Create the Metal sampler
+        newSampler.m_Sampler = CreateMetalTextureSampler(
+            context->m_Device,
+            metalMinFilter,
+            metalMagFilter,
+            metalMipFilter,
+            wrapU,
+            wrapV,
+            0.0f,
+            maxLodFloat,
+            maxAnisotropy
+        );
+
+        context->m_TextureSamplers.Push(newSampler);
+        return static_cast<int16_t>(samplerIndex);
+    }
+
+    static void MetalSetTextureParamsInternal(MetalContext* context, MetalTexture* texture, TextureFilter minfilter, TextureFilter magfilter, TextureWrap uwrap, TextureWrap vwrap, float max_anisotropy)
+    {
+        const MetalTextureSampler& sampler = context->m_TextureSamplers[texture->m_TextureSamplerIndex];
+        float anisotropy_clamped = GetMaxAnisotrophyClamped(max_anisotropy);
+
+        if (sampler.m_MinFilter     != minfilter              ||
+            sampler.m_MagFilter     != magfilter              ||
+            sampler.m_AddressModeU  != uwrap                  ||
+            sampler.m_AddressModeV  != vwrap                  ||
+            sampler.m_MaxLod        != texture->m_MipMapCount ||
+            sampler.m_MaxAnisotropy != anisotropy_clamped)
+        {
+            int16_t sampler_index = GetTextureSamplerIndex(context, minfilter, magfilter, uwrap, vwrap, texture->m_MipMapCount, anisotropy_clamped);
+            if (sampler_index < 0)
+            {
+                sampler_index = CreateTextureSampler(context, minfilter, magfilter, uwrap, vwrap, texture->m_MipMapCount, anisotropy_clamped);
+            }
+            texture->m_TextureSamplerIndex = sampler_index;
+        }
     }
 
     static void MetalSetTextureAsync(HContext _context, HTexture texture, const TextureParams& params, SetTextureAsyncCallback callback, void* user_data)
     {
-
+        // TODO
+        SetTexture(_context, texture, params);
+        if (callback)
+        {
+            callback(texture, user_data);
+        }
     }
 
     static void MetalSetTextureParams(HContext _context, HTexture texture, TextureFilter minfilter, TextureFilter magfilter, TextureWrap uwrap, TextureWrap vwrap, float max_anisotropy)
     {
-
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        MetalSetTextureParamsInternal(context, tex, minfilter, magfilter, uwrap, vwrap, max_anisotropy);
     }
 
     static uint32_t MetalGetTextureResourceSize(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        if (!tex)
+        {
+            return 0;
+        }
+        uint32_t size_total = 0;
+        uint32_t size = tex->m_Width * tex->m_Height * dmMath::Max(1U, GetTextureFormatBitsPerPixel(tex->m_GraphicsFormat)/8);
+        for(uint32_t i = 0; i < tex->m_MipMapCount; ++i)
+        {
+            size_total += size;
+            size >>= 2;
+        }
+        if (tex->m_Type == TEXTURE_TYPE_CUBE_MAP)
+        {
+            size_total *= 6;
+        }
+        return size_total + sizeof(MetalTexture);
     }
 
     static uint16_t MetalGetTextureWidth(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_Width : 0;
     }
 
     static uint16_t MetalGetTextureHeight(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_Height : 0;
     }
 
     static uint16_t MetalGetTextureDepth(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_Depth : 0;
     }
 
     static uint16_t MetalGetOriginalTextureWidth(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_OriginalWidth : 0;
     }
 
     static uint16_t MetalGetOriginalTextureHeight(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_OriginalHeight : 0;
     }
 
     static uint8_t MetalGetTextureMipmapCount(HContext _context, HTexture texture)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_MipMapCount : 0;
     }
 
     static TextureType MetalGetTextureType(HContext _context, HTexture texture)
     {
-        return (TextureType) 0;
+        MetalContext* context = (MetalContext*)_context;
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture);
+        return tex ? tex->m_Type : TEXTURE_TYPE_2D;
     }
 
     static void MetalEnableTexture(HContext _context, uint32_t unit, uint8_t id_index, HTexture texture)
     {
-
+        assert(unit < DM_MAX_TEXTURE_UNITS);
+        ((MetalContext*)_context)->m_TextureUnits[unit] = texture;
     }
 
     static void MetalDisableTexture(HContext _context, uint32_t unit, HTexture texture)
     {
-
+        assert(unit < DM_MAX_TEXTURE_UNITS);
+        ((MetalContext*)_context)->m_TextureUnits[unit] = 0;
     }
 
     static uint32_t MetalGetMaxTextureSize(HContext _context)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+        if (context->m_Device->supportsFamily(MTL::GPUFamilyApple5) ||
+            context->m_Device->supportsFamily(MTL::GPUFamilyMac1))
+        {
+            return 16384;
+        }
+        return 8192;
     }
 
     static uint32_t MetalGetTextureStatusFlags(HContext _context, HTexture texture)
     {
-        return 0;
+        return TEXTURE_STATUS_OK;
     }
 
     static void MetalReadPixels(HContext _context, int32_t x, int32_t y, uint32_t width, uint32_t height, void* buffer, uint32_t buffer_size)
@@ -1753,7 +2323,7 @@ namespace dmGraphics
 
     static HandleResult MetalGetTextureHandle(HTexture texture, void** out_handle)
     {
-        return (HandleResult) 0;
+        return HANDLE_RESULT_OK;
     }
 
     static bool MetalIsExtensionSupported(HContext _context, const char* extension)
@@ -1784,7 +2354,7 @@ namespace dmGraphics
 
     static uint8_t MetalGetNumTextureHandles(HContext _context, HTexture texture)
     {
-        return 0;
+        return 1;
     }
 
     static uint32_t MetalGetTextureUsageHintFlags(HContext _context, HTexture texture)
@@ -1794,12 +2364,31 @@ namespace dmGraphics
 
     static uint8_t MetalGetTexturePageCount(HTexture texture)
     {
-        return 0;
+        DM_MUTEX_SCOPED_LOCK(g_MetalContext->m_AssetHandleContainerMutex);
+        MetalTexture* tex = GetAssetFromContainer<MetalTexture>(g_MetalContext->m_AssetHandleContainer, texture);
+        return tex ? tex->m_PageCount : 0;
     }
 
     static bool MetalIsAssetHandleValid(HContext _context, HAssetHandle asset_handle)
     {
-        return 0;
+        if (asset_handle == 0)
+        {
+            return false;
+        }
+
+        MetalContext* context = (MetalContext*) _context;
+        AssetType type         = GetAssetType(asset_handle);
+
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+        if (type == ASSET_TYPE_TEXTURE)
+        {
+            return GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, asset_handle) != 0;
+        }
+        else if (type == ASSET_TYPE_RENDER_TARGET)
+        {
+            return GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, asset_handle) != 0;
+        }
+        return false;
     }
 
     static void MetalInvalidateGraphicsHandles(HContext _context)

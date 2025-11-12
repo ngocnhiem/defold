@@ -17,6 +17,8 @@
 
 #include <Metal.hpp>
 
+#include <dmsdk/dlib/atomic.h>
+
 #include <dlib/hashtable.h>
 #include <dlib/opaque_handle_container.h>
 
@@ -74,6 +76,45 @@ namespace dmGraphics
         const static MetalResourceType GetType()
         {
             return RESOURCE_TYPE_DEVICE_BUFFER;
+        }
+    };
+
+    struct MetalTextureSampler
+    {
+        MTL::SamplerState* m_Sampler;
+        TextureFilter      m_MinFilter;
+        TextureFilter      m_MagFilter;
+        TextureWrap        m_AddressModeU;
+        TextureWrap        m_AddressModeV;
+        float              m_MaxAnisotropy;
+        float              m_MinLod;
+        float              m_MaxLod;
+    };
+
+    struct MetalTexture
+    {
+        MTL::Texture*     m_Texture;
+
+        TextureType       m_Type;
+        TextureFormat     m_GraphicsFormat;
+
+        int32_atomic_t    m_DataState; // data state per mip-map (mipX = bitX). 0=ok, 1=pending
+        uint16_t          m_Width;
+        uint16_t          m_Height;
+        uint16_t          m_Depth;
+        uint16_t          m_OriginalWidth;
+        uint16_t          m_OriginalHeight;
+        uint16_t          m_OriginalDepth;
+        uint16_t          m_MipMapCount         : 5;
+        uint16_t          m_TextureSamplerIndex : 10;
+        uint32_t          m_Destroyed           : 1;
+        uint32_t          m_UsageHintFlags      : 8;
+        uint8_t           m_LayerCount;
+        uint8_t           m_PageCount; // page count of texture array
+
+        const static MetalResourceType GetType()
+        {
+            return RESOURCE_TYPE_TEXTURE;
         }
     };
 
@@ -154,11 +195,18 @@ namespace dmGraphics
         MTL::CommandQueue*                 m_CommandQueue;
         PipelineState                      m_PipelineState;
         PipelineCache                      m_PipelineCache;
+        dmArray<MetalTextureSampler>       m_TextureSamplers;
+        HTexture                           m_TextureUnits[DM_MAX_TEXTURE_UNITS];
         dmOpaqueHandleContainer<uintptr_t> m_AssetHandleContainer;
         VertexDeclaration                  m_MainVertexDeclaration[MAX_VERTEX_BUFFERS];
         MetalViewport                      m_MainViewport;
         HRenderTarget                      m_MainRenderTarget;
         MTL::Texture*                      m_MainDepthStencilTexture;
+
+        // Async process resources
+        dmJobThread::HContext              m_JobThread;
+        SetTextureAsyncState               m_SetTextureAsyncState;
+        dmMutex::HMutex                    m_AssetHandleContainerMutex;
 
         // Per-frame metal resources
         CA::MetalDrawable*                 m_Drawable;
@@ -175,16 +223,21 @@ namespace dmGraphics
         MetalPipeline*                     m_CurrentPipeline;
         HRenderTarget                      m_CurrentRenderTarget;
 
+        uint64_t                           m_TextureFormatSupport;
         TextureFilter                      m_DefaultTextureMinFilter;
         TextureFilter                      m_DefaultTextureMagFilter;
         uint32_t                           m_Width;
         uint32_t                           m_Height;
 
-        uint32_t                           m_CurrentFrameInFlight : 2;
-        uint32_t                           m_NumFramesInFlight    : 2;
-        uint32_t                           m_ViewportChanged      : 1;
-        uint32_t                           m_CullFaceChanged      : 1;
-        uint32_t                           m_FrameBegun           : 1;
+        uint32_t                           m_CurrentFrameInFlight    : 2;
+        uint32_t                           m_NumFramesInFlight       : 2;
+        uint32_t                           m_ViewportChanged         : 1;
+        uint32_t                           m_CullFaceChanged         : 1;
+        uint32_t                           m_FrameBegun              : 1;
+        uint32_t                           m_ASTCSupport             : 1;
+        // See OpenGL backend: separate flag for ASTC array textures
+        uint32_t                           m_ASTCArrayTextureSupport : 1;
+        uint32_t                           m_AsyncProcessingSupport  : 1;
     };
 }
 
