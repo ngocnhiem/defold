@@ -276,10 +276,10 @@ namespace dmGraphics
 
     MetalArgumentBinding MetalArgumentBufferPool::Bind(const MetalContext* context, MTL::ArgumentEncoder* encoder)
     {
-        uint32_t encode_size = encoder->encodedLength();
-        assert(encode_size > 0);
+        uint32_t encode_size_aligned = DM_ALIGN(encoder->encodedLength(), 16);
+        assert(encode_size_aligned > 0);
 
-        MetalConstantScratchBuffer* current = Allocate(context, encode_size);
+        MetalConstantScratchBuffer* current = Allocate(context, encode_size_aligned);
 
         MetalArgumentBinding arg_binding = {};
         arg_binding.m_Buffer = current->m_DeviceBuffer.m_Buffer;
@@ -1159,13 +1159,7 @@ namespace dmGraphics
             ShaderResourceBinding* res        = next->m_Res;
             MTL::ArgumentEncoder* arg_encoder = program->m_ArgumentEncoders[res->m_Set];
 
-            //MTL::Buffer*          arg_buf     = program->m_ArgumentBuffers[res->m_Set];
-            //assert(arg_encoder && arg_buf);
-            //arg_encoder->setArgumentBuffer(arg_buf, 0);
-
             uint32_t msl_index = program->m_ResourceToMslIndex[res->m_Set][res->m_Binding];
-
-            // printf("res set=%u binding=%u -> msl_index=%u\n", res->m_Set, res->m_Binding, msl_index);
 
             switch (res->m_BindingFamily)
             {
@@ -1995,49 +1989,48 @@ namespace dmGraphics
     }
 
     static void MetalCopyToTexture(MetalContext* context,
-                               const TextureParams& params,
-                               uint32_t tex_data_size,
-                               void* tex_data_ptr,
+                                   const TextureParams& params,
+                                   uint32_t tex_data_size,
+                                   void* tex_data_ptr,
                                    MetalTexture* texture)
     {
-        using namespace MTL;
-
         MTL::Device* device = context->m_Device;
 
         uint32_t width  = params.m_Width;
         uint32_t height = params.m_Height;
-        uint32_t depth  = dmMath::Max( (uint16_t) 1u, params.m_Depth);
+        uint32_t depth  = dmMath::Max((uint16_t)1u, params.m_Depth);
+        uint8_t  bpp    = GetTextureFormatBitsPerPixel(params.m_Format);
 
-        uint8_t bpp = GetTextureFormatBitsPerPixel(params.m_Format);
         uint32_t bytesPerRow   = (bpp / 8) * width;
         uint32_t bytesPerImage = bytesPerRow * height;
 
         // Create staging (upload) buffer
-        NS::UInteger bufferSize = tex_data_size;
-        MTL::Buffer* stagingBuffer = device->newBuffer(bufferSize, MTL::ResourceStorageModeShared);
+        MTL::Buffer* stagingBuffer = device->newBuffer(tex_data_size, MTL::ResourceStorageModeShared);
         memcpy(stagingBuffer->contents(), tex_data_ptr, tex_data_size);
 
-        // Create command buffer + blit encoder
+        // Command buffer + blit encoder
         MTL::CommandBuffer* commandBuffer = context->m_CommandQueue->commandBuffer();
         MTL::BlitCommandEncoder* blitEncoder = commandBuffer->blitCommandEncoder();
 
-        // Copy each array layer (or just one)
+        // Compute copy region
+        MTL::Origin origin = { params.m_X, params.m_Y, params.m_Z };
+        MTL::Size   size   = { width, height, depth };
+
         for (uint32_t layer = 0; layer < texture->m_LayerCount; ++layer)
         {
-            MTL::Origin origin = { 0, 0, 0 };
-            MTL::Size size = { width, height, depth };
+            // Source offset — each layer data follows the previous one
+            uint32_t srcOffset = layer * bytesPerImage;
 
-            // Copy from the staging buffer to the GPU texture
             blitEncoder->copyFromBuffer(
                 stagingBuffer,
-                layer * bytesPerImage,  // source offset
+                srcOffset,
                 bytesPerRow,
                 bytesPerImage,
                 size,
                 texture->m_Texture,
-                layer,                  // slice
-                params.m_MipMap,        // mip level
-                origin
+                params.m_Slice + layer,     // destination array slice
+                params.m_MipMap,            // destination mip level
+                origin                      // subregion offset
             );
         }
 
@@ -2047,7 +2040,6 @@ namespace dmGraphics
 
         stagingBuffer->release();
     }
-
 
     static void MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params)
     {
@@ -2091,8 +2083,15 @@ namespace dmGraphics
                              texture->m_Depth  != params.m_Depth ||
                              texture->m_GraphicsFormat != params.m_Format;
 
-        if (needsRecreate)
+        if (params.m_SubUpdate)
         {
+            // Same as vulkan
+            tex_data_size = params.m_Width * params.m_Height * tex_bpp * tex_layer_count;
+        }
+        else if (needsRecreate)
+        {
+            assert(!params.m_SubUpdate);
+
             MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
 
             // Set type
