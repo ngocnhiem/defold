@@ -1536,6 +1536,7 @@ class Configuration(object):
         verbose = '-v' if is_verbose else ''
         test = '' if (self.skip_tests or not supports_tests) else 'run_tests'
         build_test = 'build_tests' if build_tests else ''
+        cmake_build_tests = 'ON' if build_tests else 'OFF'
         install = 'install'
 
         trace = '' #'--trace-expand'
@@ -1545,7 +1546,7 @@ class Configuration(object):
         log_cmd_config = f'CMake configure {lib}'
         self.build_tracker.start_command(log_cmd_config)
 
-        cmake_configure_args = f"cmake -S . -B build -GNinja {trace} -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS=ON".split()
+        cmake_configure_args = f"cmake -S . -B build -GNinja {trace} -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS={cmake_build_tests}".split()
         run.env_command(self._form_env(), cmake_configure_args, cwd = libdir)
 
         self.build_tracker.end_command(log_cmd_config)
