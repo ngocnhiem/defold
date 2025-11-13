@@ -49,9 +49,10 @@ namespace dmGraphics
 
     DM_REGISTER_GRAPHICS_ADAPTER(GraphicsAdapterMetal, &g_Metal_adapter, MetalIsSupported, MetalRegisterFunctionTable, MetalGetContext, ADAPTER_FAMILY_PRIORITY_METAL);
 
-    static int16_t       CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy);
     static MetalTexture* MetalNewTextureInternal(const TextureCreationParams& params);
     static void          MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
+    static void          CreateMetalTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage);
+    static int16_t       CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy);
 
     MetalContext::MetalContext(const ContextParams& params)
     {
@@ -302,6 +303,10 @@ namespace dmGraphics
         {
             rt                          = new MetalRenderTarget(DM_RENDERTARGET_BACKBUFFER_ID);
             context->m_MainRenderTarget = StoreAssetInContainer(context->m_AssetHandleContainer, rt, ASSET_TYPE_RENDER_TARGET);
+            MetalTexture* color         = new MetalTexture();
+            rt->m_TextureColor[0]       = StoreAssetInContainer(context->m_AssetHandleContainer, color, ASSET_TYPE_TEXTURE);
+            MetalTexture* depth         = new MetalTexture();
+            rt->m_TextureDepthStencil   = StoreAssetInContainer(context->m_AssetHandleContainer, depth, ASSET_TYPE_TEXTURE);
         }
 
         rt->m_ColorFormat[0]       = MTL::PixelFormatBGRA8Unorm;
@@ -532,6 +537,103 @@ namespace dmGraphics
         out_mag_filter = context->m_DefaultTextureMagFilter;
     }
 
+    static void EndRenderPass(MetalContext* context)
+    {
+        if (!context->m_RenderCommandEncoder)
+            return;
+
+        context->m_RenderCommandEncoder->endEncoding();
+        context->m_RenderCommandEncoder = nullptr;
+
+        MetalRenderTarget* rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_CurrentRenderTarget);
+
+        if (rt)
+        {
+            rt->m_IsBound = 0;
+        }
+
+        // context->m_CurrentRenderTarget = 0;
+    }
+
+    static void BeginRenderPass(MetalContext* context, HRenderTarget render_target)
+    {
+        DM_MUTEX_SCOPED_LOCK(context->m_AssetHandleContainerMutex);
+
+        MetalRenderTarget* current_rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_CurrentRenderTarget);
+        MetalRenderTarget* rt         = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, render_target);
+
+        if (current_rt && current_rt->m_Id == rt->m_Id && current_rt->m_IsBound)
+            return;
+
+        if (current_rt && current_rt->m_IsBound)
+            EndRenderPass(context);
+
+        // Use the frame’s command buffer
+        MetalFrameResource& frame = context->m_FrameResources[context->m_CurrentFrameInFlight];
+        MTL::CommandBuffer* commandBuffer = frame.m_CommandBuffer;
+        assert(commandBuffer);
+
+        // Build a render pass descriptor
+        MTL::RenderPassDescriptor* rpDesc = MTL::RenderPassDescriptor::alloc()->init();
+
+        // --- Configure color attachments ---
+        for (uint32_t i = 0; i < rt->m_ColorAttachmentCount; ++i)
+        {
+            if (!rt->m_TextureColor[i])
+                continue;
+
+            MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, rt->m_TextureColor[i]);
+            if (!tex || !tex->m_Texture)
+                continue;
+
+            MTL::RenderPassColorAttachmentDescriptor* colorAttachment = rpDesc->colorAttachments()->object(i);
+            colorAttachment->setTexture(tex->m_Texture);
+            colorAttachment->setLoadAction(MTL::LoadActionClear);
+            colorAttachment->setStoreAction(MTL::StoreActionStore);
+            colorAttachment->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 1.0)); // TODO: Remove?
+        }
+
+        // --- Configure depth/stencil attachment ---
+        if (rt->m_TextureDepthStencil)
+        {
+            MetalTexture* tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, rt->m_TextureDepthStencil);
+            if (tex && tex->m_Texture)
+            {
+                MTL::RenderPassDepthAttachmentDescriptor* depthAttachment = rpDesc->depthAttachment();
+                depthAttachment->setTexture(tex->m_Texture);
+                depthAttachment->setLoadAction(MTL::LoadActionClear);
+                depthAttachment->setStoreAction(MTL::StoreActionStore);
+                depthAttachment->setClearDepth(1.0);
+
+                MTL::RenderPassStencilAttachmentDescriptor* stencilAttachment = rpDesc->stencilAttachment();
+                stencilAttachment->setTexture(tex->m_Texture);
+                stencilAttachment->setLoadAction(MTL::LoadActionClear);
+                stencilAttachment->setStoreAction(MTL::StoreActionStore);
+                stencilAttachment->setClearStencil(0);
+            }
+        }
+
+        // Create a render encoder for this render target
+        MTL::RenderCommandEncoder* renderEncoder = commandBuffer->renderCommandEncoder(rpDesc);
+
+        // Configure viewport/scissor
+        const uint32_t width  = rt->m_ColorTextureParams[0].m_Width;
+        const uint32_t height = rt->m_ColorTextureParams[0].m_Height;
+
+        MTL::Viewport viewport = {0.0, 0.0, (double)width, (double)height, 0.0, 1.0};
+        renderEncoder->setViewport(viewport);
+
+        MTL::ScissorRect scissor = {0, 0, width, height};
+        renderEncoder->setScissorRect(scissor);
+
+        // Track the active encoder
+        context->m_RenderCommandEncoder = renderEncoder;
+        context->m_CurrentRenderTarget  = render_target;
+        rt->m_IsBound                   = 1;
+
+        rpDesc->release();
+    }
+
     static void MetalBeginFrame(HContext _context)
     {
         MetalContext* context = (MetalContext*) _context;
@@ -539,33 +641,26 @@ namespace dmGraphics
         MetalFrameResource& frame       = context->m_FrameResources[context->m_CurrentFrameInFlight];
         context->m_AutoReleasePool      = NS::AutoreleasePool::alloc()->init();
         context->m_Drawable             = (__bridge CA::MetalDrawable*)[context->m_Layer nextDrawable];
-        context->m_RenderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+        //context->m_RenderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
         context->m_FrameBegun           = 1;
 
         frame.m_CommandBuffer = context->m_CommandQueue->commandBuffer();
         frame.m_ConstantScratchBuffer.Rewind();
         frame.m_ArgumentBufferPool.Rewind();
 
-        auto colorAttachment = context->m_RenderPassDescriptor->colorAttachments()->object(0);
-        colorAttachment->setTexture(context->m_Drawable->texture());
-        colorAttachment->setLoadAction(MTL::LoadActionClear);
-        colorAttachment->setStoreAction(MTL::StoreActionStore);
-        colorAttachment->setClearColor(MTL::ClearColor(0.1, 0.2, 0.4, 1.0));
+        // Setup the initial render pass state
+        context->m_RenderPassDescriptor  = NULL;
+        context->m_RenderCommandEncoder  = NULL;
 
-        // Depth/stencil attachment
-        auto depthAttachment = context->m_RenderPassDescriptor->depthAttachment();
-        depthAttachment->setTexture(context->m_MainDepthStencilTexture);
-        depthAttachment->setLoadAction(MTL::LoadActionClear);
-        depthAttachment->setStoreAction(MTL::StoreActionDontCare);
-        depthAttachment->setClearDepth(1.0);
+        MetalRenderTarget* rt   = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_MainRenderTarget);
+        MetalTexture* color_tex = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, rt->m_TextureColor[0]);
+        MetalTexture* ds_tex    = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, rt->m_TextureDepthStencil);
 
-        auto stencilAttachment = context->m_RenderPassDescriptor->stencilAttachment();
-        stencilAttachment->setTexture(context->m_MainDepthStencilTexture);
-        stencilAttachment->setLoadAction(MTL::LoadActionClear);
-        stencilAttachment->setStoreAction(MTL::StoreActionDontCare);
-        stencilAttachment->setClearStencil(0);
+        color_tex->m_Texture    = context->m_Drawable->texture();
+        ds_tex->m_Texture       = context->m_MainDepthStencilTexture;
 
-        context->m_RenderCommandEncoder = frame.m_CommandBuffer->renderCommandEncoder(context->m_RenderPassDescriptor);
+        rt->m_ColorTextureParams[0].m_Width  = context->m_Drawable->texture()->width();
+        rt->m_ColorTextureParams[0].m_Height = context->m_Drawable->texture()->height();
     }
 
     static void MetalCommandBufferCompleted(MTL::CommandBuffer* cb, void* userData)
@@ -579,7 +674,8 @@ namespace dmGraphics
     {
         MetalContext* context = (MetalContext*) _context;
 
-        context->m_RenderCommandEncoder->endEncoding();
+        // End the current render pass
+        EndRenderPass(context);
 
         MetalFrameResource& frame = context->m_FrameResources[context->m_CurrentFrameInFlight];
 
@@ -1122,6 +1218,71 @@ namespace dmGraphics
         return cached_pipeline;
     }
 
+    static inline MTL::PixelFormat GetMetalPixelFormat(TextureFormat format)
+    {
+        switch (format)
+        {
+            case TEXTURE_FORMAT_LUMINANCE:         return MTL::PixelFormatR8Unorm;
+            case TEXTURE_FORMAT_LUMINANCE_ALPHA:   return MTL::PixelFormatRG8Unorm;
+            case TEXTURE_FORMAT_RGB:               return MTL::PixelFormatRGBA8Unorm; // expand RGB to RGBA
+            case TEXTURE_FORMAT_RGBA:              return MTL::PixelFormatRGBA8Unorm;
+            case TEXTURE_FORMAT_RGB_16BPP:         return MTL::PixelFormatB5G6R5Unorm; // closest 16-bit
+            //case TEXTURE_FORMAT_RGBA_16BPP:        return MTL::PixelFormatRGBA4Unorm;
+            case TEXTURE_FORMAT_DEPTH:             return MTL::PixelFormatInvalid;
+            case TEXTURE_FORMAT_STENCIL:           return MTL::PixelFormatInvalid;
+
+            // PVRTC
+            case TEXTURE_FORMAT_RGB_PVRTC_2BPPV1:  return MTL::PixelFormatPVRTC_RGB_2BPP;
+            case TEXTURE_FORMAT_RGB_PVRTC_4BPPV1:  return MTL::PixelFormatPVRTC_RGB_4BPP;
+            case TEXTURE_FORMAT_RGBA_PVRTC_2BPPV1: return MTL::PixelFormatPVRTC_RGBA_2BPP;
+            case TEXTURE_FORMAT_RGBA_PVRTC_4BPPV1: return MTL::PixelFormatPVRTC_RGBA_4BPP;
+
+            // ETC2
+            case TEXTURE_FORMAT_RGB_ETC1:          return MTL::PixelFormatETC2_RGB8;
+            //case TEXTURE_FORMAT_RGBA_ETC2:         return MTL::PixelFormatETC2_RGBA8;
+
+            // BC / DXT (macOS only)
+            case TEXTURE_FORMAT_RGB_BC1:           return MTL::PixelFormatBC1_RGBA;
+            case TEXTURE_FORMAT_RGBA_BC3:          return MTL::PixelFormatBC3_RGBA;
+            //case TEXTURE_FORMAT_RGBA_BC7:          return MTL::PixelFormatBC7_RGBA;
+            case TEXTURE_FORMAT_R_BC4:             return MTL::PixelFormatBC4_RUnorm;
+            case TEXTURE_FORMAT_RG_BC5:            return MTL::PixelFormatBC5_RGUnorm;
+
+            // Floating point
+            case TEXTURE_FORMAT_RGB16F:            return MTL::PixelFormatRGBA16Float; // expand RGB -> RGBA
+            case TEXTURE_FORMAT_RGB32F:            return MTL::PixelFormatRGBA32Float; // expand RGB -> RGBA
+            case TEXTURE_FORMAT_RGBA16F:           return MTL::PixelFormatRGBA16Float;
+            case TEXTURE_FORMAT_RGBA32F:           return MTL::PixelFormatRGBA32Float;
+            case TEXTURE_FORMAT_R16F:              return MTL::PixelFormatR16Float;
+            case TEXTURE_FORMAT_RG16F:             return MTL::PixelFormatRG16Float;
+            case TEXTURE_FORMAT_R32F:              return MTL::PixelFormatR32Float;
+            case TEXTURE_FORMAT_RG32F:             return MTL::PixelFormatRG32Float;
+
+            // Unsigned integer
+            case TEXTURE_FORMAT_RGBA32UI:          return MTL::PixelFormatRGBA32Uint;
+            case TEXTURE_FORMAT_R32UI:             return MTL::PixelFormatR32Uint;
+            case TEXTURE_FORMAT_BGRA8U:            return MTL::PixelFormatBGRA8Unorm;
+
+            // ASTC
+            case TEXTURE_FORMAT_RGBA_ASTC_4X4:    return MTL::PixelFormatASTC_4x4_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_5X4:    return MTL::PixelFormatASTC_5x4_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_5X5:    return MTL::PixelFormatASTC_5x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_6X5:    return MTL::PixelFormatASTC_6x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_6X6:    return MTL::PixelFormatASTC_6x6_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_8X5:    return MTL::PixelFormatASTC_8x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_8X6:    return MTL::PixelFormatASTC_8x6_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_8X8:    return MTL::PixelFormatASTC_8x8_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X5:   return MTL::PixelFormatASTC_10x5_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X6:   return MTL::PixelFormatASTC_10x6_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X8:   return MTL::PixelFormatASTC_10x8_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_10X10:  return MTL::PixelFormatASTC_10x10_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_12X10:  return MTL::PixelFormatASTC_12x10_LDR;
+            case TEXTURE_FORMAT_RGBA_ASTC_12X12:  return MTL::PixelFormatASTC_12x12_LDR;
+
+            default: return MTL::PixelFormatInvalid;
+        }
+    }
+
     static inline MetalTexture* GetDefaultTexture(MetalContext* context, ShaderDesc::ShaderDataType type)
     {
         switch(type)
@@ -1237,10 +1398,10 @@ namespace dmGraphics
 
     static void DrawSetup(MetalContext* context)
     {
-        assert(context->m_RenderCommandEncoder);
-        MTL::RenderCommandEncoder* encoder = context->m_RenderCommandEncoder;
-
         MetalRenderTarget* current_rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_CurrentRenderTarget);
+        BeginRenderPass(context, context->m_CurrentRenderTarget);
+
+        MTL::RenderCommandEncoder* encoder = context->m_RenderCommandEncoder;
 
         VertexDeclaration* vx_declarations[MAX_VERTEX_BUFFERS] = {};
         uint32_t num_vx_buffers = 0;
@@ -1825,27 +1986,170 @@ namespace dmGraphics
 
     static HRenderTarget MetalNewRenderTarget(HContext _context, uint32_t buffer_type_flags, const RenderTargetCreationParams params)
     {
-        return 0;
+        MetalContext* context = (MetalContext*)_context;
+
+        // allocate the render target object (ID helper reused from your Vulkan path)
+        MetalRenderTarget* rt = new MetalRenderTarget(GetNextRenderTargetId());
+
+        // copy params into RT object
+        memcpy(rt->m_ColorTextureParams, params.m_ColorBufferParams, sizeof(TextureParams) * MAX_BUFFER_COLOR_ATTACHMENTS);
+        // depth/stencil choice as in Vulkan
+        rt->m_DepthStencilTextureParams = (buffer_type_flags & BUFFER_TYPE_DEPTH_BIT) ?
+            params.m_DepthBufferParams :
+            params.m_StencilBufferParams;
+
+        // We don't want the engine to keep the pointer to raw data in the params stored on the RT,
+        // so clear any pointers inside the stored TextureParams (same as Vulkan)
+        for (uint32_t i = 0; i < MAX_BUFFER_COLOR_ATTACHMENTS; ++i)
+        {
+            ClearTextureParamsData(rt->m_ColorTextureParams[i]);
+        }
+        ClearTextureParamsData(rt->m_DepthStencilTextureParams);
+
+        // local arrays for bookkeeping while creating
+        BufferType buffer_types[MAX_BUFFER_COLOR_ATTACHMENTS];
+        HTexture texture_color[MAX_BUFFER_COLOR_ATTACHMENTS];
+        HTexture texture_depth_stencil = 0;
+
+        const bool has_depth   = (buffer_type_flags & BUFFER_TYPE_DEPTH_BIT) != 0;
+        const bool has_stencil = (buffer_type_flags & BUFFER_TYPE_STENCIL_BIT) != 0;
+        uint8_t color_index = 0;
+
+        // color bits to check
+        BufferType color_buffer_flags[] = {
+            BUFFER_TYPE_COLOR0_BIT,
+            BUFFER_TYPE_COLOR1_BIT,
+            BUFFER_TYPE_COLOR2_BIT,
+            BUFFER_TYPE_COLOR3_BIT,
+        };
+
+        // create color attachments
+        for (int i = 0; i < MAX_BUFFER_COLOR_ATTACHMENTS; ++i)
+        {
+            BufferType buffer_type = color_buffer_flags[i];
+            if ((buffer_type_flags & buffer_type) == 0)
+                continue;
+
+            TextureParams& color_buffer_params = rt->m_ColorTextureParams[i];
+
+            // promote RGB -> RGBA (Metal doesn't support 3-channel render targets reliably)
+            if (color_buffer_params.m_Format == TEXTURE_FORMAT_RGB)
+            {
+                color_buffer_params.m_Format = TEXTURE_FORMAT_RGBA;
+            }
+
+            // Create engine texture object using your NewTexture helper (keeps bookkeeping consistent)
+            // The Vulkan path used params.m_ColorBufferCreationParams[i]; mirror that here.
+            HTexture new_texture_color_handle = NewTexture(context, params.m_ColorBufferCreationParams[i]);
+            MetalTexture* new_texture_color = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, new_texture_color_handle);
+            assert(new_texture_color);
+
+            CreateMetalTexture(context, new_texture_color, color_buffer_params, MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+
+            texture_color[color_index] = new_texture_color_handle;
+            buffer_types[color_index] = buffer_type;
+            color_index++;
+        }
+
+        // create depth/stencil attachment if requested
+        if (has_depth || has_stencil)
+        {
+            const TextureCreationParams& ds_create_params = has_depth ? params.m_DepthBufferCreationParams : params.m_StencilBufferCreationParams;
+
+            // create engine texture wrapper for depth/stencil
+            texture_depth_stencil = NewTexture(context, ds_create_params);
+            MetalTexture* depth_texture_ptr = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture_depth_stencil);
+            assert(depth_texture_ptr);
+
+            CreateMetalTexture(context, depth_texture_ptr, rt->m_DepthStencilTextureParams, MTL::TextureUsageRenderTarget);
+        }
+
+        // record info into the render target object
+        rt->m_ColorAttachmentCount = color_index;
+        for (uint32_t c = 0; c < (uint32_t)color_index; ++c)
+        {
+            rt->m_TextureColor[c] = texture_color[c];
+            rt->m_ColorFormat[c]  = GetMetalPixelFormat(rt->m_ColorTextureParams[c].m_Format);
+        }
+        if (texture_depth_stencil)
+        {
+            rt->m_TextureDepthStencil = texture_depth_stencil;
+            rt->m_DepthStencilFormat = MTL::PixelFormatDepth32Float_Stencil8; // or chosenDepthFormat
+        }
+
+        // store the RT in the asset container and return handle
+        return StoreAssetInContainer(context->m_AssetHandleContainer, rt, ASSET_TYPE_RENDER_TARGET);
     }
 
     static void MetalDeleteRenderTarget(HContext _context, HRenderTarget render_target)
     {
+        MetalContext* context = (MetalContext*) _context;
+        MetalRenderTarget* rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, render_target);
+        context->m_AssetHandleContainer.Release(render_target);
 
+        for (int i = 0; i < MAX_BUFFER_COLOR_ATTACHMENTS; ++i)
+        {
+            if (rt->m_TextureColor[i])
+            {
+                DeleteTexture(context, rt->m_TextureColor[i]);
+            }
+        }
+
+        if (rt->m_TextureDepthStencil)
+        {
+            DeleteTexture(context, rt->m_TextureDepthStencil);
+        }
+
+        delete rt;
     }
 
     static void MetalSetRenderTarget(HContext _context, HRenderTarget render_target, uint32_t transient_buffer_types)
     {
-
+        (void) transient_buffer_types;
+        MetalContext* context = (MetalContext*) _context;
+        context->m_ViewportChanged = 1;
+        BeginRenderPass(context, render_target != 0x0 ? render_target : context->m_MainRenderTarget);
     }
 
     static HTexture MetalGetRenderTargetTexture(HContext _context, HRenderTarget render_target, BufferType buffer_type)
     {
+        MetalContext* context = (MetalContext*)_context;
+        MetalRenderTarget* rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, render_target);
+
+        if (IsColorBufferType(buffer_type))
+        {
+            return rt->m_TextureColor[GetBufferTypeIndex(buffer_type)];
+        }
+        else if (buffer_type == BUFFER_TYPE_DEPTH_BIT || buffer_type == BUFFER_TYPE_STENCIL_BIT)
+        {
+            return rt->m_TextureDepthStencil;
+        }
         return 0;
     }
 
     static void MetalGetRenderTargetSize(HContext _context, HRenderTarget render_target, BufferType buffer_type, uint32_t& width, uint32_t& height)
     {
+        MetalContext* context = (MetalContext*)_context;
+        MetalRenderTarget* rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, render_target);
+        TextureParams* params = 0;
 
+        if (IsColorBufferType(buffer_type))
+        {
+            uint32_t i = GetBufferTypeIndex(buffer_type);
+            assert(i < MAX_BUFFER_COLOR_ATTACHMENTS);
+            params = &rt->m_ColorTextureParams[i];
+        }
+        else if (buffer_type == BUFFER_TYPE_DEPTH_BIT || buffer_type == BUFFER_TYPE_STENCIL_BIT)
+        {
+            params = &rt->m_DepthStencilTextureParams;
+        }
+        else
+        {
+            assert(0);
+        }
+
+        width  = params->m_Width;
+        height = params->m_Height;
     }
 
     static void MetalSetRenderTargetSize(HContext _context, HRenderTarget render_target, uint32_t width, uint32_t height)
@@ -1923,71 +2227,6 @@ namespace dmGraphics
         context->m_AssetHandleContainer.Release(texture);
     }
 
-    static MTL::PixelFormat GetMetalPixelFormat(TextureFormat format)
-    {
-        switch (format)
-        {
-            case TEXTURE_FORMAT_LUMINANCE:         return MTL::PixelFormatR8Unorm;
-            case TEXTURE_FORMAT_LUMINANCE_ALPHA:   return MTL::PixelFormatRG8Unorm;
-            case TEXTURE_FORMAT_RGB:               return MTL::PixelFormatRGBA8Unorm; // expand RGB to RGBA
-            case TEXTURE_FORMAT_RGBA:              return MTL::PixelFormatRGBA8Unorm;
-            case TEXTURE_FORMAT_RGB_16BPP:         return MTL::PixelFormatB5G6R5Unorm; // closest 16-bit
-            //case TEXTURE_FORMAT_RGBA_16BPP:        return MTL::PixelFormatRGBA4Unorm;
-            case TEXTURE_FORMAT_DEPTH:             return MTL::PixelFormatInvalid;
-            case TEXTURE_FORMAT_STENCIL:           return MTL::PixelFormatInvalid;
-
-            // PVRTC
-            case TEXTURE_FORMAT_RGB_PVRTC_2BPPV1:  return MTL::PixelFormatPVRTC_RGB_2BPP;
-            case TEXTURE_FORMAT_RGB_PVRTC_4BPPV1:  return MTL::PixelFormatPVRTC_RGB_4BPP;
-            case TEXTURE_FORMAT_RGBA_PVRTC_2BPPV1: return MTL::PixelFormatPVRTC_RGBA_2BPP;
-            case TEXTURE_FORMAT_RGBA_PVRTC_4BPPV1: return MTL::PixelFormatPVRTC_RGBA_4BPP;
-
-            // ETC2
-            case TEXTURE_FORMAT_RGB_ETC1:          return MTL::PixelFormatETC2_RGB8;
-            //case TEXTURE_FORMAT_RGBA_ETC2:         return MTL::PixelFormatETC2_RGBA8;
-
-            // BC / DXT (macOS only)
-            case TEXTURE_FORMAT_RGB_BC1:           return MTL::PixelFormatBC1_RGBA;
-            case TEXTURE_FORMAT_RGBA_BC3:          return MTL::PixelFormatBC3_RGBA;
-            //case TEXTURE_FORMAT_RGBA_BC7:          return MTL::PixelFormatBC7_RGBA;
-            case TEXTURE_FORMAT_R_BC4:             return MTL::PixelFormatBC4_RUnorm;
-            case TEXTURE_FORMAT_RG_BC5:            return MTL::PixelFormatBC5_RGUnorm;
-
-            // Floating point
-            case TEXTURE_FORMAT_RGB16F:            return MTL::PixelFormatRGBA16Float; // expand RGB -> RGBA
-            case TEXTURE_FORMAT_RGB32F:            return MTL::PixelFormatRGBA32Float; // expand RGB -> RGBA
-            case TEXTURE_FORMAT_RGBA16F:           return MTL::PixelFormatRGBA16Float;
-            case TEXTURE_FORMAT_RGBA32F:           return MTL::PixelFormatRGBA32Float;
-            case TEXTURE_FORMAT_R16F:              return MTL::PixelFormatR16Float;
-            case TEXTURE_FORMAT_RG16F:             return MTL::PixelFormatRG16Float;
-            case TEXTURE_FORMAT_R32F:              return MTL::PixelFormatR32Float;
-            case TEXTURE_FORMAT_RG32F:             return MTL::PixelFormatRG32Float;
-
-            // Unsigned integer
-            case TEXTURE_FORMAT_RGBA32UI:          return MTL::PixelFormatRGBA32Uint;
-            case TEXTURE_FORMAT_R32UI:             return MTL::PixelFormatR32Uint;
-            case TEXTURE_FORMAT_BGRA8U:            return MTL::PixelFormatBGRA8Unorm;
-
-            // ASTC
-            case TEXTURE_FORMAT_RGBA_ASTC_4X4:    return MTL::PixelFormatASTC_4x4_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_5X4:    return MTL::PixelFormatASTC_5x4_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_5X5:    return MTL::PixelFormatASTC_5x5_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_6X5:    return MTL::PixelFormatASTC_6x5_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_6X6:    return MTL::PixelFormatASTC_6x6_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_8X5:    return MTL::PixelFormatASTC_8x5_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_8X6:    return MTL::PixelFormatASTC_8x6_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_8X8:    return MTL::PixelFormatASTC_8x8_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_10X5:   return MTL::PixelFormatASTC_10x5_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_10X6:   return MTL::PixelFormatASTC_10x6_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_10X8:   return MTL::PixelFormatASTC_10x8_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_10X10:  return MTL::PixelFormatASTC_10x10_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_12X10:  return MTL::PixelFormatASTC_12x10_LDR;
-            case TEXTURE_FORMAT_RGBA_ASTC_12X12:  return MTL::PixelFormatASTC_12x12_LDR;
-
-            default: return MTL::PixelFormatInvalid;
-        }
-    }
-
     static void MetalCopyToTexture(MetalContext* context,
                                    const TextureParams& params,
                                    uint32_t tex_data_size,
@@ -2041,6 +2280,48 @@ namespace dmGraphics
         stagingBuffer->release();
     }
 
+    static void CreateMetalTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage)
+    {
+        uint8_t tex_layer_count = dmMath::Max(texture->m_LayerCount, params.m_LayerCount);
+        uint16_t tex_depth      = dmMath::Max(texture->m_Depth, params.m_Depth);
+
+        MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+
+        // Set type
+        if (tex_depth > 1)
+            desc->setTextureType(MTL::TextureType3D);
+        else if (tex_layer_count > 1)
+            desc->setTextureType(MTL::TextureType2DArray);
+        else
+            desc->setTextureType(MTL::TextureType2D);
+
+        // Set pixel format
+        desc->setPixelFormat(GetMetalPixelFormat(params.m_Format));
+
+        // Set dimensions
+        desc->setWidth(params.m_Width);
+        desc->setHeight(params.m_Height);
+        desc->setDepth(tex_depth);
+        desc->setArrayLength(tex_layer_count);
+        desc->setMipmapLevelCount(params.m_MipMap + 1);
+        desc->setSampleCount(1);
+        desc->setStorageMode(MTL::StorageModePrivate);
+        desc->setUsage(usage);
+
+        // Create Metal texture
+        if (texture->m_Texture)
+            texture->m_Texture->release();
+        texture->m_Texture = context->m_Device->newTexture(desc);
+        desc->release();
+
+        texture->m_Width  = params.m_Width;
+        texture->m_Height = params.m_Height;
+        texture->m_Depth  = params.m_Depth;
+        texture->m_LayerCount = tex_layer_count;
+        texture->m_GraphicsFormat = params.m_Format;
+        texture->m_MipMapCount = params.m_MipMap + 1;
+    }
+
     static void MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params)
     {
         // Reject unsupported formats
@@ -2091,42 +2372,7 @@ namespace dmGraphics
         else if (needsRecreate)
         {
             assert(!params.m_SubUpdate);
-
-            MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
-
-            // Set type
-            if (tex_depth > 1)
-                desc->setTextureType(MTL::TextureType3D);
-            else if (tex_layer_count > 1)
-                desc->setTextureType(MTL::TextureType2DArray);
-            else
-                desc->setTextureType(MTL::TextureType2D);
-
-            // Set pixel format
-            desc->setPixelFormat(GetMetalPixelFormat(params.m_Format));
-
-            // Set dimensions
-            desc->setWidth(params.m_Width);
-            desc->setHeight(params.m_Height);
-            desc->setDepth(tex_depth);
-            desc->setArrayLength(tex_layer_count);
-            desc->setMipmapLevelCount(params.m_MipMap + 1);
-            desc->setSampleCount(1);
-            desc->setStorageMode(MTL::StorageModePrivate);
-            desc->setUsage(MTL::TextureUsageShaderRead); // | MTL::TextureUsageShaderWrite);
-
-            // Create Metal texture
-            if (texture->m_Texture)
-                texture->m_Texture->release();
-            texture->m_Texture = context->m_Device->newTexture(desc);
-            desc->release();
-
-            texture->m_Width  = params.m_Width;
-            texture->m_Height = params.m_Height;
-            texture->m_Depth  = params.m_Depth;
-            texture->m_LayerCount = tex_layer_count;
-            texture->m_GraphicsFormat = params.m_Format;
-            texture->m_MipMapCount = params.m_MipMap + 1;
+            CreateMetalTexture(context, texture, params, MTL::TextureUsageShaderRead);
         }
 
         if (tex_data_ptr && tex_data_size > 0)
