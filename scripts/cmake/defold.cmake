@@ -28,6 +28,18 @@ endif()
 #include helper functions (e.g. defold_log)
 include(functions)
 
+# Disable RPATH in build and install to avoid embedding search paths
+set(CMAKE_SKIP_BUILD_RPATH ON)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH OFF)
+set(CMAKE_INSTALL_RPATH "")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
+if(APPLE)
+  set(CMAKE_MACOSX_RPATH OFF)
+endif()
+
+# Force -std=c++11 (no GNU extensions like gnu++11)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # Determine which language families we need across the toolchain logic
 set(DEFOLD_LANGUAGE_LIST C CXX)
 if(APPLE OR CMAKE_SYSTEM_NAME MATCHES "Darwin" OR CMAKE_SYSTEM_NAME MATCHES "iOS")
