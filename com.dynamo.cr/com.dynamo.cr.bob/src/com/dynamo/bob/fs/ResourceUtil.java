@@ -15,6 +15,8 @@
 package com.dynamo.bob.fs;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.Collections;
 
 public class ResourceUtil {
 
@@ -88,6 +90,10 @@ public class ResourceUtil {
         minifyPathEnabled = enable;
     }
 
+    public static boolean isMinificationEnabled() {
+        return minifyPathEnabled;
+    }
+
     public static String minifyPathAndReplaceExt(String path, String from, String to) {
         path = replaceExt(path, from, to);
         return minifyPath(path);
@@ -131,6 +137,14 @@ public class ResourceUtil {
 
         cachedPaths.put(path, minifiedPath);
         return minifiedPath;
+    }
+
+    public static Map<String, String> snapshotMinifiedPaths() {
+        return Collections.unmodifiableMap(new HashMap<>(cachedPaths));
+    }
+
+    public static String getBuildDirectory() {
+        return buildDirectory;
     }
 
 }

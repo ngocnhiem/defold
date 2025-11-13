@@ -89,6 +89,7 @@ import com.dynamo.bob.util.LibraryUtil;
 import com.dynamo.bob.util.ReportGenerator;
 import com.dynamo.bob.util.TimeProfiler;
 import com.dynamo.bob.util.StringUtil;
+import com.dynamo.bob.util.MinifyPathCollector;
 import com.dynamo.graphics.proto.Graphics.TextureProfiles;
 
 import com.dynamo.bob.cache.ResourceCache;
@@ -866,6 +867,8 @@ public class Project {
         bundler.bundleApplication(this, platform, bundleDir, monitor);
         String defoldSdk = this.option("defoldsdk", EngineVersion.sha1);
         BuildInputDataCollector.saveDataAsJson(getRootDirectory(), bundleDir, defoldSdk);
+        if (ResourceUtil.isMinificationEnabled())
+            MinifyPathCollector.saveAsJson(bundleDir);
         m.worked(1);
         m.done();
     }
