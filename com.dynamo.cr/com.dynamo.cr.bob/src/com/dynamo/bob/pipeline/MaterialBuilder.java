@@ -131,7 +131,7 @@ public class MaterialBuilder extends ProtoBuilder<MaterialDesc.Builder> {
         // The material should depend on the finally built shader resource file
         // that is a combination of one or more shader modules
         IResource shaderResource = getShaderProgram(materialBuilder);
-        IResource shaderResourceOut = shaderResource.changeExt(ShaderProgramBuilderBundle.EXT_OUT);
+        IResource shaderResourceOut = shaderResource.disableMinifyPath().changeExt(ShaderProgramBuilderBundle.EXT_OUT);
 
         IShaderCompiler.CompileOptions compileOptions = new IShaderCompiler.CompileOptions();
         compileOptions.maxPageCount = materialBuilder.getMaxPageCount();
@@ -258,7 +258,7 @@ public class MaterialBuilder extends ProtoBuilder<MaterialDesc.Builder> {
         getShaderProgram(materialBuilder);
         IResource shaderResource = getShaderProgram(materialBuilder);
 
-        materialBuilder.setProgram("/" + ResourceUtil.changeExt(shaderResource.getPath(), ".spc"));
+        materialBuilder.setProgram(ResourceUtil.minifyPath(ResourceUtil.changeExt(shaderResource.getPath(), ".spc")));
         materialBuilder.setVertexProgram("");
         materialBuilder.setFragmentProgram("");
 

@@ -1716,6 +1716,14 @@ public class Project {
             registerTextureCompressors();
         }
 
+        final String variant = option("variant", Bob.VARIANT_RELEASE);
+        ResourceUtil.enableMinification(variant.equals(Bob.VARIANT_RELEASE));
+        ResourceUtil.setBuildDirectory(buildDirectory);
+        ResourceUtil.disableMinify(".luac");
+        ResourceUtil.disableMinify(".scriptc");
+        ResourceUtil.disableMinify(".render_scriptc");
+        ResourceUtil.disableMinify(".gui_scriptc");
+
         loop:
         for (String command : commands) {
             BundleHelper.throwIfCanceled(monitor);

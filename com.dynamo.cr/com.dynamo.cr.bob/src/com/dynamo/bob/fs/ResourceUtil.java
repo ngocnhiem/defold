@@ -19,9 +19,20 @@ import java.util.HashMap;
 public class ResourceUtil {
 
     protected static HashMap<String, String> extensionMapping = new HashMap<>();
+    protected static HashMap<String, String> cachedPaths = new HashMap<>();
+
+    private static boolean minifyPathEnabled = false;
+    private static HashMap<String, Integer> minifyCounters = new HashMap<>();
+
+    protected static String buildDirectory = null;
 
     public static void registerMapping(String inExt, String outExt) {
         extensionMapping.put(inExt, outExt);
+        minifyCounters.put(outExt, 0);
+    }
+
+    public static void setBuildDirectory(String buildDirectory) {
+        ResourceUtil.buildDirectory = buildDirectory;
     }
 
     /**
@@ -64,4 +75,62 @@ public class ResourceUtil {
             return outExt;
         return inExt;
     }
+
+    // returns suffix with ".suffix"
+    public static String getSuffix(String path) {
+        int index = path.lastIndexOf(".");
+        if (index < 0)
+            return null;
+        return path.substring(index);
+    }
+
+    public static void enableMinification(boolean enable) {
+        minifyPathEnabled = enable;
+    }
+
+    public static String minifyPathAndReplaceExt(String path, String from, String to) {
+        path = replaceExt(path, from, to);
+        return minifyPath(path);
+    }
+
+    public static void disableMinify(String ext) {
+        minifyCounters.remove(ext);
+    }
+
+    public static String minifyPath(String path) {
+        if (!minifyPathEnabled) {
+            return path;
+        }
+
+        String suffix = getSuffix(path);
+        if (!minifyCounters.containsKey(suffix)) {
+            return path;
+        }
+
+        boolean isBuildPath = buildDirectory != null ? path.startsWith(buildDirectory) : false;
+        if (isBuildPath) {
+            path = path.substring(buildDirectory.length());
+        }
+
+        if (!path.startsWith("/"))
+            path = "/" + path;
+
+        String cachedPath = cachedPaths.getOrDefault(path, null);
+        if (cachedPath != null) {
+            return cachedPath;
+        }
+
+        Integer count = minifyCounters.getOrDefault(suffix, 0);
+        minifyCounters.put(suffix, count + 1);
+        int thousands = count / 1000;
+        int remainder = count % 1000;
+
+        String prefix = isBuildPath ? buildDirectory : "";
+        String minifiedPath = String.format("%s/%d/%d%s", prefix, thousands, remainder, suffix);
+
+
+        cachedPaths.put(path, minifiedPath);
+        return minifiedPath;
+    }
+
 }

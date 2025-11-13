@@ -1,10 +1,6 @@
 package com.dynamo.bob.pipeline;
 
-import com.dynamo.bob.BuilderParams;
-import com.dynamo.bob.CompileExceptionError;
-import com.dynamo.bob.ProtoBuilder;
-import com.dynamo.bob.ProtoParams;
-import com.dynamo.bob.Task;
+import com.dynamo.bob.*;
 import com.dynamo.bob.fs.IResource;
 import com.dynamo.bob.fs.ResourceUtil;
 import com.dynamo.bob.util.BobNLS;
@@ -72,9 +68,12 @@ public class CollisionObjectBuilder extends ProtoBuilder<CollisionObjectDesc.Bui
             shapeBuilder.setIdHash(MurmurHash.hash64(shapeBuilder.getId()));
         }
 
-        messageBuilder.setCollisionShape(ResourceUtil.replaceExt(messageBuilder.getCollisionShape(), ".convexshape", ".convexshapec"));
-        messageBuilder.setCollisionShape(ResourceUtil.replaceExt(messageBuilder.getCollisionShape(), ".tilegrid", ".tilemapc"));
-        messageBuilder.setCollisionShape(ResourceUtil.replaceExt(messageBuilder.getCollisionShape(), ".tilemap", ".tilemapc"));
+        String path = messageBuilder.getCollisionShape();
+        path = ResourceUtil.replaceExt(path, ".convexshape", ".convexshapec");
+        path = ResourceUtil.replaceExt(path, ".tilegrid", ".tilemapc");
+        path = ResourceUtil.replaceExt(path, ".tilemap", ".tilemapc");
+        messageBuilder.setCollisionShape(ResourceUtil.minifyPath(path));
+
         return messageBuilder;
     }
 }

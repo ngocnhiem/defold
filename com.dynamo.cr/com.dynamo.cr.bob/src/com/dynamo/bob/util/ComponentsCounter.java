@@ -175,14 +175,14 @@ public class ComponentsCounter {
             FactoryDesc.Builder factoryDesc = FactoryDesc.newBuilder();
             ProtoUtil.merge(resource, resourceContent, factoryDesc);
             Boolean isDynamic = factoryDesc.getDynamicPrototype();
-            String counterName = ResourceUtil.replaceExt(factoryDesc.getPrototype(), ".go", EXT_GO);
+            String counterName = ResourceUtil.minifyPathAndReplaceExt(factoryDesc.getPrototype(), ".go", EXT_GO);
             Map.Entry<String,Boolean> entry = new AbstractMap.SimpleEntry<String, Boolean>(counterName, isDynamic);
             return entry;
         } else if (type.equals("collectionfactory")) {
             CollectionFactoryDesc.Builder factoryDesc = CollectionFactoryDesc.newBuilder();
             ProtoUtil.merge(resource, resourceContent, factoryDesc);
             Boolean isDynamic = factoryDesc.getDynamicPrototype();
-            String counterName = ResourceUtil.replaceExt(factoryDesc.getPrototype(), ".collection", EXT_COL);
+            String counterName = ResourceUtil.minifyPathAndReplaceExt(factoryDesc.getPrototype(), ".collection", EXT_COL);
             Map.Entry<String,Boolean> entry = new AbstractMap.SimpleEntry<String, Boolean>(counterName, isDynamic);
             return entry;
         }

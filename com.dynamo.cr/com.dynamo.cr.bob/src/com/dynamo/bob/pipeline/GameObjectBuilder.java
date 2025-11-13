@@ -31,6 +31,7 @@ import org.apache.commons.io.FilenameUtils;
 import com.dynamo.proto.DdfMath.Vector3One;
 import com.dynamo.proto.DdfMath.Vector4One;
 
+import com.dynamo.bob.Bob;
 import com.dynamo.bob.BuilderParams;
 import com.dynamo.bob.CompileExceptionError;
 import com.dynamo.bob.Task;
@@ -168,6 +169,8 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
             BuilderUtil.checkResource(this.project, input, "component", component);
         }
 
+        int buildDirLen = project.getBuildDirectory().length();
+
         // convert embedded components to generated components in the build folder
         for (EmbeddedComponentDesc ec : protoBuilder.getEmbeddedComponentsList()) {
             if (ec.getId().length() == 0) {
@@ -182,14 +185,13 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
             // TODO: We have to set content again here as distclean might have removed everything at this point (according to CollectionBuilder.java)
             genResource.setContent(data);
 
-            int buildDirLen = project.getBuildDirectory().length();
-            String path = genResource.getPath().substring(buildDirLen);
+            String relativePath = genResource.getPath().substring(buildDirLen);
 
             ComponentDesc.Builder b = ComponentDesc.newBuilder()
                     .setId(ec.getId())
                     .setPosition(ec.getPosition())
                     .setRotation(ec.getRotation())
-                    .setComponent(path);
+                    .setComponent(relativePath);
 
             // #3981
             // copy the scale from the embedded component only if it has a scale to
@@ -273,7 +275,7 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
                 }
             }
 
-            compBuilder.setComponent(c);
+            compBuilder.setComponent(ResourceUtil.minifyPath(c));
             compBuilder.setPropertyDecls(properties);
             newList.add(compBuilder.build());
         }
