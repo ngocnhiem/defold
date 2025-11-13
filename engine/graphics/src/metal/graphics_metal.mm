@@ -49,8 +49,9 @@ namespace dmGraphics
 
     DM_REGISTER_GRAPHICS_ADAPTER(GraphicsAdapterMetal, &g_Metal_adapter, MetalIsSupported, MetalRegisterFunctionTable, MetalGetContext, ADAPTER_FAMILY_PRIORITY_METAL);
 
-    static int16_t CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy);
-    static void    MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
+    static int16_t       CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy);
+    static MetalTexture* MetalNewTextureInternal(const TextureCreationParams& params);
+    static void          MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
 
     MetalContext::MetalContext(const ContextParams& params)
     {
@@ -227,22 +228,67 @@ namespace dmGraphics
         }
     }
 
-    static void ResizeConstantScratchBuffer(MetalContext* context, uint32_t new_size, MetalConstantScratchBuffer* scratch_buffer)
+    void MetalConstantScratchBuffer::EnsureSize(const MetalContext* context, uint32_t size)
     {
-        DestroyResourceDeferred(context, &scratch_buffer->m_DeviceBuffer);
-        DeviceBufferUploadHelper(context, 0, new_size, 0, &scratch_buffer->m_DeviceBuffer);
-        scratch_buffer->Rewind();
+        if (!CanAllocate(size))
+        {
+            const uint32_t SIZE_INCREASE = 1024 * 8;
+            DestroyResourceDeferred((MetalContext*) context, &m_DeviceBuffer);
+            DeviceBufferUploadHelper((MetalContext*) context, 0, m_DeviceBuffer.m_Size + SIZE_INCREASE, 0, &m_DeviceBuffer);
+            Rewind();
+        }
     }
 
-    static void EnsureConstantScratchBufferSize(MetalContext* context, MetalConstantScratchBuffer* scratch_buffer, MetalProgram* program)
+    void MetalArgumentBufferPool::Initialize(const MetalContext* context, uint32_t size_per_buffer)
     {
-        const uint32_t num_uniform_buffers = program->m_UniformBufferCount;
+        m_ScratchBufferIndex = 0;
+        m_SizePerBuffer      = size_per_buffer;
 
-        if (!scratch_buffer->CanAllocate(program->m_UniformDataSizeAligned))
+        AddBuffer(context);
+    }
+
+    void MetalArgumentBufferPool::AddBuffer(const MetalContext* context)
+    {
+        MetalConstantScratchBuffer buffer = {};
+        buffer.m_DeviceBuffer.m_StorageMode = MTL::StorageModeShared;
+        buffer.EnsureSize(context, m_SizePerBuffer);
+        m_ScratchBufferPool.OffsetCapacity(1);
+        m_ScratchBufferPool.Push(buffer);
+    }
+
+    MetalConstantScratchBuffer* MetalArgumentBufferPool::Allocate(const MetalContext* context, uint32_t size)
+    {
+        MetalConstantScratchBuffer* current = Get();
+
+        if (!current->CanAllocate(size))
         {
-            const uint32_t bytes_increase = 1024 * 8;
-            ResizeConstantScratchBuffer(context, scratch_buffer->m_DeviceBuffer.m_Size + bytes_increase, scratch_buffer);
+            m_ScratchBufferIndex++;
+            if (m_ScratchBufferIndex >= m_ScratchBufferPool.Size())
+            {
+                AddBuffer(context);
+            }
+            current = Get();
         }
+
+        assert(current->CanAllocate(size));
+        return current;
+    }
+
+    MetalArgumentBinding MetalArgumentBufferPool::Bind(const MetalContext* context, MTL::ArgumentEncoder* encoder)
+    {
+        uint32_t encode_size = encoder->encodedLength();
+        assert(encode_size > 0);
+
+        MetalConstantScratchBuffer* current = Allocate(context, encode_size);
+
+        MetalArgumentBinding arg_binding = {};
+        arg_binding.m_Buffer = current->m_DeviceBuffer.m_Buffer;
+        arg_binding.m_Offset = current->m_MappedDataCursor;
+
+        encoder->setArgumentBuffer(current->m_DeviceBuffer.m_Buffer, current->m_MappedDataCursor);
+        current->Advance(encoder->encodedLength());
+
+        return arg_binding;
     }
 
     static void SetupMainRenderTarget(MetalContext* context)
@@ -337,6 +383,10 @@ namespace dmGraphics
             const uint32_t constant_buffer_size = 1024 * 8;
             context->m_FrameResources[i].m_ConstantScratchBuffer.m_DeviceBuffer.m_StorageMode = MTL::StorageModeShared;
             DeviceBufferUploadHelper(context, 0, constant_buffer_size, 0, &context->m_FrameResources[i].m_ConstantScratchBuffer.m_DeviceBuffer);
+
+            // This is a fixed size per buffer in the pool
+            const uint32_t argument_buffer_size = 1024 * 4;
+            context->m_FrameResources[i].m_ArgumentBufferPool.Initialize(context, argument_buffer_size);
         }
 
         context->m_AsyncProcessingSupport = context->m_JobThread != 0x0 && dmThread::PlatformHasThreadSupport();
@@ -348,6 +398,49 @@ namespace dmGraphics
 
         // Create default texture sampler
         CreateTextureSampler(context, TEXTURE_FILTER_LINEAR, TEXTURE_FILTER_LINEAR, TEXTURE_WRAP_REPEAT, TEXTURE_WRAP_REPEAT, 1, 1.0f);
+
+        // Create default dummy texture
+        TextureCreationParams default_texture_creation_params;
+        default_texture_creation_params.m_Width          = 1;
+        default_texture_creation_params.m_Height         = 1;
+        default_texture_creation_params.m_LayerCount     = 1;
+        default_texture_creation_params.m_OriginalWidth  = default_texture_creation_params.m_Width;
+        default_texture_creation_params.m_OriginalHeight = default_texture_creation_params.m_Height;
+
+        const uint8_t default_texture_data[4 * 6] = {}; // RGBA * 6 (for cubemap)
+
+        TextureParams default_texture_params;
+        default_texture_params.m_Width      = 1;
+        default_texture_params.m_Height     = 1;
+        default_texture_params.m_LayerCount = 1;
+        default_texture_params.m_Data       = default_texture_data;
+        default_texture_params.m_Format     = TEXTURE_FORMAT_RGBA;
+
+        context->m_DefaultTexture2D = MetalNewTextureInternal(default_texture_creation_params);
+        MetalSetTextureInternal(context, context->m_DefaultTexture2D, default_texture_params);
+
+        default_texture_params.m_Format = TEXTURE_FORMAT_RGBA32UI;
+        context->m_DefaultTexture2D32UI = MetalNewTextureInternal(default_texture_creation_params);
+        MetalSetTextureInternal(context, context->m_DefaultTexture2D32UI, default_texture_params);
+
+        default_texture_params.m_Format                 = TEXTURE_FORMAT_RGBA;
+        default_texture_creation_params.m_LayerCount    = 1;
+        default_texture_creation_params.m_Type          = TEXTURE_TYPE_IMAGE_2D;
+        default_texture_creation_params.m_UsageHintBits = TEXTURE_USAGE_FLAG_STORAGE | TEXTURE_USAGE_FLAG_SAMPLE;
+        context->m_DefaultStorageImage2D                = MetalNewTextureInternal(default_texture_creation_params);
+        MetalSetTextureInternal(context, context->m_DefaultStorageImage2D, default_texture_params);
+
+        default_texture_creation_params.m_UsageHintBits = TEXTURE_USAGE_FLAG_SAMPLE;
+        default_texture_creation_params.m_Type          = TEXTURE_TYPE_2D_ARRAY;
+        default_texture_creation_params.m_LayerCount    = 1;
+        context->m_DefaultTexture2DArray                = MetalNewTextureInternal(default_texture_creation_params);
+        MetalSetTextureInternal(context, context->m_DefaultTexture2DArray, default_texture_params);
+
+        default_texture_creation_params.m_Type          = TEXTURE_TYPE_CUBE_MAP;
+        default_texture_creation_params.m_Depth         = 1;
+        default_texture_creation_params.m_LayerCount    = 6;
+        context->m_DefaultTextureCubeMap = MetalNewTextureInternal(default_texture_creation_params);
+        MetalSetTextureInternal(context, context->m_DefaultTextureCubeMap, default_texture_params);
 
         NSWindow* mative_window = (NSWindow*) dmGraphics::GetNativeOSXNSWindow();
         context->m_View         = [mative_window contentView];
@@ -451,6 +544,7 @@ namespace dmGraphics
 
         frame.m_CommandBuffer = context->m_CommandQueue->commandBuffer();
         frame.m_ConstantScratchBuffer.Rewind();
+        frame.m_ArgumentBufferPool.Rewind();
 
         auto colorAttachment = context->m_RenderPassDescriptor->colorAttachments()->object(0);
         colorAttachment->setTexture(context->m_Drawable->texture());
@@ -1028,68 +1122,50 @@ namespace dmGraphics
         return cached_pipeline;
     }
 
-    static void PrepareProgram(MetalContext* context, MetalProgram* program)
+    static inline MetalTexture* GetDefaultTexture(MetalContext* context, ShaderDesc::ShaderDataType type)
     {
-        if (program->m_ArgumentEncodersCreated)
+        switch(type)
         {
-            return;
+            case ShaderDesc::SHADER_TYPE_RENDER_PASS_INPUT:
+            case ShaderDesc::SHADER_TYPE_TEXTURE2D:
+            case ShaderDesc::SHADER_TYPE_SAMPLER:
+            case ShaderDesc::SHADER_TYPE_SAMPLER2D:       return context->m_DefaultTexture2D;
+            case ShaderDesc::SHADER_TYPE_SAMPLER2D_ARRAY: return context->m_DefaultTexture2DArray;
+            case ShaderDesc::SHADER_TYPE_SAMPLER_CUBE:    return context->m_DefaultTextureCubeMap;
+            case ShaderDesc::SHADER_TYPE_UTEXTURE2D:      return context->m_DefaultTexture2D32UI;
+            case ShaderDesc::SHADER_TYPE_IMAGE2D:
+            case ShaderDesc::SHADER_TYPE_UIMAGE2D:        return context->m_DefaultStorageImage2D;
+            default:break;
         }
-
-        uint8_t set_stage_flags[MAX_SET_COUNT] = {0};
-
-        for (int i = 0; i < program->m_BaseProgram.m_MaxSet; ++i)
-        {
-            for (int j = 0; j < program->m_BaseProgram.m_MaxBinding; ++j)
-            {
-                ProgramResourceBinding* res = &program->m_BaseProgram.m_ResourceBindings[i][j];
-
-                if (res->m_Res)
-                {
-                    set_stage_flags[i] |= res->m_Res->m_StageFlags;
-                }
-            }
-
-            if (set_stage_flags[i] == 0)
-            {
-                continue;
-            }
-
-            if (set_stage_flags[i] & SHADER_STAGE_FLAG_VERTEX)
-            {
-                program->m_ArgumentEncoders[i] = program->m_VertexModule->m_Function->newArgumentEncoder(i);
-            }
-            else if (set_stage_flags[i] & SHADER_STAGE_FLAG_FRAGMENT)
-            {
-                program->m_ArgumentEncoders[i] = program->m_FragmentModule->m_Function->newArgumentEncoder(i);
-            }
-            else if (set_stage_flags[i] & SHADER_STAGE_FLAG_COMPUTE)
-            {
-                program->m_ArgumentEncoders[i] = program->m_ComputeModule->m_Function->newArgumentEncoder(i);
-            }
-
-            uint32_t encode_length = program->m_ArgumentEncoders[i]->encodedLength();
-
-            program->m_ArgumentBuffers[i] = context->m_Device->newBuffer(encode_length, MTL::ResourceStorageModeShared);
-            program->m_ArgumentEncoders[i]->setArgumentBuffer(program->m_ArgumentBuffers[i], 0);
-        }
-        program->m_ArgumentEncodersCreated = true;
+        return 0x0;
     }
 
     static void CommitUniforms(MetalContext* context, MTL::RenderCommandEncoder* encoder,
-                           MetalConstantScratchBuffer* scratch_buffer, MetalProgram* program,
-                           uint32_t alignment)
+                           MetalConstantScratchBuffer* scratch_buffer, MetalArgumentBufferPool* argument_buffer_pool,
+                           MetalProgram* program, uint32_t alignment)
     {
+        for (int i = 0; i < program->m_BaseProgram.m_MaxSet; ++i)
+        {
+            if (program->m_ArgumentEncoders[i])
+            {
+                program->m_ArgumentBufferBindings[i] = argument_buffer_pool->Bind(context, program->m_ArgumentEncoders[i]);
+            }
+        }
+
         ProgramResourceBindingIterator it(&program->m_BaseProgram);
         const ProgramResourceBinding* next;
         while ((next = it.Next()))
         {
             ShaderResourceBinding* res        = next->m_Res;
             MTL::ArgumentEncoder* arg_encoder = program->m_ArgumentEncoders[res->m_Set];
-            MTL::Buffer*          arg_buf     = program->m_ArgumentBuffers[res->m_Set];
-            assert(arg_encoder && arg_buf);
-            arg_encoder->setArgumentBuffer(arg_buf, 0);
+
+            //MTL::Buffer*          arg_buf     = program->m_ArgumentBuffers[res->m_Set];
+            //assert(arg_encoder && arg_buf);
+            //arg_encoder->setArgumentBuffer(arg_buf, 0);
 
             uint32_t msl_index = program->m_ResourceToMslIndex[res->m_Set][res->m_Binding];
+
+            // printf("res set=%u binding=%u -> msl_index=%u\n", res->m_Set, res->m_Binding, msl_index);
 
             switch (res->m_BindingFamily)
             {
@@ -1103,26 +1179,66 @@ namespace dmGraphics
                            &program->m_UniformData[next->m_DataOffset],
                            res->m_BindingInfo.m_BlockSize);
 
-                    // 3) encode the pointer for this binding (msl_index is the index inside the argument encoder,
-                    //    i.e. the [[id(N)]] for the field inside the argument struct)
+                    // encode the pointer for this binding (msl_index is the index inside the argument encoder,
+                    // i.e. the [[id(N)]] for the field inside the argument struct)
                     arg_encoder->setBuffer(scratch_buffer->m_DeviceBuffer.m_Buffer, (NSUInteger) offset, (NSUInteger) msl_index);
 
                     // Advance cursor in scratch
                     scratch_buffer->m_MappedDataCursor = offset + uniform_size;
                 } break;
 
+                case ShaderResourceBinding::BINDING_FAMILY_TEXTURE:
+                {
+                    MetalTexture* texture = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, context->m_TextureUnits[next->m_TextureUnit]);
+
+                    if (texture == 0x0)
+                    {
+                        texture = GetDefaultTexture(context, res->m_Type.m_ShaderType);
+                    }
+
+                    MetalTextureSampler* sampler = &context->m_TextureSamplers[texture->m_TextureSamplerIndex];
+
+                    arg_encoder->setTexture(texture->m_Texture, msl_index);
+                    arg_encoder->setSamplerState(sampler->m_Sampler, msl_index + 1);
+
+                    encoder->useResource(texture->m_Texture, MTL::ResourceUsageRead);
+
+                    // TODO: separate samplers
+                } break;
+
+                case ShaderResourceBinding::BINDING_FAMILY_STORAGE_BUFFER:
+                    // TODO
+                    break;
+                case ShaderResourceBinding::BINDING_FAMILY_GENERIC:
+                    break;
+
                 default:
                     break;
             }
         }
 
-    #if 0
-        uint64_t arg_ptr = *(uint64_t*)program->m_ArgumentBuffers[0]->contents();
-        printf("DBG: argbuf gpuAddr=0x%llx, arg_ptr_in_argbuf=0x%llx, scratch_gpu=0x%llx\n",
-               (unsigned long long)program->m_ArgumentBuffers[0]->gpuAddress(),
-               (unsigned long long)arg_ptr,
-               (unsigned long long)scratch_buffer->m_DeviceBuffer.m_Buffer->gpuAddress());
-    #endif
+        // Maybe move this call to a "prepare scratch buffer" function or something?
+        encoder->useResource(scratch_buffer->m_DeviceBuffer.m_Buffer, MTL::ResourceUsageRead);
+
+        for (uint32_t set = 0; set < context->m_CurrentProgram->m_BaseProgram.m_MaxSet; ++set)
+        {
+            if (context->m_CurrentProgram->m_ArgumentEncoders[set])
+            {
+                MetalArgumentBinding& arg_binding = context->m_CurrentProgram->m_ArgumentBufferBindings[set];
+
+                encoder->useResource(arg_binding.m_Buffer, MTL::ResourceUsageRead);
+
+                // TODO: Support binding for both stages based on stage flags?
+                if (set == 0)
+                {
+                    encoder->setVertexBuffer(arg_binding.m_Buffer, arg_binding.m_Offset, set);
+                }
+                if (set == 1)
+                {
+                    encoder->setFragmentBuffer(arg_binding.m_Buffer, arg_binding.m_Offset, set);
+                }
+            }
+        }
     }
 
     static void DrawSetup(MetalContext* context)
@@ -1150,7 +1266,9 @@ namespace dmGraphics
 
         MetalFrameResource& frame = context->m_FrameResources[context->m_CurrentFrameInFlight];
 
-        EnsureConstantScratchBufferSize(context, &frame.m_ConstantScratchBuffer, context->m_CurrentProgram);
+        frame.m_ConstantScratchBuffer.EnsureSize(context, context->m_CurrentProgram->m_UniformDataSizeAligned);
+
+        // EnsureConstantScratchBufferSize(context, &frame.m_ConstantScratchBuffer, context->m_CurrentProgram);
 
         PipelineState pipeline_state_draw = context->m_PipelineState;
 
@@ -1199,31 +1317,7 @@ namespace dmGraphics
             // encoder->setScissorRect(scissor);
         }
 
-        PrepareProgram(context, context->m_CurrentProgram);
-        CommitUniforms(context, encoder, &frame.m_ConstantScratchBuffer, context->m_CurrentProgram, UNIFORM_BUFFER_ALIGNMENT);
-
-        for (uint32_t set = 0; set < context->m_CurrentProgram->m_BaseProgram.m_MaxSet; ++set)
-        {
-            if (context->m_CurrentProgram->m_ArgumentBuffers[set])
-            {
-                MTL::Buffer* ab = context->m_CurrentProgram->m_ArgumentBuffers[set];
-
-                // TODO: Support binding for both stages based on stage flags
-                if (set == 0)
-                {
-                    encoder->setVertexBuffer(ab, 0, set);
-                }
-                if (set == 1)
-                {
-                    encoder->setFragmentBuffer(ab, 0, set);
-                }
-            }
-        }
-
-        // context->m_CurrentProgram->m_ArgumentEncoders[0]->setArgumentBuffer(context->m_CurrentProgram->m_ArgumentBuffers[0], 0);
-        // context->m_CurrentProgram->m_ArgumentEncoders[0]->setBuffer(frame.m_ConstantScratchBuffer.m_DeviceBuffer.m_Buffer, 0, 0);
-
-        encoder->setVertexBuffer(context->m_CurrentProgram->m_ArgumentBuffers[0], 0, 0);
+        CommitUniforms(context, encoder, &frame.m_ConstantScratchBuffer, &frame.m_ArgumentBufferPool, context->m_CurrentProgram, UNIFORM_BUFFER_ALIGNMENT);
     }
 
     static MTL::PrimitiveType ConvertPrimitiveType(PrimitiveType prim_type)
@@ -1302,10 +1396,17 @@ namespace dmGraphics
 
     }
 
-    static MetalShaderModule* CreateShaderModule(MTL::Device* device, const char* src, char* error_buffer, uint32_t error_buffer_size)
+    static MetalShaderModule* CreateShaderModule(MTL::Device* device, const char* src, uint32_t src_size, char* error_buffer, uint32_t error_buffer_size)
     {
+        char* null_terminated_buffer = new char[src_size + 1];
+        memcpy(null_terminated_buffer, src, src_size);
+        null_terminated_buffer[src_size] = 0;
+
         NS::Error* error  = 0;
-        MTL::Library* library = device->newLibrary(NS::String::string(src, NS::StringEncoding::UTF8StringEncoding), 0, &error);
+        MTL::Library* library = device->newLibrary(NS::String::string(null_terminated_buffer, NS::StringEncoding::UTF8StringEncoding), 0, &error);
+
+        delete[] null_terminated_buffer;
+
         if (error)
         {
             dmSnPrintf(error_buffer, error_buffer_size, "%s", error->localizedDescription()->utf8String());
@@ -1352,6 +1453,46 @@ namespace dmGraphics
         BuildUniforms(&program->m_BaseProgram);
     }
 
+    static void CreateArgumentBuffers(MetalContext* context, MetalProgram* program)
+    {
+        uint8_t set_stage_flags[MAX_SET_COUNT] = {0};
+
+        for (int i = 0; i < program->m_BaseProgram.m_MaxSet; ++i)
+        {
+            for (int j = 0; j < program->m_BaseProgram.m_MaxBinding; ++j)
+            {
+                ProgramResourceBinding* res = &program->m_BaseProgram.m_ResourceBindings[i][j];
+
+                if (res->m_Res)
+                {
+                    set_stage_flags[i] |= res->m_Res->m_StageFlags;
+                }
+            }
+
+            if (set_stage_flags[i] == 0)
+            {
+                continue;
+            }
+
+            if (set_stage_flags[i] & SHADER_STAGE_FLAG_VERTEX)
+            {
+                program->m_ArgumentEncoders[i] = program->m_VertexModule->m_Function->newArgumentEncoder(i);
+            }
+            else if (set_stage_flags[i] & SHADER_STAGE_FLAG_FRAGMENT)
+            {
+                program->m_ArgumentEncoders[i] = program->m_FragmentModule->m_Function->newArgumentEncoder(i);
+            }
+            else if (set_stage_flags[i] & SHADER_STAGE_FLAG_COMPUTE)
+            {
+                program->m_ArgumentEncoders[i] = program->m_ComputeModule->m_Function->newArgumentEncoder(i);
+            }
+
+            // uint32_t encode_length = program->m_ArgumentEncoders[i]->encodedLength();
+            // program->m_ArgumentBuffers[i] = context->m_Device->newBuffer(encode_length, MTL::ResourceStorageModeShared);
+            // program->m_NumArgumentBuffers++;
+        }
+    }
+
     static HProgram MetalNewProgram(HContext _context, ShaderDesc* ddf, char* error_buffer, uint32_t error_buffer_size)
     {
         ShaderDesc::Shader* ddf_vp = 0x0;
@@ -1375,7 +1516,7 @@ namespace dmGraphics
 
         if (ddf_cp)
         {
-            program->m_ComputeModule = CreateShaderModule(context->m_Device, (const char*) ddf_cp->m_Source.m_Data, error_buffer, error_buffer_size);
+            program->m_ComputeModule = CreateShaderModule(context->m_Device, (const char*) ddf_cp->m_Source.m_Data, ddf_cp->m_Source.m_Count, error_buffer, error_buffer_size);
 
             if (!program->m_ComputeModule)
             {
@@ -1389,14 +1530,14 @@ namespace dmGraphics
         }
         else
         {
-            program->m_VertexModule = CreateShaderModule(context->m_Device, (const char*) ddf_vp->m_Source.m_Data, error_buffer, error_buffer_size);
+            program->m_VertexModule = CreateShaderModule(context->m_Device, (const char*) ddf_vp->m_Source.m_Data, ddf_vp->m_Source.m_Count, error_buffer, error_buffer_size);
             if (!program->m_VertexModule)
             {
                 DeleteProgram(_context, (HProgram) program);
                 return 0;
             }
 
-            program->m_FragmentModule = CreateShaderModule(context->m_Device, (const char*) ddf_fp->m_Source.m_Data, error_buffer, error_buffer_size);
+            program->m_FragmentModule = CreateShaderModule(context->m_Device, (const char*) ddf_fp->m_Source.m_Data, ddf_fp->m_Source.m_Count, error_buffer, error_buffer_size);
             if (!program->m_FragmentModule)
             {
                 DeleteProgram(_context, (HProgram) program);
@@ -1412,6 +1553,8 @@ namespace dmGraphics
 
         ResourceBindingDesc bindings[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT] = {};
         CreateProgramResourceBindings(program, bindings, shaders, ddf_shaders, num_shaders);
+
+        CreateArgumentBuffers(context, program);
 
         return (HProgram) program;
     }
@@ -1971,7 +2114,7 @@ namespace dmGraphics
             desc->setMipmapLevelCount(params.m_MipMap + 1);
             desc->setSampleCount(1);
             desc->setStorageMode(MTL::StorageModePrivate);
-            desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
+            desc->setUsage(MTL::TextureUsageShaderRead); // | MTL::TextureUsageShaderWrite);
 
             // Create Metal texture
             if (texture->m_Texture)
@@ -2090,6 +2233,7 @@ namespace dmGraphics
 
         desc->setLodMinClamp(minLod);
         desc->setLodMaxClamp(maxLod);
+        desc->setSupportArgumentBuffers(true);
 
         if (maxAnisotropy > 1.0f)
             desc->setMaxAnisotropy(maxAnisotropy);

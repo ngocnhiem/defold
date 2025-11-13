@@ -24,8 +24,9 @@
 
 namespace dmGraphics
 {
-    struct ResourceToDestroy;
+    struct MetalContext;
     struct MetalPipeline;
+    struct ResourceToDestroy;
 
     typedef dmHashTable64<MetalPipeline> PipelineCache;
     typedef dmArray<ResourceToDestroy>   ResourcesToDestroyList;
@@ -76,6 +77,48 @@ namespace dmGraphics
         const static MetalResourceType GetType()
         {
             return RESOURCE_TYPE_DEVICE_BUFFER;
+        }
+    };
+
+    struct MetalConstantScratchBuffer
+    {
+        MetalDeviceBuffer m_DeviceBuffer;
+        uint32_t          m_MappedDataCursor;
+
+        void EnsureSize(const MetalContext* context, uint32_t size);
+
+        inline bool CanAllocate(uint32_t size) { return size <= (m_DeviceBuffer.m_Size - m_MappedDataCursor); }
+        inline void Rewind() { m_MappedDataCursor = 0; }
+        inline void Advance(uint32_t size) { m_MappedDataCursor += size; }
+    };
+
+    struct MetalArgumentBinding
+    {
+        MTL::Buffer* m_Buffer;
+        uint32_t     m_Offset;
+    };
+
+    struct MetalArgumentBufferPool
+    {
+        dmArray<MetalConstantScratchBuffer> m_ScratchBufferPool;
+        uint32_t                            m_ScratchBufferIndex;
+        uint32_t                            m_SizePerBuffer;
+
+        void                        Initialize(const MetalContext* context, uint32_t size_per_buffer);
+        void                        AddBuffer(const MetalContext* context);
+        MetalConstantScratchBuffer* Allocate(const MetalContext* context, uint32_t size);
+        MetalArgumentBinding        Bind(const MetalContext* context, MTL::ArgumentEncoder* encode);
+
+        inline MetalConstantScratchBuffer* Get() { return &m_ScratchBufferPool[m_ScratchBufferIndex]; }
+        inline void Rewind()
+        {
+            m_ScratchBufferIndex = 0;
+
+            uint32_t count = m_ScratchBufferPool.Size();
+            for (int i = 0; i < count; ++i)
+            {
+                m_ScratchBufferPool[i].Rewind();
+            }
         }
     };
 
@@ -156,7 +199,9 @@ namespace dmGraphics
         MetalShaderModule*    m_FragmentModule;
         MetalShaderModule*    m_ComputeModule;
         MTL::ArgumentEncoder* m_ArgumentEncoders[MAX_SET_COUNT];
-        MTL::Buffer*          m_ArgumentBuffers[MAX_SET_COUNT];
+        MetalArgumentBinding  m_ArgumentBufferBindings[MAX_SET_COUNT];
+
+        //MTL::Buffer*          m_ArgumentBuffers[MAX_SET_COUNT];
         uint32_t              m_ResourceToMslIndex[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
         uint8_t*              m_UniformData;
         uint64_t              m_Hash;
@@ -164,21 +209,12 @@ namespace dmGraphics
         uint16_t              m_UniformBufferCount;
         uint16_t              m_StorageBufferCount;
         uint16_t              m_TextureSamplerCount;
-        uint8_t               m_ArgumentEncodersCreated : 1;
-    };
-
-    struct MetalConstantScratchBuffer
-    {
-        MetalDeviceBuffer m_DeviceBuffer;
-        uint32_t          m_MappedDataCursor;
-
-        inline bool CanAllocate(uint32_t size) { return size < (m_DeviceBuffer.m_Size - m_MappedDataCursor); }
-        inline void Rewind() { m_MappedDataCursor = 0; }
     };
 
     struct MetalFrameResource
     {
         MetalConstantScratchBuffer m_ConstantScratchBuffer;
+        MetalArgumentBufferPool    m_ArgumentBufferPool;
         MTL::CommandBuffer*        m_CommandBuffer;
         ResourcesToDestroyList*    m_ResourcesToDestroy;
     };
@@ -226,6 +262,11 @@ namespace dmGraphics
         uint64_t                           m_TextureFormatSupport;
         TextureFilter                      m_DefaultTextureMinFilter;
         TextureFilter                      m_DefaultTextureMagFilter;
+        MetalTexture*                      m_DefaultTexture2D;
+        MetalTexture*                      m_DefaultTexture2DArray;
+        MetalTexture*                      m_DefaultTextureCubeMap;
+        MetalTexture*                      m_DefaultTexture2D32UI;
+        MetalTexture*                      m_DefaultStorageImage2D;
         uint32_t                           m_Width;
         uint32_t                           m_Height;
 
