@@ -147,6 +147,7 @@ public class PropertiesUtil {
         } catch (Exception e) {
             throw new CompileExceptionError(resource, -1, e.getMessage(), e);
         }
+        value = ResourceUtil.minifyPath(value);
         return value;
     }
 
