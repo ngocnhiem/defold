@@ -15,6 +15,7 @@
 package com.dynamo.bob.fs;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Collections;
 
@@ -22,6 +23,8 @@ public class ResourceUtil {
 
     protected static HashMap<String, String> extensionMapping = new HashMap<>();
     protected static HashMap<String, String> cachedPaths = new HashMap<>();
+    // A set of the minified results, so we don't accidentally minify them again
+    protected static HashSet<String>         minifiedPaths = new HashSet<>();
 
     private static boolean minifyPathEnabled = false;
     private static HashMap<String, Integer> minifyCounters = new HashMap<>();
@@ -113,6 +116,10 @@ public class ResourceUtil {
             return path;
         }
 
+        if (minifiedPaths.contains(path)) {
+            return path; // Already minified
+        }
+
         boolean isBuildPath = buildDirectory != null ? path.startsWith(buildDirectory) : false;
         if (isBuildPath) {
             path = path.substring(buildDirectory.length());
@@ -134,8 +141,10 @@ public class ResourceUtil {
         String prefix = isBuildPath ? buildDirectory : "";
         String minifiedPath = String.format("%s/%d/%d%s", prefix, thousands, remainder, suffix);
 
+        System.out.printf("MAWE: '%s' -> '%s'\n", path, minifiedPath);
 
         cachedPaths.put(path, minifiedPath);
+        minifiedPaths.add(minifiedPath);
         return minifiedPath;
     }
 
