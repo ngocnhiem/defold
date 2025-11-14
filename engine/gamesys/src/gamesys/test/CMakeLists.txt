@@ -71,7 +71,10 @@ set(excl_pattern
 glob_files(gamesys_content "${dirs}" "${excl_pattern}")
 
 set(gamesys_content_outputs)
-defold_content(gamesys_content_outputs ${gamesys_content} PYTHONPATH "${GAMESYS_PROTO_PY_DIR}" CONTENT_ROOT "${GS_TEST_ROOT}")
+defold_content(gamesys_content_outputs ${gamesys_content}
+  PYTHONPATH "${GAMESYS_PROTO_PY_DIR}"
+  CONTENT_ROOT "${GS_TEST_ROOT}"
+  OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
 # ---------------------------------------------------------------------------
 # Embed a few resources into headers (used by test_gamesys.cpp)

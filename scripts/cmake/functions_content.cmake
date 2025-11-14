@@ -172,15 +172,17 @@ function(defold_content OUTPUT_VAR)
     endif()
 
     set(_py_root "${CMAKE_CURRENT_BINARY_DIR}/proto")
+    # Default output directory mirrors previous behavior (a 'content' subfolder)
     set(_base_out_dir "${CMAKE_CURRENT_BINARY_DIR}/content")
     _defold_collect_python_paths(_default_python_paths "${_py_root}")
 
     set(_generated_outputs)
     set(_registered_outputs)
 
-    # support optional keyword arguments: PYTHONPATH <path...> and CONTENT_ROOT <dir>
+    # support optional keyword arguments: PYTHONPATH <path...>, CONTENT_ROOT <dir>, OUT_DIR <dir>
     set(_extra_python_paths)
     set(_content_root_override "")
+    set(_out_dir_override "")
     set(_inputs)
     set(_mode "inputs")
     foreach(_arg IN LISTS ARGN)
@@ -190,6 +192,9 @@ function(defold_content OUTPUT_VAR)
         elseif(_arg STREQUAL "CONTENT_ROOT")
             set(_mode "contentroot")
             continue()
+        elseif(_arg STREQUAL "OUT_DIR")
+            set(_mode "outdir")
+            continue()
         endif()
 
         if(_mode STREQUAL "pythonpath")
@@ -197,10 +202,18 @@ function(defold_content OUTPUT_VAR)
         elseif(_mode STREQUAL "contentroot")
             set(_content_root_override "${_arg}")
             set(_mode "inputs")
+        elseif(_mode STREQUAL "outdir")
+            set(_out_dir_override "${_arg}")
+            set(_mode "inputs")
         else()
             list(APPEND _inputs "${_arg}")
         endif()
     endforeach()
+
+    # Apply OUT_DIR override if provided
+    if(_out_dir_override)
+        get_filename_component(_base_out_dir "${_out_dir_override}" ABSOLUTE)
+    endif()
 
     foreach(_src IN LISTS _inputs)
         if(NOT _src)
