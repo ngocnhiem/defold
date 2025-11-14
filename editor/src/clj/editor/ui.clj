@@ -35,6 +35,7 @@
            [com.defold.control LongField]
            [com.defold.control DefoldStringConverter TreeCell]
            [com.sun.javafx.event DirectEvent]
+           [com.sun.javafx.scene NodeHelper]
            [java.awt Desktop Desktop$Action]
            [java.io File IOException]
            [java.net URI]
@@ -73,6 +74,7 @@
 (defonce ^:private ^:const application-unfocused-threshold-ms 500)
 (defonce ^:private focus-state (atom nil))
 (defonce ^:private application-unfocused-tasks (atom {}))
+(defonce ^:private stopped-timers (atom #{}))
 
 (declare ->future)
 
@@ -1470,7 +1472,7 @@
                                 localization
                                 icon
                                 style-classes
-                                (make-menu-items scene options command-contexts keymap localization evaluation-context)
+                                (make-menu-items scene (localization/sort-if-annotated @localization options) command-contexts keymap localization evaluation-context)
                                 on-open))
                 (make-menu-command scene id label localization icon style-classes key-combo user-data command enabled? check)))))))))
 
@@ -2188,6 +2190,7 @@
                                           (- now (- delta interval))))
                            (catch Throwable t
                              (.stop ^AnimationTimer this)
+                             (swap! stopped-timers conj this)
                              (error-reporting/report-exception! t)))))))))})))
 
 (defn timer-start! [timer]
@@ -2195,6 +2198,14 @@
 
 (defn timer-stop! [timer]
   (.stop ^AnimationTimer (:timer timer)))
+
+(defn enable-stopped-timers!
+  "Re-enables any AnimationTimers that were stopped due to exceptions."
+  []
+  (doseq [timer @stopped-timers]
+    (.start ^AnimationTimer timer))
+  (reset! stopped-timers #{})
+  nil)
 
 (defn anim! [^double duration anim-fn end-fn]
   (let [duration (long (* 1e9 duration))
@@ -2209,6 +2220,7 @@
                       (anim-fn t)
                       (catch Throwable t
                         (.stop ^AnimationTimer this)
+                        (swap! stopped-timers conj this)
                         (error-reporting/report-exception! t))))
                   (try
                     (end-fn)
@@ -2451,3 +2463,11 @@
   (when (not= cursor-type (.getCursor node))
     (.setCursor node Cursor/DISAPPEAR)
     (.setCursor node cursor-type)))
+
+(defn force-layout! [^Node node]
+  ;; Force layout pass to ensure the proper dimensions can be queried from the
+  ;; node. This process is recursive.
+  (NodeHelper/layoutNodeForPrinting node))
+
+(defn force-scene-layout! [^Scene scene]
+  (force-layout! (.getRoot scene)))

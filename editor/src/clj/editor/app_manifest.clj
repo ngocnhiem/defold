@@ -57,19 +57,15 @@
     :js-web :wasm-web :wasm_pthread-web})
 
 (def custom-lib-names
-  {:x86-win32 {"vpx" "vpx"
-               "vulkan" "vulkan-1"}
-   :x86_64-win32 {"vpx" "vpx"
-                  "vulkan" "vulkan-1"}})
+  {:x86-win32 {"vulkan" "vulkan-1"}
+   :x86_64-win32 {"vulkan" "vulkan-1"}})
 
 (defn platformify-excluded-lib [platform lib]
   (or (-> custom-lib-names platform (get lib))
-      (and (contains? windows platform) (str "lib" lib))
       lib))
 
 (defn platformify-lib [platform lib]
-  (or (some-> custom-lib-names platform (get lib) (str ".lib"))
-      (and (contains? windows platform) (str "lib" lib ".lib"))
+  (or (some-> custom-lib-names platform (get lib))
       lib))
 
 ;; region toggles
@@ -340,6 +336,12 @@
       (generic-contains-toggles ios :excludeSymbols ["ProfilerRemotery"])
       (generic-contains-toggles web :excludeSymbols ["ProfilerJS"])
       (generic-contains-toggles all-platforms :excludeSymbols ["ProfilerBasic", "ProfilerRemotery"]))))
+
+(def font-setting
+  (make-check-box-setting
+    (concat
+      (exclude-libs-toggles all-platforms ["font"])
+      (libs-toggles all-platforms ["font_skribidi", "harfbuzz", "sheenbidi", "unibreak", "skribidi"]))))
 
 (def sound-setting
   (make-check-box-setting
@@ -682,14 +684,20 @@
                                                         [:web-gpu "WebGPU"]
                                                         [:both "WebGL & WebGPU"]]}))
             (value (setting-property-getter graphics-web-setting))
-            (set (setting-property-setter graphics-web-setting))))
+            (set (setting-property-setter graphics-web-setting)))
+  (property use-font-layout g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :use-font-layout))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :use-font-layout))
+            (dynamic edit-type (g/constantly {:type g/Bool}))
+            (value (setting-property-getter font-setting))
+            (set (setting-property-setter font-setting))))
 
 (defn register-resource-types [workspace]
   (r/register-code-resource-type
     workspace
     :ext "appmanifest"
     :language "yaml"
-    :label "App Manifest"
+    :label (localization/message "resource.type.appmanifest")
     :icon "icons/32/Icons_05-Project-info.png"
     :node-type AppManifestNode
     :view-types [:code :default]

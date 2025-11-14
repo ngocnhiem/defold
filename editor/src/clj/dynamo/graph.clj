@@ -482,9 +482,9 @@
   Example:
 
   (make-nodes view [render     AtlasRender
-                   scene      scene/SceneRenderer
-                   background background/Gradient
-                   camera     [c/CameraController :camera (c/make-orthographic)]]
+                    scene      scene/SceneRenderer
+                    background background/Gradient
+                    camera     [c/CameraController :camera (c/make-orthographic)]]
      (g/connect background   :renderable scene :renderables)
      (g/connect atlas-render :renderable scene :renderables))"
   [graph-id binding-expr & body-exprs]
@@ -1654,14 +1654,15 @@
   "Returns a map of overridden prop-keywords to property values. Values will be
   produced by property value functions if possible."
   [node-id {:keys [basis] :as evaluation-context}]
-  (let [node (node-by-id basis node-id)
-        node-type (gt/node-type node)]
-    (into {}
-          (map (fn [[prop-kw raw-prop-value]]
-                 [prop-kw (if (has-property? node-type prop-kw)
-                            (in/node-value node prop-kw evaluation-context)
-                            raw-prop-value)]))
-          (in/node-value node :_overridden-properties evaluation-context))))
+  (if-let [node (node-by-id basis node-id)]
+    (let [node-type (gt/node-type node)]
+      (into {}
+            (map (fn [[prop-kw raw-prop-value]]
+                   [prop-kw (if (has-property? node-type prop-kw)
+                              (in/node-value node prop-kw evaluation-context)
+                              raw-prop-value)]))
+            (in/node-value node :_overridden-properties evaluation-context)))
+    {}))
 
 (defn collect-overridden-properties
   "Collects overridden property values from override nodes originating from the
