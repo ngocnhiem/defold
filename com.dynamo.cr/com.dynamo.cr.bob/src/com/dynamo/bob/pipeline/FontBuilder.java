@@ -97,7 +97,7 @@ public class FontBuilder extends ProtoBuilder<FontDesc.Builder> {
             fontMapBuilder.setGlyphBank(glyphBankPath);
         }
 
-        fontMapBuilder.setMaterial(ResourceUtil.replaceExt(fontDesc.getMaterial(), ".material", ".materialc"));
+        fontMapBuilder.setMaterial(ResourceUtil.minifyPathAndReplaceExt(fontDesc.getMaterial(), ".material", ".materialc"));
 
         boolean allChars = fontDesc.getAllChars();
 

@@ -102,6 +102,11 @@ public class ResourceUtil {
         return minifyPath(path);
     }
 
+    public static String minifyPathAndChangeExt(String path, String to) {
+        path = changeExt(path, to);
+        return minifyPath(path);
+    }
+
     public static void disableMinify(String ext) {
         minifyCounters.remove(ext);
     }

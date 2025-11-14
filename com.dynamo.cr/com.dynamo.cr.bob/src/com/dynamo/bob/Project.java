@@ -1726,6 +1726,7 @@ public class Project {
         ResourceUtil.disableMinify(".scriptc");
         ResourceUtil.disableMinify(".render_scriptc");
         ResourceUtil.disableMinify(".gui_scriptc");
+        ResourceUtil.disableMinify(".collectionc");
 
         loop:
         for (String command : commands) {

@@ -240,7 +240,7 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
                 throw new CompileExceptionError(resource, 0, BobNLS.bind(Messages.BuilderUtil_WRONG_RESOURCE_TYPE,
                         new String[] { c, ext, "script" } ));
             }
-            c = ResourceUtil.replaceExt(c, inExt, outExt);
+            c = ResourceUtil.minifyPathAndReplaceExt(c, inExt, outExt);
 
             PropertyDeclarations.Builder properties = PropertyDeclarations.newBuilder();
             for (PropertyDesc desc : cd.getPropertiesList()) {
@@ -275,7 +275,7 @@ public class GameObjectBuilder extends ProtoBuilder<PrototypeDesc.Builder> {
                 }
             }
 
-            compBuilder.setComponent(ResourceUtil.minifyPath(c));
+            compBuilder.setComponent(c);
             compBuilder.setPropertyDecls(properties);
             newList.add(compBuilder.build());
         }

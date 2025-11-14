@@ -266,9 +266,9 @@ public class ComponentsCounter {
 
     public static String replaceExt(String path) {
         if (path.endsWith(".go")) {
-            return ResourceUtil.replaceExt(path, ".go", EXT_GO);
+            return ResourceUtil.minifyPathAndReplaceExt(path, ".go", EXT_GO);
         } else if (path.endsWith(".collection")) {
-            return ResourceUtil.replaceExt(path, ".collection", EXT_COL);
+            return ResourceUtil.minifyPathAndReplaceExt(path, ".collection", EXT_COL);
         }
         return null;
     }

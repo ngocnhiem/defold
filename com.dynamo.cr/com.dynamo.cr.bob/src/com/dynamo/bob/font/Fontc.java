@@ -1149,7 +1149,7 @@ public class Fontc {
             Path basedirAbsolutePath = Paths.get(basedir).toAbsolutePath();
 
             FontMap.Builder fontMapBuilder = FontMap.newBuilder();
-            fontMapBuilder.setMaterial(ResourceUtil.replaceExt(fontDesc.getMaterial(), ".material", ".materialc"));
+            fontMapBuilder.setMaterial(ResourceUtil.minifyPathAndReplaceExt(fontDesc.getMaterial(), ".material", ".materialc"));
 
             if (!dynamic)
             {

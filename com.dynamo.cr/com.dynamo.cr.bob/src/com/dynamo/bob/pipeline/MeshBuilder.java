@@ -45,9 +45,9 @@ public class MeshBuilder extends ProtoBuilder<MeshDesc.Builder> {
 
         IResource resource = task.input(0);
         BuilderUtil.checkResource(this.project, resource, "vertices", meshDescBuilder.getVertices());
-        meshDescBuilder.setVertices(ResourceUtil.replaceExt(meshDescBuilder.getVertices(), ".buffer", ".bufferc"));
+        meshDescBuilder.setVertices(ResourceUtil.minifyPathAndReplaceExt(meshDescBuilder.getVertices(), ".buffer", ".bufferc"));
         BuilderUtil.checkResource(this.project, resource, "material", meshDescBuilder.getMaterial());
-        meshDescBuilder.setMaterial(ResourceUtil.replaceExt(meshDescBuilder.getMaterial(), ".material", ".materialc"));
+        meshDescBuilder.setMaterial(ResourceUtil.minifyPathAndReplaceExt(meshDescBuilder.getMaterial(), ".material", ".materialc"));
 
         List<String> newTextureList = new ArrayList<String>();
         for (String t : meshDescBuilder.getTexturesList()) {

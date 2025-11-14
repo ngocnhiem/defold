@@ -135,7 +135,7 @@ public class ModelBuilder extends ProtoBuilder<ModelDesc.Builder> {
 
                 IResource materialSourceResource = BuilderUtil.checkResource(this.project, resource, "material", material.getMaterial());
                 materialBuilder.setName(material.getName());
-                materialBuilder.setMaterial(ResourceUtil.replaceExt(material.getMaterial(), ".material", ".materialc"));
+                materialBuilder.setMaterial(ResourceUtil.minifyPathAndReplaceExt(material.getMaterial(), ".material", ".materialc"));
 
                 List<Texture> texturesList = new ArrayList<>();
                 for (Texture t : material.getTexturesList()) {
@@ -180,7 +180,7 @@ public class ModelBuilder extends ProtoBuilder<ModelDesc.Builder> {
 
                 Material.Builder materialBuilder = Material.newBuilder();
                 materialBuilder.setName("default");
-                materialBuilder.setMaterial(ResourceUtil.replaceExt(singleMaterial, ".material", ".materialc"));
+                materialBuilder.setMaterial(ResourceUtil.minifyPathAndReplaceExt(singleMaterial, ".material", ".materialc"));
 
                 List<Texture> texturesList = new ArrayList<>();
                 for (String t : modelDescBuilder.getTexturesList()) {
