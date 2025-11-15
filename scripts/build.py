@@ -1438,7 +1438,7 @@ class Configuration(object):
 
         # upload gdc tool on desktop platforms
         if self.is_desktop_target():
-            gdc_name = format_exes("gdc", self.target_platform)[0]
+            gdc_name = format_exes("gdc_" + self.target_platform.replace('-', '_'), self.target_platform)[0]
             gdc_bin = join(bin_dir, gdc_name)
             self.upload_to_archive(gdc_bin, '%s/%s' % (full_archive_path, gdc_name))
 
