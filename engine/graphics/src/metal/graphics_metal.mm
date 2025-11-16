@@ -365,6 +365,9 @@ namespace dmGraphics
         context->m_Device            = MTL::CreateSystemDefaultDevice();
         context->m_CommandQueue      = context->m_Device->newCommandQueue();
         context->m_NumFramesInFlight = MAX_FRAMES_IN_FLIGHT;
+        context->m_PipelineState     = GetDefaultPipelineState();
+        context->m_ViewportChanged   = true;
+        context->m_CullFaceChanged   = true;
 
         SetupMainRenderTarget(context);
         context->m_CurrentRenderTarget = context->m_MainRenderTarget;
@@ -1123,6 +1126,7 @@ namespace dmGraphics
             for (uint32_t s = 0; s < vd->m_StreamCount; ++s)
             {
                 const VertexDeclaration::Stream& stream = vd->m_Streams[s];
+                /*
                 MTL::VertexAttributeDescriptor* attr = vertex_desc->attributes()->object(attribute_index);
 
                 attr->setFormat(ConvertVertexFormat(stream.m_Type, stream.m_Size, stream.m_Normalize));
@@ -1130,6 +1134,15 @@ namespace dmGraphics
                 attr->setBufferIndex(buffer_index + vx_buffer_start_ix);
 
                 ++attribute_index;
+                */
+
+                // Use the shader location (stream.m_Location) as the attribute index
+                uint32_t attrIndex = stream.m_Location;
+                MTL::VertexAttributeDescriptor* attr = vertex_desc->attributes()->object(attrIndex);
+
+                attr->setFormat(ConvertVertexFormat(stream.m_Type, stream.m_Size, stream.m_Normalize));
+                attr->setOffset(stream.m_Offset);
+                attr->setBufferIndex(buffer_index + vx_buffer_start_ix);
             }
 
             // One layout per vertex buffer
@@ -1433,6 +1446,7 @@ namespace dmGraphics
         // which means that the face direction is inverted.
         if (current_rt->m_Id != DM_RENDERTARGET_BACKBUFFER_ID)
         {
+            /*
             if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_BACK)
             {
                 pipeline_state_draw.m_CullFaceType = FACE_TYPE_FRONT;
@@ -1441,6 +1455,7 @@ namespace dmGraphics
             {
                 pipeline_state_draw.m_CullFaceType = FACE_TYPE_BACK;
             }
+            */
         }
 
         MetalPipeline* pipeline = GetOrCreatePipeline(context, pipeline_state_draw,
@@ -1464,6 +1479,11 @@ namespace dmGraphics
             metal_vp.zfar    = 1.0;
             encoder->setViewport(metal_vp);
 
+            /*
+            SetViewportHelper(context->m_MainCommandBuffers[context->m_CurrentFrameInFlight],
+                    vp.m_X, (context->m_WindowHeight - vp.m_Y), vp.m_W, -vp.m_H);
+            */
+
             // MTL::ScissorRect scissor;
             // scissor.x      = current_rt->m_Scissor.offset.x;
             // scissor.y      = current_rt->m_Scissor.offset.y;
@@ -1471,6 +1491,24 @@ namespace dmGraphics
             // scissor.height = current_rt->m_Scissor.extent.height;
             // encoder->setScissorRect(scissor);
         }
+
+        if (context->m_CullFaceChanged)
+        {
+            if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_BACK)
+            {
+                encoder->setCullMode(MTL::CullModeBack);
+            }
+            else if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_FRONT)
+            {
+                encoder->setCullMode(MTL::CullModeFront);
+            }
+            else
+            {
+                encoder->setCullMode(MTL::CullModeNone);
+            }
+        }
+
+        encoder->setFrontFacingWinding(MTL::WindingCounterClockwise);
 
         CommitUniforms(context, encoder, &frame.m_ConstantScratchBuffer, &frame.m_ArgumentBufferPool, context->m_CurrentProgram, UNIFORM_BUFFER_ALIGNMENT);
     }
@@ -1641,10 +1679,6 @@ namespace dmGraphics
             {
                 program->m_ArgumentEncoders[i] = program->m_ComputeModule->m_Function->newArgumentEncoder(i);
             }
-
-            // uint32_t encode_length = program->m_ArgumentEncoders[i]->encodedLength();
-            // program->m_ArgumentBuffers[i] = context->m_Device->newBuffer(encode_length, MTL::ResourceStorageModeShared);
-            // program->m_NumArgumentBuffers++;
         }
     }
 
@@ -1902,7 +1936,8 @@ namespace dmGraphics
 
     static void MetalSetScissor(HContext _context, int32_t x, int32_t y, int32_t width, int32_t height)
     {
-
+        MetalContext* context = (MetalContext*)_context;
+        // TODO
     }
 
     static void MetalSetStencilMask(HContext _context, uint32_t mask)
@@ -2168,7 +2203,6 @@ namespace dmGraphics
         memset(t, 0, sizeof(MetalTexture));
         t->m_Type           = TEXTURE_TYPE_2D;
         t->m_GraphicsFormat = TEXTURE_FORMAT_RGBA;
-        //t->m_Format         = VK_FORMAT_UNDEFINED;
     }
 
     static MetalTexture* MetalNewTextureInternal(const TextureCreationParams& params)
@@ -2231,6 +2265,7 @@ namespace dmGraphics
                                    const TextureParams& params,
                                    uint32_t tex_data_size,
                                    void* tex_data_ptr,
+                                   TextureFormat format,
                                    MetalTexture* texture)
     {
         MTL::Device* device = context->m_Device;
@@ -2238,7 +2273,7 @@ namespace dmGraphics
         uint32_t width  = params.m_Width;
         uint32_t height = params.m_Height;
         uint32_t depth  = dmMath::Max((uint16_t)1u, params.m_Depth);
-        uint8_t  bpp    = GetTextureFormatBitsPerPixel(params.m_Format);
+        uint8_t  bpp    = GetTextureFormatBitsPerPixel(format);
 
         uint32_t bytesPerRow   = (bpp / 8) * width;
         uint32_t bytesPerImage = bytesPerRow * height;
@@ -2345,6 +2380,8 @@ namespace dmGraphics
 
         // Expand RGB to RGBA if needed
         TextureFormat format_orig = params.m_Format;
+        TextureFormat format_new = format_orig;
+
         if (format_orig == TEXTURE_FORMAT_RGB)
         {
             uint32_t pixel_count = params.m_Width * params.m_Height * tex_layer_count;
@@ -2352,6 +2389,7 @@ namespace dmGraphics
             RepackRGBToRGBA(pixel_count, (uint8_t*)tex_data_ptr, data_new);
             tex_data_ptr = data_new;
             tex_bpp = 32;
+            format_new = TEXTURE_FORMAT_RGBA;
         }
 
         // Compute tex_data_size in bytes
@@ -2377,7 +2415,7 @@ namespace dmGraphics
 
         if (tex_data_ptr && tex_data_size > 0)
         {
-            MetalCopyToTexture(context, params, tex_data_size, tex_data_ptr, texture);
+            MetalCopyToTexture(context, params, tex_data_size, tex_data_ptr, format_new, texture);
         }
 
         // Clean up temporary RGB->RGBA conversion
