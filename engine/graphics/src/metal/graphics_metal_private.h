@@ -213,10 +213,12 @@ namespace dmGraphics
 
     struct MetalFrameResource
     {
+        ResourcesToDestroyList*    m_ResourcesToDestroy;
         MetalConstantScratchBuffer m_ConstantScratchBuffer;
         MetalArgumentBufferPool    m_ArgumentBufferPool;
         MTL::CommandBuffer*        m_CommandBuffer;
-        ResourcesToDestroyList*    m_ResourcesToDestroy;
+        MTL::Texture*              m_MSAAColorTexture;
+        MTL::Texture*              m_MSAADepthTexture;
     };
 
     struct MetalContext
@@ -270,6 +272,7 @@ namespace dmGraphics
         uint32_t                           m_Width;
         uint32_t                           m_Height;
 
+        uint32_t                           m_MSAASampleCount         : 8;
         uint32_t                           m_CurrentFrameInFlight    : 2;
         uint32_t                           m_NumFramesInFlight       : 2;
         uint32_t                           m_ViewportChanged         : 1;

@@ -359,6 +359,37 @@ namespace dmGraphics
         context->m_TextureFormatSupport |= 1 << TEXTURE_FORMAT_RGB;
     }
 
+    static MTL::Texture* CreateMSAATexture(MetalContext* ctx, uint32_t width, uint32_t height, MTL::PixelFormat fmt, uint32_t sampleCount)
+    {
+        assert(sampleCount > 1);
+        MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+        desc->setTextureType(MTL::TextureType2DMultisample);
+        desc->setPixelFormat(fmt);
+        desc->setWidth(width);
+        desc->setHeight(height);
+        desc->setSampleCount(sampleCount);
+        desc->setStorageMode(MTL::StorageModePrivate);
+        desc->setUsage(MTL::TextureUsageRenderTarget);
+
+        MTL::Texture* t = ctx->m_Device->newTexture(desc);
+        desc->release();
+        return t;
+    }
+
+    // TODO: implement a better sample counting
+    static uint32_t MetalGetClosestSampleCount(uint32_t requested)
+    {
+        if (requested <= 1) return 1;
+
+        // Metal universally guarantees up to 4× MSAA
+        const uint32_t maxSupported = 4;
+
+        if (requested >= 4) return 4;
+        if (requested >= 2) return 2;
+
+        return 1;
+    }
+
     static bool MetalInitialize(HContext _context)
     {
         MetalContext* context        = (MetalContext*) _context;
@@ -368,6 +399,7 @@ namespace dmGraphics
         context->m_PipelineState     = GetDefaultPipelineState();
         context->m_ViewportChanged   = true;
         context->m_CullFaceChanged   = true;
+        context->m_MSAASampleCount   = MetalGetClosestSampleCount(dmPlatform::GetWindowStateParam(context->m_Window, dmPlatform::WINDOW_STATE_SAMPLE_COUNT));
 
         SetupMainRenderTarget(context);
         context->m_CurrentRenderTarget = context->m_MainRenderTarget;
@@ -383,6 +415,12 @@ namespace dmGraphics
         {
             context->m_FrameResources[i].m_ResourcesToDestroy = new ResourcesToDestroyList;
             context->m_FrameResources[i].m_ResourcesToDestroy->SetCapacity(8);
+
+            if (context->m_MSAASampleCount > 1)
+            {
+                context->m_FrameResources[i].m_MSAAColorTexture = CreateMSAATexture(context, window_width, window_height, MTL::PixelFormatBGRA8Unorm, context->m_MSAASampleCount);
+                context->m_FrameResources[i].m_MSAADepthTexture = CreateMSAATexture(context, window_width, window_height, MTL::PixelFormatDepth32Float_Stencil8, context->m_MSAASampleCount);
+            }
 
             // This is just the starting point size for the constant scratch buffer,
             // the buffers can grow as needed.
@@ -554,8 +592,6 @@ namespace dmGraphics
         {
             rt->m_IsBound = 0;
         }
-
-        // context->m_CurrentRenderTarget = 0;
     }
 
     static void BeginRenderPass(MetalContext* context, HRenderTarget render_target)
@@ -590,10 +626,20 @@ namespace dmGraphics
                 continue;
 
             MTL::RenderPassColorAttachmentDescriptor* colorAttachment = rpDesc->colorAttachments()->object(i);
-            colorAttachment->setTexture(tex->m_Texture);
             colorAttachment->setLoadAction(MTL::LoadActionClear);
-            colorAttachment->setStoreAction(MTL::StoreActionStore);
             colorAttachment->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 1.0)); // TODO: Remove?
+
+            if (context->m_MSAASampleCount > 1)
+            {
+                colorAttachment->setTexture(frame.m_MSAAColorTexture);
+                colorAttachment->setResolveTexture(tex->m_Texture);
+                colorAttachment->setStoreAction(MTL::StoreActionMultisampleResolve);
+            }
+            else
+            {
+                colorAttachment->setTexture(tex->m_Texture);
+                colorAttachment->setStoreAction(MTL::StoreActionStore);
+            }
         }
 
         // --- Configure depth/stencil attachment ---
@@ -603,16 +649,29 @@ namespace dmGraphics
             if (tex && tex->m_Texture)
             {
                 MTL::RenderPassDepthAttachmentDescriptor* depthAttachment = rpDesc->depthAttachment();
-                depthAttachment->setTexture(tex->m_Texture);
                 depthAttachment->setLoadAction(MTL::LoadActionClear);
-                depthAttachment->setStoreAction(MTL::StoreActionStore);
                 depthAttachment->setClearDepth(1.0);
 
                 MTL::RenderPassStencilAttachmentDescriptor* stencilAttachment = rpDesc->stencilAttachment();
-                stencilAttachment->setTexture(tex->m_Texture);
                 stencilAttachment->setLoadAction(MTL::LoadActionClear);
-                stencilAttachment->setStoreAction(MTL::StoreActionStore);
                 stencilAttachment->setClearStencil(0);
+
+                if (context->m_MSAASampleCount > 1)
+                {
+                    depthAttachment->setTexture(frame.m_MSAADepthTexture);
+                    stencilAttachment->setTexture(frame.m_MSAADepthTexture);
+
+                    depthAttachment->setStoreAction(MTL::StoreActionDontCare);
+                    stencilAttachment->setStoreAction(MTL::StoreActionDontCare);
+                }
+                else
+                {
+                    depthAttachment->setTexture(tex->m_Texture);
+                    stencilAttachment->setTexture(tex->m_Texture);
+
+                    depthAttachment->setStoreAction(MTL::StoreActionStore);
+                    stencilAttachment->setStoreAction(MTL::StoreActionStore);
+                }
             }
         }
 
@@ -644,7 +703,6 @@ namespace dmGraphics
         MetalFrameResource& frame       = context->m_FrameResources[context->m_CurrentFrameInFlight];
         context->m_AutoReleasePool      = NS::AutoreleasePool::alloc()->init();
         context->m_Drawable             = (__bridge CA::MetalDrawable*)[context->m_Layer nextDrawable];
-        //context->m_RenderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
         context->m_FrameBegun           = 1;
 
         frame.m_CommandBuffer = context->m_CommandQueue->commandBuffer();
@@ -1116,7 +1174,6 @@ namespace dmGraphics
     static bool CreatePipeline(MetalContext* context, MetalRenderTarget* rt, const PipelineState pipeline_state,  MetalProgram* program, VertexDeclaration** vertexDeclaration, uint32_t vertexDeclarationCount, MetalPipeline* pipeline)
     {
         MTL::VertexDescriptor* vertex_desc = MTL::VertexDescriptor::alloc()->init();
-        uint32_t attribute_index = 0;
         uint32_t vx_buffer_start_ix = program->m_BaseProgram.m_MaxBinding;
 
         for (uint32_t buffer_index = 0; buffer_index < vertexDeclarationCount; ++buffer_index)
@@ -1126,15 +1183,6 @@ namespace dmGraphics
             for (uint32_t s = 0; s < vd->m_StreamCount; ++s)
             {
                 const VertexDeclaration::Stream& stream = vd->m_Streams[s];
-                /*
-                MTL::VertexAttributeDescriptor* attr = vertex_desc->attributes()->object(attribute_index);
-
-                attr->setFormat(ConvertVertexFormat(stream.m_Type, stream.m_Size, stream.m_Normalize));
-                attr->setOffset(stream.m_Offset);
-                attr->setBufferIndex(buffer_index + vx_buffer_start_ix);
-
-                ++attribute_index;
-                */
 
                 // Use the shader location (stream.m_Location) as the attribute index
                 uint32_t attrIndex = stream.m_Location;
@@ -1157,6 +1205,7 @@ namespace dmGraphics
         pipeline_desc->setVertexFunction(program->m_VertexModule->m_Function);
         pipeline_desc->setFragmentFunction(program->m_FragmentModule->m_Function);
         pipeline_desc->setVertexDescriptor(vertex_desc);
+        pipeline_desc->setSampleCount(context->m_MSAASampleCount);
 
         for (uint32_t i = 0; i < rt->m_ColorAttachmentCount; ++i)
         {
@@ -1936,7 +1985,7 @@ namespace dmGraphics
 
     static void MetalSetScissor(HContext _context, int32_t x, int32_t y, int32_t width, int32_t height)
     {
-        MetalContext* context = (MetalContext*)_context;
+        //MetalContext* context = (MetalContext*)_context;
         // TODO
     }
 
