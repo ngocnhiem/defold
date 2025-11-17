@@ -1543,18 +1543,23 @@ namespace dmGraphics
 
         if (context->m_CullFaceChanged)
         {
-            if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_BACK)
+            MTL::CullMode cull_mode = MTL::CullModeNone;
+
+            if (pipeline_state_draw.m_CullFaceEnabled)
             {
-                encoder->setCullMode(MTL::CullModeBack);
+                if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_BACK)
+                {
+                    cull_mode = MTL::CullModeBack;
+                }
+                else if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_FRONT)
+                {
+                    cull_mode = MTL::CullModeFront;
+                }
             }
-            else if (pipeline_state_draw.m_CullFaceType == FACE_TYPE_FRONT)
-            {
-                encoder->setCullMode(MTL::CullModeFront);
-            }
-            else
-            {
-                encoder->setCullMode(MTL::CullModeNone);
-            }
+
+            encoder->setCullMode(cull_mode);
+
+            context->m_CullFaceChanged = false;
         }
 
         encoder->setFrontFacingWinding(MTL::WindingCounterClockwise);
