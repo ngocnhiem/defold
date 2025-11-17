@@ -146,8 +146,6 @@ public class ResourceUtil {
         String prefix = isBuildPath ? buildDirectory : "";
         String minifiedPath = String.format("%s/%d/%d%s", prefix, thousands, remainder, suffix);
 
-        System.out.printf("MAWE: '%s' -> '%s'\n", path, minifiedPath);
-
         cachedPaths.put(path, minifiedPath);
         minifiedPaths.add(minifiedPath);
         return minifiedPath;

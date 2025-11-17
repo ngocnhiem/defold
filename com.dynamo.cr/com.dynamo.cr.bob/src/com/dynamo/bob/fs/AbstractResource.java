@@ -42,13 +42,6 @@ public abstract class AbstractResource<F extends IFileSystem> implements IResour
         return this.isOutput;
     }
 
-    private String getRelativePath() {
-        String buildDirectory = fileSystem.getBuildDirectory();
-        if (path.startsWith(buildDirectory))
-            return path.substring(buildDirectory.length());
-        return path;
-    }
-
     @Override
     public IResource changeExt(String ext) {
         // Used to create an output node

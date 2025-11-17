@@ -153,8 +153,6 @@ public class GameProjectBuilder extends Builder {
                     String[] tuples = ROOT_NODES[index];
                     field = String.format("%s.%s", tuples[0], tuples[1]);
                 }
-                else {
-                }
 
                 IResource res = BuilderUtil.checkResource(project, builder.firstInput(), field, path);
                 res.disableMinifyPath();
