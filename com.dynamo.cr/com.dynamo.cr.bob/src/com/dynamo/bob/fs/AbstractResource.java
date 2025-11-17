@@ -58,12 +58,12 @@ public abstract class AbstractResource<F extends IFileSystem> implements IResour
         {
             String buildDirectory = fileSystem.getBuildDirectory();
             if (path.startsWith(buildDirectory))
-                newPath = newPath.substring(buildDirectory.length());
+                newPath = newPath.substring(buildDirectory.length()+1);
 
             newPath = ResourceUtil.minifyPath(newPath);
 
             if (path.startsWith(buildDirectory))
-                newPath = concat(buildDirectory, newPath);
+                newPath = buildDirectory + "/" + newPath;
         }
 
         IResource newResource = fileSystem.get(newPath);
