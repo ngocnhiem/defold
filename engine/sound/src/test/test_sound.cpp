@@ -2513,7 +2513,7 @@ const TestParams params_starttime_play_test[] = {
 INSTANTIATE_TEST_CASE_P(dmSoundTestStartTimePlayTest, dmSoundTestStartTimePlayTest, jc_test_values_in(params_starttime_play_test));
 #endif
 
-TEST(SoundSdk, MasterMuteUpdatesGroupGain)
+TEST(SoundSdk, MasterMuteSilencesWithoutChangingGain)
 {
     dmSound::InitializeParams params;
     dmSound::SetDefaultInitializeParams(&params);
@@ -2567,7 +2567,7 @@ TEST(SoundSdk, MasterMuteRestoresPreviousGain)
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::Finalize());
 }
 
-TEST(SoundSdk, GroupMuteRestoresPreviousGain)
+TEST(SoundSdk, GroupMuteSilencesWithoutChangingGain)
 {
     dmSound::InitializeParams params;
     dmSound::SetDefaultInitializeParams(&params);
@@ -2595,7 +2595,7 @@ TEST(SoundSdk, GroupMuteRestoresPreviousGain)
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::Finalize());
 }
 
-TEST(SoundSdk, GroupMuteDefaultsToUnityGain)
+TEST(SoundSdk, GroupMuteDefaultsToUnityGainWhenMuted)
 {
     dmSound::InitializeParams params;
     dmSound::SetDefaultInitializeParams(&params);
