@@ -139,15 +139,21 @@ namespace dmGraphics
         switch(resource_to_destroy.m_ResourceType)
         {
             case RESOURCE_TYPE_DEVICE_BUFFER:
-                resource_to_destroy.m_DeviceBuffer = ((MetalDeviceBuffer*) resource)->m_Buffer;
-
-                // Nothing to destroy
-                if (resource_to_destroy.m_DeviceBuffer == 0x0)
                 {
-                    return;
-                }
-                break;
+                    resource_to_destroy.m_DeviceBuffer = ((MetalDeviceBuffer*) resource)->m_Buffer;
+                    if (resource_to_destroy.m_DeviceBuffer == 0x0)
+                    {
+                        return;
+                    }
+                } break;
             case RESOURCE_TYPE_TEXTURE:
+                {
+                    resource_to_destroy.m_Texture = ((MetalTexture*) resource)->m_Texture;
+                    if (resource_to_destroy.m_Texture == 0x0)
+                    {
+                        return;
+                    }
+                } break;
             case RESOURCE_TYPE_PROGRAM:
             case RESOURCE_TYPE_RENDER_TARGET:
                 break;
@@ -1664,9 +1670,10 @@ namespace dmGraphics
         module->m_Library = library;
         module->m_Function = library->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
 
-        dmLogInfo("-----------------");
-        dmLogInfo("Shader: \n%s", src);
-        dmLogInfo("-----------------");
+        HashState64 shader_hash_state;
+        dmHashInit64(&shader_hash_state, false);
+        dmHashUpdateBuffer64(&shader_hash_state, src, (uint32_t) src_size);
+        module->m_Hash = dmHashFinal64(&shader_hash_state);
 
         return module;
     }
@@ -1786,6 +1793,21 @@ namespace dmGraphics
                 DeleteProgram(_context, (HProgram) program);
                 return 0;
             }
+
+            HashState64 program_hash;
+            dmHashInit64(&program_hash, false);
+
+            for (uint32_t i=0; i < program->m_BaseProgram.m_ShaderMeta.m_Inputs.Size(); i++)
+            {
+                if (program->m_BaseProgram.m_ShaderMeta.m_Inputs[i].m_StageFlags & SHADER_STAGE_FLAG_VERTEX)
+                {
+                    dmHashUpdateBuffer64(&program_hash, &program->m_BaseProgram.m_ShaderMeta.m_Inputs[i].m_Binding, sizeof(program->m_BaseProgram.m_ShaderMeta.m_Inputs[i].m_Binding));
+                }
+            }
+
+            dmHashUpdateBuffer64(&program_hash, &program->m_VertexModule->m_Hash, sizeof(program->m_VertexModule->m_Hash));
+            dmHashUpdateBuffer64(&program_hash, &program->m_FragmentModule->m_Hash, sizeof(program->m_FragmentModule->m_Hash));
+            program->m_Hash = dmHashFinal64(&program_hash);
 
             shaders[0]     = program->m_VertexModule;
             shaders[1]     = program->m_FragmentModule;
@@ -2315,6 +2337,154 @@ namespace dmGraphics
         context->m_AssetHandleContainer.Release(texture);
     }
 
+    // Helper to compute aligned pitch
+    static inline uint32_t AlignTo(uint32_t value, uint32_t align) {
+        return (value + align - 1) & ~(align - 1);
+    }
+
+    // Metal version of "GetCopyableFootprints" behavior for one mip level.
+    // It computes rows, rowSize (unpacked), paddedRowPitch and sliceSize for each slice.
+    struct MetalPlacedSubresource
+    {
+        uint32_t rows;
+        uint64_t rowSize;         // unpadded bytes per row
+        uint64_t paddedRowPitch;  // bytesPerRow used for copyFromBuffer (aligned to 256)
+        uint64_t sliceSize;       // bytes per image (paddedRowPitch * rows)
+        uint64_t offset;          // offset inside contiguous upload buffer (computed later)
+    };
+
+    static void MetalCopyToTexture(MetalContext* context,
+                                   MetalTexture* texture,
+                                   TextureFormat format_src,
+                                   const TextureParams& params,
+                                   const uint8_t* pixels)
+    {
+        if (!texture || !texture->m_Texture || !pixels) return;
+
+        MTL::Device* device = context->m_Device;
+
+        const uint32_t target_mip = params.m_MipMap;
+        const uint32_t layerCount = dmMath::Max((uint32_t)texture->m_LayerCount, (uint32_t)params.m_LayerCount);
+
+        // Base dims (full-size level 0)
+        const uint32_t baseWidth  = texture->m_Width;
+        const uint32_t baseHeight = texture->m_Height;
+
+        // Compute mip dims for the target mip
+        auto MipDim = [] (uint32_t base, uint32_t mip) -> uint32_t {
+            uint32_t v = base >> mip;
+            return v ? v : 1u;
+        };
+        const uint32_t mipWidth  = MipDim(baseWidth, target_mip);
+        const uint32_t mipHeight = MipDim(baseHeight, target_mip);
+
+        // Copy rectangle size — use params.m_Width/Height if set (subupdate), otherwise full mip size
+        const uint32_t copyWidth  = params.m_Width ? params.m_Width : mipWidth;
+        const uint32_t copyHeight = params.m_Height ? params.m_Height : mipHeight;
+
+        // Bytes per texel in source format
+        const uint32_t bpp_src_bits = GetTextureFormatBitsPerPixel(format_src);
+        const uint32_t bytesPerTexel = bpp_src_bits / 8;
+        const uint64_t unpaddedRowSize = (uint64_t)copyWidth * bytesPerTexel;
+        const uint64_t unpaddedSliceSize = unpaddedRowSize * (uint64_t)copyHeight;
+
+        // Align row pitch to 256 bytes for Metal copyFromBuffer() — required on many GPUs
+        const uint32_t rowAlignment = 256u;
+        const uint64_t paddedRowPitch = (uint64_t)AlignTo((uint32_t)unpaddedRowSize, rowAlignment);
+        const uint64_t paddedSliceSize = paddedRowPitch * (uint64_t)copyHeight;
+
+        // Build per-slice placed footprints (for this helper we use same footprint for each slice)
+        dmArray<MetalPlacedSubresource> placed;
+        placed.SetCapacity(layerCount);
+        placed.SetSize(layerCount);
+
+        uint64_t accumOffset = 0;
+        for (uint32_t i = 0; i < layerCount; ++i)
+        {
+            MetalPlacedSubresource& p = placed[i];
+            p.rows = copyHeight;
+            p.rowSize = unpaddedRowSize;
+            p.paddedRowPitch = paddedRowPitch;
+            p.sliceSize = paddedSliceSize;
+            p.offset = accumOffset;
+            accumOffset += p.sliceSize;
+        }
+
+        // Create one contiguous upload buffer (like DX12 upload heap)
+        const uint64_t totalUploadSize = accumOffset;
+        MTL::Buffer* uploadBuffer = device->newBuffer((NSUInteger)totalUploadSize, MTL::ResourceStorageModeShared);
+        if (!uploadBuffer)
+        {
+            dmLogError("MetalTextureUploadWithFootprints: failed to create upload buffer size %llu", totalUploadSize);
+            return;
+        }
+
+        // Map buffer and copy each slice into its place with row-pitch padding
+        uint8_t* dstBase = reinterpret_cast<uint8_t*>(uploadBuffer->contents());
+        const uint8_t* srcBase = pixels;
+
+        // Source layout assumption: pixels holds `layerCount` slices contiguous for this mip,
+        // each slice being exactly (copyWidth * copyHeight * bytesPerTexel) bytes (unpadded).
+        const uint64_t srcSliceStride = unpaddedSliceSize;
+
+        for (uint32_t slice = 0; slice < layerCount; ++slice)
+        {
+            uint8_t* dstSlice = dstBase + placed[slice].offset;
+            const uint8_t* srcSlice = srcBase + (uint64_t)slice * srcSliceStride;
+
+            // copy row by row into padded rows
+            for (uint32_t y = 0; y < placed[slice].rows; ++y)
+            {
+                const uint8_t* srcRow = srcSlice + (uint64_t)y * unpaddedRowSize;
+                uint8_t* dstRow = dstSlice + (uint64_t)y * placed[slice].paddedRowPitch;
+                memcpy(dstRow, srcRow, (size_t)unpaddedRowSize);
+                if (placed[slice].paddedRowPitch > placed[slice].rowSize)
+                {
+                    memset(dstRow + placed[slice].rowSize, 0, (size_t)(placed[slice].paddedRowPitch - placed[slice].rowSize));
+                }
+            }
+        }
+
+        // Create command buffer and blit encoder
+        MTL::CommandBuffer* cmdBuf = context->m_CommandQueue->commandBuffer();
+        MTL::BlitCommandEncoder* blit = cmdBuf->blitCommandEncoder();
+
+        // For each slice, issue copyFromBuffer with the placed footprint
+        for (uint32_t slice = 0; slice < layerCount; ++slice)
+        {
+            const MetalPlacedSubresource& p = placed[slice];
+
+            // destination slice (array index or cube face index)
+            NSUInteger destSlice = (NSUInteger)(params.m_Slice + slice);
+
+            // destination origin (subupdate offsets)
+            MTL::Origin destOrigin = { (NSUInteger)params.m_X, (NSUInteger)params.m_Y, (NSUInteger)params.m_Z };
+
+            // destination size
+            MTL::Size copySize = { (NSUInteger)copyWidth, (NSUInteger)copyHeight, 1 };
+
+            blit->copyFromBuffer(
+                uploadBuffer,
+                (NSUInteger)p.offset,
+                (NSUInteger)p.paddedRowPitch,
+                (NSUInteger)p.sliceSize,
+                copySize,
+                texture->m_Texture,
+                destSlice,
+                (NSUInteger)target_mip,
+                destOrigin
+            );
+        }
+
+        blit->endEncoding();
+        cmdBuf->commit();
+        cmdBuf->waitUntilCompleted();
+
+        // cleanup
+        uploadBuffer->release();
+    }
+
+    /*
     static void MetalCopyToTexture(MetalContext* context,
                                    const TextureParams& params,
                                    uint32_t tex_data_size,
@@ -2368,21 +2538,52 @@ namespace dmGraphics
 
         stagingBuffer->release();
     }
+    */
 
     static void CreateMetalTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage)
     {
         uint8_t tex_layer_count = dmMath::Max(texture->m_LayerCount, params.m_LayerCount);
         uint16_t tex_depth      = dmMath::Max(texture->m_Depth, params.m_Depth);
+        uint8_t tex_mip_count   = 1;
+
+        // Note:
+        // If the texture has requested mipmaps and we need to recreate the texture, make sure to allocate enough mipmaps.
+        // For vulkan this means that we can't cap a texture to a specific mipmap count since the engine expects
+        // that setting texture data works like the OpenGL backend where we set the mipmap count to zero and then
+        // update the mipmap count based on the params. If we recreate the texture when that is detected (i.e we have too few mipmaps in the texture)
+        // we will lose all the data that was previously uploaded. We could copy that data, but for now this is the easiest way of dealing with this..
+
+        if (texture->m_MipMapCount > 1)
+        {
+            tex_mip_count = (uint16_t) GetMipmapCount(dmMath::Max(texture->m_Width, texture->m_Height));
+        }
 
         MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
 
-        // Set type
-        if (tex_depth > 1)
-            desc->setTextureType(MTL::TextureType3D);
-        else if (tex_layer_count > 1)
-            desc->setTextureType(MTL::TextureType2DArray);
-        else
-            desc->setTextureType(MTL::TextureType2D);
+        switch(texture->m_Type)
+        {
+            case TEXTURE_TYPE_2D:
+            case TEXTURE_TYPE_IMAGE_2D:
+            case TEXTURE_TYPE_TEXTURE_2D:
+                desc->setTextureType(MTL::TextureType2D);
+                break;
+            case TEXTURE_TYPE_2D_ARRAY:
+            case TEXTURE_TYPE_TEXTURE_2D_ARRAY:
+                desc->setTextureType(MTL::TextureType2DArray);
+                break;
+            case TEXTURE_TYPE_3D:
+            case TEXTURE_TYPE_IMAGE_3D:
+            case TEXTURE_TYPE_TEXTURE_3D:
+                desc->setTextureType(MTL::TextureType3D);
+                break;
+            case TEXTURE_TYPE_CUBE_MAP:
+            case TEXTURE_TYPE_TEXTURE_CUBE:
+                desc->setTextureType(MTL::TextureTypeCube);
+                tex_layer_count = 1;
+                break;
+            default:
+                assert(0);
+        }
 
         // Set pixel format
         desc->setPixelFormat(GetMetalPixelFormat(params.m_Format));
@@ -2392,14 +2593,16 @@ namespace dmGraphics
         desc->setHeight(params.m_Height);
         desc->setDepth(tex_depth);
         desc->setArrayLength(tex_layer_count);
-        desc->setMipmapLevelCount(params.m_MipMap + 1);
+        desc->setMipmapLevelCount(tex_mip_count);
         desc->setSampleCount(1);
         desc->setStorageMode(MTL::StorageModePrivate);
         desc->setUsage(usage);
 
         // Create Metal texture
         if (texture->m_Texture)
+        {
             texture->m_Texture->release();
+        }
         texture->m_Texture = context->m_Device->newTexture(desc);
         desc->release();
 
@@ -2408,7 +2611,7 @@ namespace dmGraphics
         texture->m_Depth  = params.m_Depth;
         texture->m_LayerCount = tex_layer_count;
         texture->m_GraphicsFormat = params.m_Format;
-        texture->m_MipMapCount = params.m_MipMap + 1;
+        texture->m_MipMapCount = tex_mip_count;
     }
 
     static void MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params)
@@ -2431,6 +2634,7 @@ namespace dmGraphics
         uint8_t tex_bpp         = GetTextureFormatBitsPerPixel(params.m_Format);
         size_t tex_data_size    = params.m_DataSize * tex_layer_count * 8; // bits
         void* tex_data_ptr      = (void*)params.m_Data;
+        texture->m_MipMapCount  = dmMath::Max(texture->m_MipMapCount, (uint16_t)(params.m_MipMap+1));
 
         // Expand RGB to RGBA if needed
         TextureFormat format_orig = params.m_Format;
@@ -2449,27 +2653,30 @@ namespace dmGraphics
         // Compute tex_data_size in bytes
         tex_data_size = tex_bpp / 8 * params.m_Width * params.m_Height * tex_depth * tex_layer_count;
 
-        // Recreate texture if needed
-        bool needsRecreate = !texture->m_Texture ||
-                             texture->m_Width  != params.m_Width ||
-                             texture->m_Height != params.m_Height ||
-                             texture->m_Depth  != params.m_Depth ||
-                             texture->m_GraphicsFormat != params.m_Format;
-
         if (params.m_SubUpdate)
         {
             // Same as vulkan
             tex_data_size = params.m_Width * params.m_Height * tex_bpp * tex_layer_count;
         }
-        else if (needsRecreate)
+        else if (params.m_MipMap == 0)
         {
-            assert(!params.m_SubUpdate);
+            if (texture->m_GraphicsFormat != params.m_Format ||
+                texture->m_Width != params.m_Width ||
+                texture->m_Height != params.m_Height ||
+                (IsTextureType3D(texture->m_Type) && (texture->m_Depth != params.m_Depth)))
+            {
+                DestroyResourceDeferred(context, texture);
+            }
+        }
+
+        if (texture->m_Destroyed || texture->m_Texture == 0x0)
+        {
             CreateMetalTexture(context, texture, params, MTL::TextureUsageShaderRead);
         }
 
         if (tex_data_ptr && tex_data_size > 0)
         {
-            MetalCopyToTexture(context, params, tex_data_size, tex_data_ptr, format_new, texture);
+            MetalCopyToTexture(context, texture, format_new, params, (const uint8_t*) tex_data_ptr);
         }
 
         // Clean up temporary RGB->RGBA conversion

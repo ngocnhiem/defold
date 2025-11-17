@@ -62,7 +62,8 @@ namespace dmGraphics
     {
         union
         {
-            MTL::Buffer* m_DeviceBuffer;
+            MTL::Buffer*  m_DeviceBuffer;
+            MTL::Texture* m_Texture;
         };
         MetalResourceType m_ResourceType;
     };
@@ -190,6 +191,7 @@ namespace dmGraphics
     {
         MTL::Function* m_Function;
         MTL::Library*  m_Library;
+        uint64_t       m_Hash;
     };
 
     struct MetalProgram
