@@ -2532,7 +2532,7 @@ TEST(SoundSdk, MasterMuteUpdatesGroupGain)
     EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(master_hash, true));
     EXPECT_TRUE(dmSound::IsGroupMuted(master_hash));
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(master_hash, &master_gain));
-    EXPECT_NEAR(0.0f, master_gain, 1e-6f);
+    EXPECT_NEAR(1.0f, master_gain, 1e-6f);
 
     EXPECT_EQ(dmSound::RESULT_OK, dmSound::ToggleGroupMute(master_hash));
     EXPECT_FALSE(dmSound::IsGroupMuted(master_hash));
@@ -2584,7 +2584,7 @@ TEST(SoundSdk, GroupMuteRestoresPreviousGain)
     EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(group_hash, true));
     float gain = 1.0f;
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(group_hash, &gain));
-    EXPECT_NEAR(0.0f, gain, 1e-6f);
+    EXPECT_NEAR(0.25f, gain, 1e-6f);
     EXPECT_TRUE(dmSound::IsGroupMuted(group_hash));
 
     EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(group_hash, false));
@@ -2612,7 +2612,7 @@ TEST(SoundSdk, GroupMuteDefaultsToUnityGain)
     EXPECT_EQ(dmSound::RESULT_OK, dmSound::SetGroupMute(group_hash, false));
     float gain = 0.0f;
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::GetGroupGain(group_hash, &gain));
-    EXPECT_NEAR(1.0f, gain, 1e-6f);
+    EXPECT_NEAR(0.0f, gain, 1e-6f);
     EXPECT_FALSE(dmSound::IsGroupMuted(group_hash));
 
     ASSERT_EQ(dmSound::RESULT_OK, dmSound::Finalize());

@@ -181,7 +181,6 @@ namespace dmSound
         dmhash_t m_NameHash;
         Value    m_Gain;
         float    m_GainParameter;
-        float    m_GainBeforeMute;
         bool     m_IsMuted;
         float*   m_MixBuffer[SOUND_MAX_MIX_CHANNELS];
         float    m_SumSquaredMemory[SOUND_MAX_MIX_CHANNELS * GROUP_MEMORY_BUFFER_COUNT];
@@ -317,7 +316,6 @@ namespace dmSound
         group->m_NameHash = group_hash;
         group->m_GainParameter = 1.0f;
         group->m_Gain.Reset(GainToScale(group->m_GainParameter));
-        group->m_GainBeforeMute = 1.0f;
         group->m_IsMuted = false;
 
         for(uint32_t c=0; c<SOUND_MAX_MIX_CHANNELS; ++c)
@@ -464,8 +462,7 @@ namespace dmSound
         SoundGroup* master = &sound->m_Groups[master_index];
         master->m_GainParameter = master_gain;
         master->m_Gain.Reset(GainToScale(master->m_GainParameter));
-        master->m_GainBeforeMute = master->m_GainParameter > 0.0f ? master->m_GainParameter : 1.0f;
-        master->m_IsMuted = master->m_GainParameter <= 0.0f;
+        master->m_IsMuted = false;
 
         dmAtomicStore32(&sound->m_IsRunning, 1);
         dmAtomicStore32(&sound->m_IsPaused, 0);
@@ -894,15 +891,6 @@ namespace dmSound
         SoundGroup* group = &sound->m_Groups[*index];
         group->m_Gain.Set(GainToScale(gain), reset);
         group->m_GainParameter = gain;
-        if (gain > 0.0f)
-        {
-            group->m_GainBeforeMute = gain;
-            group->m_IsMuted = false;
-        }
-        else
-        {
-            group->m_IsMuted = true;
-        }
 
         return RESULT_OK;
     }
@@ -927,7 +915,6 @@ namespace dmSound
             return RESULT_OK;
 
         SoundSystem* sound = g_SoundSystem;
-        float target_gain = mute ? 0.0f : 1.0f;
 
         {
             DM_MUTEX_OPTIONAL_SCOPED_LOCK(sound->m_Mutex);
@@ -936,23 +923,10 @@ namespace dmSound
                 return RESULT_NO_SUCH_GROUP;
 
             SoundGroup* group = &sound->m_Groups[*index];
-            if (mute)
-            {
-                if (group->m_GainParameter > 0.0f)
-                {
-                    group->m_GainBeforeMute = group->m_GainParameter;
-                }
-                group->m_IsMuted = true;
-                target_gain = 0.0f;
-            }
-            else
-            {
-                target_gain = group->m_GainBeforeMute;
-                group->m_IsMuted = false;
-            }
+            group->m_IsMuted = mute;
         }
 
-        return SetGroupGain(group_hash, target_gain);
+        return RESULT_OK;
     }
 
     Result ToggleGroupMute(dmhash_t group_hash)
@@ -1381,7 +1355,7 @@ namespace dmSound
         int* group_index = sound->m_GroupMap.Get(instance->m_Group);
         if (group_index != NULL) {
             SoundGroup* group = &sound->m_Groups[*group_index];
-            if (group->m_Gain.IsZero()) {
+            if (group->m_IsMuted || group->m_Gain.IsZero()) {
                 return true;
             }
         }
@@ -1389,7 +1363,7 @@ namespace dmSound
         int* master_index = sound->m_GroupMap.Get(MASTER_GROUP_HASH);
         if (master_index != NULL) {
             SoundGroup* master = &sound->m_Groups[*master_index];
-            if (master->m_Gain.IsZero()) {
+            if (master->m_IsMuted || master->m_Gain.IsZero()) {
                 return true;
             }
         }
@@ -1424,6 +1398,11 @@ namespace dmSound
         }
 
         bool is_muted = dmSound::IsMuted(instance);
+
+        if (is_muted)
+        {
+            return;
+        }
 
         dmSoundCodec::Result r = dmSoundCodec::RESULT_OK;
 

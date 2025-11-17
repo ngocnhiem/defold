@@ -131,7 +131,6 @@ namespace dmSound
     {
         dmhash_t m_NameHash;
         float    m_Gain;
-        float    m_GainBeforeMute;
         bool     m_IsMuted;
     };
 
@@ -262,7 +261,6 @@ namespace dmSound
         SoundGroup* group = &sound->m_Groups[index];
         group->m_NameHash = group_hash;
         group->m_Gain = 1.0f;
-        group->m_GainBeforeMute = 1.0f;
         group->m_IsMuted = false;
         sound->m_GroupMap.Put(group_hash, index);
         return index;
@@ -348,15 +346,13 @@ namespace dmSound
         for (uint32_t i = 0; i < MAX_GROUPS; ++i) {
             memset(&sound->m_Groups[i], 0, sizeof(SoundGroup));
             sound->m_Groups[i].m_Gain = 1.0f;
-            sound->m_Groups[i].m_GainBeforeMute = 1.0f;
             sound->m_Groups[i].m_IsMuted = false;
         }
 
         int master_index = GetOrCreateGroup("master");
         SoundGroup* master = &sound->m_Groups[master_index];
         master->m_Gain = master_gain;
-        master->m_GainBeforeMute = master_gain > 0.0f ? master_gain : 1.0f;
-        master->m_IsMuted = master_gain <= 0.0f;
+        master->m_IsMuted = false;
 
         const char *al_vendor = alGetString(AL_VENDOR);
         const char *al_version = alGetString(AL_VERSION);
@@ -880,17 +876,7 @@ namespace dmSound
         }
 
         SoundGroup* group = &sound->m_Groups[*index];
-        if (gain > 0.0f)
-        {
-            group->m_Gain = gain;
-            group->m_GainBeforeMute = gain;
-            group->m_IsMuted = false;
-        }
-        else
-        {
-            group->m_Gain = 0.0f;
-            group->m_IsMuted = true;
-        }
+        group->m_Gain = gain;
         return RESULT_OK;
     }
 
@@ -914,7 +900,6 @@ namespace dmSound
             return RESULT_OK;
 
         SoundSystem* sound = g_SoundSystem;
-        float target_gain = mute ? 0.0f : 1.0f;
 
         {
             DM_MUTEX_OPTIONAL_SCOPED_LOCK(sound->m_Mutex);
@@ -923,23 +908,10 @@ namespace dmSound
                 return RESULT_NO_SUCH_GROUP;
 
             SoundGroup* group = &sound->m_Groups[*index];
-            if (mute)
-            {
-                if (group->m_Gain > 0.0f)
-                {
-                    group->m_GainBeforeMute = group->m_Gain;
-                }
-                group->m_IsMuted = true;
-                target_gain = 0.0f;
-            }
-            else
-            {
-                target_gain = group->m_GainBeforeMute > 0.0f ? group->m_GainBeforeMute : 1.0f;
-                group->m_IsMuted = false;
-            }
+            group->m_IsMuted = mute;
         }
 
-        return SetGroupGain(group_hash, target_gain);
+        return RESULT_OK;
     }
 
     Result ToggleGroupMute(dmhash_t group_hash)
@@ -1102,9 +1074,24 @@ namespace dmSound
             alSourceQueueBuffers(source, 1, buffer);
             checkForAlErrors("alSourceQueueBuffers");
             float gain = sound_instance->m_Parameters[PARAMETER_GAIN];
+            bool muted = false;
+
             int *group_index = sound->m_GroupMap.Get(sound_instance->m_Group);
             if (group_index) {
-                gain *= sound->m_Groups[*group_index].m_Gain;
+                SoundGroup* group = &sound->m_Groups[*group_index];
+                gain *= group->m_Gain;
+                muted = group->m_IsMuted;
+            }
+
+            int* master_index = sound->m_GroupMap.Get(MASTER_GROUP_HASH);
+            if (master_index) {
+                SoundGroup* master = &sound->m_Groups[*master_index];
+                gain *= master->m_Gain;
+                muted |= master->m_IsMuted;
+            }
+
+            if (muted) {
+                gain = 0.0f;
             }
             alSourcef(source, AL_PITCH, sound_instance->m_Parameters[PARAMETER_SPEED]);
             alSourcef(source, AL_GAIN, gain);
