@@ -1331,14 +1331,37 @@ namespace dmSound
         }
     }
 
-    static inline void Mix(const MixContext* mix_context, SoundInstance* instance, uint64_t delta, uint32_t avail_frames, const dmSoundCodec::Info* info, SoundGroup* group)
+    static inline void Mix(const MixContext* mix_context, SoundInstance* instance, uint64_t delta, uint32_t avail_frames, const dmSoundCodec::Info* info, SoundGroup* group, bool is_muted)
     {
         DM_PROFILE(__FUNCTION__);
+
+        static dmArray<float> s_ScratchStorage;
 
         uint32_t avail_mix_count = ((avail_frames << RESAMPLE_FRACTION_BITS) - instance->m_FrameFraction) / delta;
         uint32_t mix_count = dmMath::Min(mix_context->m_FrameCount, avail_mix_count);
 
-        MixResample(mix_context, instance, info, delta, group->m_MixBuffer, mix_count, avail_frames);
+        if (is_muted)
+        {
+            uint32_t needed = SOUND_MAX_MIX_CHANNELS * mix_count;
+            if (s_ScratchStorage.Capacity() < needed)
+            {
+                s_ScratchStorage.SetCapacity(needed);
+            }
+            s_ScratchStorage.SetSize(needed);
+
+            float* scratch_buffers[SOUND_MAX_MIX_CHANNELS];
+            float* scratch_base = s_ScratchStorage.Begin();
+            for (uint32_t c = 0; c < SOUND_MAX_MIX_CHANNELS; ++c)
+            {
+                scratch_buffers[c] = scratch_base + c * mix_count;
+            }
+
+            MixResample(mix_context, instance, info, delta, scratch_buffers, mix_count, avail_frames);
+        }
+        else
+        {
+            MixResample(mix_context, instance, info, delta, group->m_MixBuffer, mix_count, avail_frames);
+        }
     }
 
     static bool IsMuted(SoundInstance* instance) {
@@ -1398,11 +1421,6 @@ namespace dmSound
         }
 
         bool is_muted = dmSound::IsMuted(instance);
-
-        if (is_muted)
-        {
-            return;
-        }
 
         dmSoundCodec::Result r = dmSoundCodec::RESULT_OK;
 
@@ -1601,7 +1619,7 @@ namespace dmSound
             // Mix the data
             //
             assert(frame_count > SOUND_MAX_FUTURE);
-            Mix(mix_context, instance, delta, frame_count - SOUND_MAX_FUTURE, &info, group);
+            Mix(mix_context, instance, delta, frame_count - SOUND_MAX_FUTURE, &info, group, is_muted);
         }
 
         if (instance->m_EndOfStream) {
