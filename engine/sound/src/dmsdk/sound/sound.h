@@ -29,6 +29,31 @@
 
 namespace dmSound
 {
+    /*#
+     * @enum
+     * @name Result
+     * @member RESULT_OK
+     * @member RESULT_PARTIAL_DATA
+     * @member RESULT_OUT_OF_SOURCES
+     * @member RESULT_EFFECT_NOT_FOUND
+     * @member RESULT_OUT_OF_INSTANCES
+     * @member RESULT_RESOURCE_LEAK
+     * @member RESULT_OUT_OF_BUFFERS
+     * @member RESULT_INVALID_PROPERTY
+     * @member RESULT_UNKNOWN_SOUND_TYPE
+     * @member RESULT_INVALID_STREAM_DATA
+     * @member RESULT_OUT_OF_MEMORY
+     * @member RESULT_UNSUPPORTED
+     * @member RESULT_DEVICE_NOT_FOUND
+     * @member RESULT_OUT_OF_GROUPS
+     * @member RESULT_NO_SUCH_GROUP
+     * @member RESULT_NOTHING_TO_PLAY
+     * @member RESULT_INIT_ERROR
+     * @member RESULT_FINI_ERROR
+     * @member RESULT_NO_DATA
+     * @member RESULT_END_OF_STREAM
+     * @member RESULT_UNKNOWN_ERROR
+     */
     enum Result
     {
         RESULT_OK                 =  0,
