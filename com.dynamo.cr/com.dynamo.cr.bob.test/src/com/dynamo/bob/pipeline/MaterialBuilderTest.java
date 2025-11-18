@@ -81,7 +81,7 @@ public class MaterialBuilderTest extends AbstractProtoBuilderTest {
         assertTrue(material.hasProgram());
 
         String program = material.getProgram();
-        String expectedProgram = "/" + MaterialBuilder.getShaderName("/test_combined.vp", "/test_combined.fp", 0, ".spc");
+        String expectedProgram = MaterialBuilder.getShaderName("/test_combined.vp", "/test_combined.fp", 0, ".spc");
         assertEquals(ResourceUtil.minifyPath(expectedProgram), program);
     }
 
