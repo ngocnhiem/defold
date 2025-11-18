@@ -457,6 +457,9 @@ namespace dmSound
         sound->m_NextOutBuffer = 0;
 
         sound->m_GroupMap.SetCapacity(MAX_GROUPS * 2 + 1, MAX_GROUPS);
+        for (uint32_t i = 0; i < MAX_GROUPS; ++i) {
+            memset(&sound->m_Groups[i], 0, sizeof(SoundGroup));
+        }
 
         int master_index = GetOrCreateGroup("master");
         SoundGroup* master = &sound->m_Groups[master_index];
