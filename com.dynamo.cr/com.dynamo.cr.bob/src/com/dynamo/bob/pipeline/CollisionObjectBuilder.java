@@ -1,6 +1,10 @@
 package com.dynamo.bob.pipeline;
 
-import com.dynamo.bob.*;
+import com.dynamo.bob.BuilderParams;
+import com.dynamo.bob.CompileExceptionError;
+import com.dynamo.bob.ProtoBuilder;
+import com.dynamo.bob.ProtoParams;
+import com.dynamo.bob.Task;
 import com.dynamo.bob.fs.IResource;
 import com.dynamo.bob.fs.ResourceUtil;
 import com.dynamo.bob.util.BobNLS;

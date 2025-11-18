@@ -33,8 +33,10 @@ public abstract class AbstractResource<F extends IFileSystem> implements IResour
     public AbstractResource(F fileSystem, String path) {
         this.fileSystem = fileSystem;
         this.path = path;
-        this.isOutput = path.startsWith(fileSystem.getBuildDirectory() + "/")
-                     || path.startsWith(fileSystem.getBuildDirectory() + "\\");
+
+        this.isOutput = fileSystem != null &&
+                     (path.startsWith(fileSystem.getBuildDirectory() + "/")
+                     || path.startsWith(fileSystem.getBuildDirectory() + "\\"));
     }
 
     @Override

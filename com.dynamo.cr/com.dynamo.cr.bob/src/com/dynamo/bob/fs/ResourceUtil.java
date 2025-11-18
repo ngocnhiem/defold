@@ -14,6 +14,8 @@
 
 package com.dynamo.bob.fs;
 
+import com.dynamo.bob.util.MurmurHash;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -25,15 +27,15 @@ public class ResourceUtil {
     protected static HashMap<String, String> cachedPaths = new HashMap<>();
     // A set of the minified results, so we don't accidentally minify them again
     protected static HashSet<String>         minifiedPaths = new HashSet<>();
+    protected static HashSet<String>         minifySupport = new HashSet<>();
 
     private static boolean minifyPathEnabled = false;
-    private static HashMap<String, Integer> minifyCounters = new HashMap<>();
 
     protected static String buildDirectory = null;
 
     public static void registerMapping(String inExt, String outExt) {
         extensionMapping.put(inExt, outExt);
-        minifyCounters.put(outExt, 0);
+        minifySupport.add(outExt);
     }
 
     public static void setBuildDirectory(String buildDirectory) {
@@ -108,7 +110,7 @@ public class ResourceUtil {
     }
 
     public static void disableMinify(String ext) {
-        minifyCounters.remove(ext);
+        minifySupport.remove(ext);
     }
 
     public static String minifyPath(String path) {
@@ -117,34 +119,44 @@ public class ResourceUtil {
         }
 
         String suffix = getSuffix(path);
-        if (!minifyCounters.containsKey(suffix)) {
+        if (!minifySupport.contains(suffix)) {
             return path;
         }
 
-        if (minifiedPaths.contains(path)) {
-            return path; // Already minified
-        }
 
         boolean isBuildPath = buildDirectory != null ? path.startsWith(buildDirectory) : false;
         if (isBuildPath) {
             path = path.substring(buildDirectory.length());
         }
 
-        if (!path.startsWith("/"))
+        if (path.charAt(0) != '/') {
             path = "/" + path;
+        }
+
+        if (minifiedPaths.contains(path)) {
+            return path; // Already minified
+        }
 
         String cachedPath = cachedPaths.getOrDefault(path, null);
         if (cachedPath != null) {
             return cachedPath;
         }
 
-        Integer count = minifyCounters.getOrDefault(suffix, 0);
-        minifyCounters.put(suffix, count + 1);
-        int thousands = count / 1000;
-        int remainder = count % 1000;
+        long hash = MurmurHash.hash64(path);
+        String hex = Long.toHexString(hash);
+
+        // Normally I wouldn't put 65k files into the same folder, but here we are also
+        // relying on the fact that the hash has a good distribution, and thus getting us an "equal" spread
+        // over the different buckets.
+        int bucket0 = (int)((hash >> 0 ) & 0xFFFFL);
+        int bucket1 = (int)((hash >> 16) & 0xFFFFL);
+        int bucket2 = (int)((hash >> 32) & 0xFFFFL);
+        int bucket3 = (int)((hash >> 48) & 0xFFFFL);
 
         String prefix = isBuildPath ? buildDirectory : "";
-        String minifiedPath = String.format("%s/%d/%d%s", prefix, thousands, remainder, suffix);
+        String minifiedPath = String.format("%s/%s/%s/%s/%s/%s%s", prefix,
+                Long.toHexString(bucket0), Long.toHexString(bucket1), Long.toHexString(bucket2), Long.toHexString(bucket3),
+                hex, suffix);
 
         cachedPaths.put(path, minifiedPath);
         minifiedPaths.add(minifiedPath);
