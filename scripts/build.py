@@ -160,7 +160,7 @@ PACKAGES_MACOS_X86_64=[
     "sassc-5472db213ec223a67482df2226622be372921847",
     "glfw-3.4",
     "tint-22b958",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.0.0",
     "box2d_defold-2.2.1",
     "opus-1.5.2"]
@@ -178,7 +178,7 @@ PACKAGES_MACOS_ARM64=[
     "lipo-4c7c275",
     "glfw-3.4",
     "tint-22b958",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.0.0",
     "box2d_defold-2.2.1",
     "opus-1.5.2"]
@@ -207,7 +207,7 @@ PACKAGES_WIN32_64=[
     "lipo-4c7c275",
     "glfw-3.4",
     "tint-22b958",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "directx-headers-1.611.0",
     "box2d-3.0.0",
     "box2d_defold-2.2.1",
@@ -226,7 +226,7 @@ PACKAGES_LINUX_X86_64=[
     "glfw-3.4",
     "tint-7bd151a780",
     "sassc-5472db213ec223a67482df2226622be372921847",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.0.0",
     "box2d_defold-2.2.1",
     "opus-1.5.2"]
@@ -243,7 +243,7 @@ PACKAGES_LINUX_ARM64=[
     "lipo-4c7c275",
     "glfw-3.4",
     "tint-7bd151a780",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.0.0",
     "box2d_defold-2.2.1",
     "opus-1.5.2"]
