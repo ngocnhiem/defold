@@ -124,6 +124,41 @@ def _get_dotnet_version():
 def _get_dotnet_aot_base(nuget_path, dotnet_platform, dotnet_version):
     return f"{nuget_path}/microsoft.netcore.app.runtime.nativeaot.{dotnet_platform}/{dotnet_version}/runtimes/{dotnet_platform}/native"
 
+def _get_target_framework_runtime_version(conf):
+    """Derive the runtime-pack version from the TargetFramework used by our csproj files."""
+
+    candidates = [
+        'engine/dlib/src/test/cs/test_dlib_cs.csproj',
+        'engine/lua/src/test/cs/test_lua_cs.csproj',
+        'engine/sdk/src/cs/dmsdk/dmsdk.csproj',
+    ]
+
+    def _tfm_to_version(tfm):
+        match = re.match(r'net(\d+)(?:\.(\d+))?', tfm)
+        if not match:
+            return None
+        major = match.group(1)
+        minor = match.group(2) or '0'
+        return f"{major}.{minor}.0"
+
+    for rel_path in candidates:
+        path = os.path.join(conf.srcnode.abspath(), rel_path)
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except OSError:
+            continue
+
+        match = re.search(r'<TargetFramework>([^<]+)</TargetFramework>', content)
+        if match:
+            tfm = match.group(1).strip()
+            version = _tfm_to_version(tfm)
+            if version:
+                return version
+    return None
+
 def _get_dotnet_nuget_path():
     result = run.shell_command("dotnet nuget locals global-packages -l")
     if result is not None and 'global-packages:' in result:
@@ -174,7 +209,10 @@ def configure(conf):
         if not os.path.exists(conf.env.NUGET_PACKAGES):
             conf.fatal("Couldn't find C# nuget packages: '%s'" % conf.env.NUGET_PACKAGES)
 
-    aot_base = _get_dotnet_aot_base(nuget_path, dotnet_platform, conf.env.DOTNET_VERSION)
+    runtime_pack_version = _get_target_framework_runtime_version(conf) or conf.env.DOTNET_VERSION
+    if runtime_pack_version != conf.env.DOTNET_VERSION:
+        Logs.info(f"Using runtime pack version '{runtime_pack_version}' for C# NativeAOT libraries")
+    aot_base = _get_dotnet_aot_base(nuget_path, dotnet_platform, runtime_pack_version)
 
     if build_util.get_target_os() in ('win32'):
         pass
