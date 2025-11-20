@@ -272,6 +272,7 @@ def find_reference_commits(pr):
     return commits
 
 def get_commit_branches(commit):
+    # print("git branch --contains %s" % commit)
     result = subprocess.run(["git", "branch", "--contains", commit], capture_output = True)
     out = result.stdout.decode('utf-8')
     if result.returncode == 0:
@@ -316,7 +317,7 @@ def parse_github_project(version):
         if not content:
             continue
 
-        # if content.get("number") not in [802]: continue
+        # if content.get("number") not in [11377,11412]: continue
         # pprint(content)
         # pprint(item)
 
@@ -334,6 +335,9 @@ def parse_github_project(version):
         elif item.get("type") == "PULL_REQUEST":
             pr = get_pullrequest(content.get("number"), repository = repository)
             issue = get_closing_issue(pr)
+            if pr.get("number") != issue.get("number"):
+                yellow("IGNORED (both PR and issue #%s added to the project)" % issue.get("number"))
+                continue
 
         labels = get_labels(issue, pr)
 
@@ -418,49 +422,75 @@ def parse_github_project(version):
     return issues
 
 def check_issue_commits(issues):
-    print("Checking issue commits for dev and beta presence")
-    merge_count = 0
-    reference_count = 0
-    missing_count = 0
+    print("\nChecking issue commits for dev and beta presence")
+    merge_dev_count = 0
+    merge_beta_count = 0
+    merge_dev_beta_count = 0
+    reference_dev_count = 0
+    reference_beta_count = 0
+    reference_dev_beta_count = 0
+    ignored_count = 0
+    missing_dev_count = 0
+    missing_beta_count = 0
+    missing_dev_beta_count = 0
     for issue in issues:
         dev_ok = False
         beta_ok = False
         print("  Checking #%s '%s' (%s)" % (issue["issue_number"], issue["title"], issue["url"]))
         if issue.get("repository") != "defold":
-            yellow("    ignored since issue is not from the defold repository")
+            yellow("    Ignored since issue is not from the defold repository")
+            ignored_count = ignored_count + 1
             continue
 
         if issue.get("mergecommit") != None:
             branches = get_commit_branches(issue["mergecommit"])
+            if "dev" in branches and "beta" in branches:
+                merge_dev_beta_count = merge_dev_beta_count + 1
             if "dev" in branches:
                 green("    dev  OK via merge commit (%s)" % (issue["mergecommit"]))
                 dev_ok = True
-                merge_count = merge_count + 0.5
+                merge_dev_count = merge_dev_count + 1
             if "beta" in branches:
                 green("    beta OK via merge commit (%s)" % (issue["mergecommit"]))
                 beta_ok = True
-                merge_count = merge_count + 0.5
+                merge_beta_count = merge_beta_count + 1
 
         for referencecommit in issue.get("referencecommits"):
             if dev_ok and beta_ok: break
             branches = get_commit_branches(referencecommit)
+            if "dev" in branches and "beta" in branches:
+                reference_dev_beta_count = reference_dev_beta_count + 1
             if not dev_ok and "dev" in branches:
                 yellow("    dev  OK via reference commit (%s)" % referencecommit)
                 dev_ok = True
-                reference_count = reference_count + 0.5
+                reference_dev_count = reference_dev_count + 1
             if not beta_ok and "beta" in branches:
                 yellow("    beta OK via reference commit (%s)" % referencecommit)
                 beta_ok = True
-                reference_count = reference_count + 0.5
+                reference_beta_count = reference_beta_count + 1
 
-        if not dev_ok or not beta_ok:
-            red("    Missing from dev and/or beta")
-            missing_count = missing_count + 1
+        if not dev_ok and not beta_ok:
+            red("    Missing from dev+beta")
+            missing_dev_beta_count = missing_dev_beta_count + 1
+        else:
+            if not dev_ok:
+                red("    Missing from dev")
+                missing_dev_count = missing_dev_count + 1
+            if not beta_ok:
+                red("    Missing from beta")
+                missing_beta_count = missing_beta_count + 1
 
-    print("Summary")
-    green("  %d issue(s) present on dev+beta via merge commits" % math.floor(merge_count))
-    yellow("  %d issue(s) present on dev+beta via reference commits" % math.ceil(reference_count))
-    red("  %d issue(s) not present on dev+beta" % missing_count)
+    print("\nSummary (%d issues)" % len(issues))
+    green("  %d issue(s) present on dev+beta via merge commits" % merge_dev_beta_count)
+    green("  %d issue(s) present on dev+beta via reference commits" % merge_dev_beta_count)
+    yellow("  %d issue(s) present on dev via merge commits" % merge_dev_count)
+    yellow("  %d issue(s) present on beta via merge commits" % merge_beta_count)
+    yellow("  %d issue(s) present on dev via reference commits" % merge_dev_count)
+    yellow("  %d issue(s) present on beta via reference commits" % merge_beta_count)
+    yellow("  %d issue(s) ignored" % ignored_count)
+    red("  %d issue(s) not present on dev" % missing_dev_count)
+    red("  %d issue(s) not present on beta" % missing_beta_count)
+    red("  %d issue(s) not present on dev+beta" % missing_dev_beta_count)
 
 
 
