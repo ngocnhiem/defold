@@ -35,7 +35,7 @@ TYPE_NEW = "NEW"
 QUERY_ISSUE = r"""
 {
   organization(login: "defold") {
-    repository(name: "defold") {
+    repository(name: "%s") {
       issue(number: %s) {
         id
         closed
@@ -45,6 +45,9 @@ QUERY_ISSUE = r"""
         url
         author {
           login
+        }
+        repository {
+          name
         }
         labels(first: 10) {
           nodes {
@@ -74,7 +77,7 @@ QUERY_ISSUE = r"""
 QUERY_PULLREQUEST = r"""
 {
   organization(login: "defold") {
-    repository(name: "defold") {
+    repository(name: "%s") {
       pullRequest(number: %s) {
         id
         merged
@@ -86,6 +89,9 @@ QUERY_PULLREQUEST = r"""
         headRefName
         author {
           login
+        }
+        repository {
+          name
         }
         labels(first: 10) {
           nodes {
@@ -140,10 +146,16 @@ QUERY_PROJECT_ISSUES_AND_PRS = r"""
             ... on Issue {
               closed
               number
+              repository {
+                name
+              }
             }
             ... on PullRequest {
               merged
               number
+              repository {
+                name
+              }
             }
           }
         }
@@ -181,6 +193,7 @@ def _print_errors(response):
 def github_query(query):
     response = github.query(query, token)
     if 'errors' in response:
+        print(response)
         _print_errors(response)
         sys.exit(1)
     return response["data"]
@@ -189,12 +202,12 @@ def get_project(name):
     data = github_query(QUERY_PROJECT_NUMBER % name)
     return data["organization"]["projectsV2"]["nodes"][0]
 
-def get_issue(number):
-    data = github_query(QUERY_ISSUE % number)
+def get_issue(number, repository = "defold"):
+    data = github_query(QUERY_ISSUE % (repository, number))
     return data["organization"]["repository"]["issue"]
 
-def get_pullrequest(number):
-    data = github_query(QUERY_PULLREQUEST % number)
+def get_pullrequest(number, repository = "defold"):
+    data = github_query(QUERY_PULLREQUEST % (repository, number))
     return data["organization"]["repository"]["pullRequest"]
 
 def get_issues_and_prs(project):
@@ -221,12 +234,14 @@ def get_issue_type_from_labels(labels):
     return TYPE_FIX
 
 def get_closing_issue(pr):
+    repository = pr.get("repository").get("name")
     for node in reversed(pr["closingIssuesReferences"]["nodes"]):
         issue_number = node["number"]
-        return get_issue(issue_number)
+        return get_issue(issue_number, repository)
     return pr
 
 def get_closing_pr(issue):
+    repository = issue.get("repository").get("name")
     # an issue may reference multiple merged items on the
     # timeline - pick the last one! (ie newest)
     for node in reversed(issue["timelineItems"]["nodes"]):
@@ -234,7 +249,7 @@ def get_closing_pr(issue):
             continue
         if node["source"].get("merged") == True:
             closing_number = node["source"]["number"]
-            return get_pullrequest(closing_number)
+            return get_pullrequest(closing_number, repository)
     return issue
 
 def find_merge_commit(pr):
@@ -261,7 +276,7 @@ def get_commit_branches(commit):
     out = result.stdout.decode('utf-8')
     if result.returncode == 0:
         return [line.replace("*", "").strip() for line in out.splitlines()]
-    print(out)
+    red(result.stderr.decode('utf-8'))
     sys.exit(result.returncode)
 
 def check_commit_branches(commit, branches):
@@ -301,11 +316,12 @@ def parse_github_project(version):
         if not content:
             continue
 
-        # if content.get("number") not in [10770, 8815, 10595]: continue
+        # if content.get("number") not in [802]: continue
         # pprint(content)
         # pprint(item)
 
-        print("  %s #%s - " % (item.get("type"), content.get("number")), end = "")
+        repository = content.get("repository").get("name")
+        print("  %12s %-12s #%-8s - " % (item.get("type"), repository, content.get("number")), end = "")
         if content.get("merged", False) == False and content.get("closed", False) == False:
             yellow("IGNORED (not closed/merged)")
             continue
@@ -313,10 +329,10 @@ def parse_github_project(version):
         issue = None
         pr = None
         if item.get("type") == "ISSUE":
-            issue = get_issue(content.get("number"))
+            issue = get_issue(content.get("number"), repository = repository)
             pr = get_closing_pr(issue)
         elif item.get("type") == "PULL_REQUEST":
-            pr = get_pullrequest(content.get("number"))
+            pr = get_pullrequest(content.get("number"), repository = repository)
             issue = get_closing_issue(pr)
 
         labels = get_labels(issue, pr)
@@ -329,7 +345,7 @@ def parse_github_project(version):
         # Make sure to ignore duplicates
         duplicate = False
         for existing_issue in issues:
-            if existing_issue.get("number") == issue.get("number"):
+            if existing_issue.get("number") == issue.get("number") and existing_issue.get("repository") == issue.get("repository"):
                 duplicate = True
                 break
 
@@ -353,14 +369,17 @@ def parse_github_project(version):
             "mergecommit": find_merge_commit(pr),
             "referencecommits": find_reference_commits(pr),
             "duplicate": duplicate,
+            "repository": repository
         }
         # strip from match to end of file
         flags = re.DOTALL|re.IGNORECASE
         entry["body"] = re.sub(r"## PR checklist.*", "", entry["body"], flags=flags).strip()
         entry["body"] = re.sub(r"#* Technical changes.*", "", entry["body"], flags=flags).strip()
         entry["body"] = re.sub(r"Technical changes.*", "", entry["body"], flags=flags).strip()
+        entry["body"] = re.sub(r"#* Technical notes.*", "", entry["body"], flags=flags).strip()
         entry["body"] = re.sub(r"Technical notes.*", "", entry["body"], flags=flags).strip()
         entry["body"] = re.sub(r"#* Technical details.*", "", entry["body"], flags=flags).strip()
+        entry["body"] = re.sub(r"Technical details.*", "", entry["body"], flags=flags).strip()
 
         # Remove closing keywords
         flags = re.IGNORECASE
@@ -407,6 +426,10 @@ def check_issue_commits(issues):
         dev_ok = False
         beta_ok = False
         print("  Checking #%s '%s' (%s)" % (issue["issue_number"], issue["title"], issue["url"]))
+        if issue.get("repository") != "defold":
+            yellow("    ignored since issue is not from the defold repository")
+            continue
+
         if issue.get("mergecommit") != None:
             branches = get_commit_branches(issue["mergecommit"])
             if "dev" in branches:
@@ -444,16 +467,20 @@ def check_issue_commits(issues):
 def generate_markdown(version, issues, hide_details = False):
     engine = []
     editor = []
+    other = []
     for issue in issues:
-        if "editor" in issue["labels"]:
+        if issue.get("repository") != "defold":
+            other.append(issue)
+        elif "editor" in issue["labels"]:
             editor.append(issue)
         else:
             engine.append(issue)
  
     types = [ TYPE_BREAKING_CHANGE, TYPE_NEW, TYPE_FIX ]
-    summary = ("\n## Summary\n")
-    details_engine = ("\n## Engine\n")
-    details_editor = ("\n## Editor\n")
+    summary = ""
+    details_engine = ""
+    details_editor = ""
+    details_other = ""
     for issue_type in types:
         for issue in engine:
             if issue["type"] == issue_type and issue["duplicate"] == False:
@@ -463,11 +490,24 @@ def generate_markdown(version, issues, hide_details = False):
             if issue["type"] == issue_type and issue["duplicate"] == False:
                 summary += issue_to_markdown(issue, title_only = True)
                 details_editor += issue_to_markdown(issue, hide_details = hide_details)
+        for issue in other:
+            if issue["type"] == issue_type and issue["duplicate"] == False:
+                summary += issue_to_markdown(issue, title_only = True)
+                details_other += issue_to_markdown(issue, hide_details = hide_details)
 
-    output = ("# Defold %s\n" % version) + summary + details_engine + details_editor
+    output = ("# Defold %s\n" % version)
+    output = output + "\n## Summary\n" + summary
+    if engine:
+        output = output + "\n## Engine\n" + details_engine
+    if editor:
+        output = output + "\n## Editor\n" + details_editor
+    if other:
+        output = output + "\n## Other\n" + details_other
 
-    with io.open("releasenotes/%s.md" % version, "wb") as f:
+    file = "releasenotes/%s.md" % version
+    with io.open(file, "wb") as f:
         f.write(output.encode('utf-8'))
+        print("Wrote %s" % file)
 
 
 def generate_json(version, issues):
@@ -477,8 +517,10 @@ def generate_json(version, issues):
         "issues": issues
     }
 
-    with io.open("releasenotes/%s.json" % version, "w") as f:
+    file = "releasenotes/%s.json" % version
+    with io.open(file, "w") as f:
         json.dump(output, f, indent=4, sort_keys=True)
+        print("Wrote %s" % file)
 
 
 def generate(version, hide_details = False):
