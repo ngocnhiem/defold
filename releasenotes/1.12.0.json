@@ -1,0 +1,771 @@
+{
+    "issues": [
+        {
+            "author": "ekharkunov",
+            "body": "* Update JDK in base Docker image to 25\r\n* Remove old Dockerfiles",
+            "closed_issues": [
+                802
+            ],
+            "duplicate": false,
+            "issue_number": 802,
+            "labels": [
+                "Docker"
+            ],
+            "mergecommit": "8ff3d3eae099001e868707c7884dd161973c222b",
+            "pr_number": 804,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Update JDK to 25 (Docker image only). Remove old Dockerfiles",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/804"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "",
+            "closed_issues": [
+                801
+            ],
+            "duplicate": false,
+            "issue_number": 801,
+            "labels": [
+                "bug",
+                "ios"
+            ],
+            "mergecommit": "8a466a3232355fef3a9ee6d548959a595fd58c4b",
+            "pr_number": 803,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Fix PodBuildSpec creation when PodSpec has more than 2 level of subspecs",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/803"
+        },
+        {
+            "author": "AGulev",
+            "body": "This new backend replaces the deprecated OpenAL backend on iOS and macOS.",
+            "closed_issues": [
+                10971
+            ],
+            "duplicate": false,
+            "issue_number": 10971,
+            "labels": [
+                "bug",
+                "engine",
+                "sound",
+                "ios",
+                "macos"
+            ],
+            "mergecommit": "042d9b33014287ad3d74afe42a8daefd804ff828",
+            "pr_number": 11072,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "New sound backend for iOS and macOS: AVAudio",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11072"
+        },
+        {
+            "author": "AGulev",
+            "body": "Adds three camera-space conversion helpers to the Lua `camera` module:\r\n  - `camera.world_to_screen(world_pos, [camera])`\r\n  - `camera.screen_xy_to_world(x, y, [camera])`\r\n  - `camera.screen_to_world(pos, [camera])`\r\n```lua\r\n-- Place objects at the touch point.\r\nfunction on_input(self, action_id, action)\r\n    if action_id == hash(\"touch\") then\r\n        if action.pressed then\r\n            local world_position = camera.screen_xy_to_world(action.screen_x, action.screen_y)\r\n            go.set_position(world_position, \"/go1\")\r\n        end\r\n    end\r\nend\r\n```\r\n\r\n```lua\r\n-- Place objects at the touch point with a random Z position, keeping them within the visible view zone.\r\nfunction on_input(self, action_id, action)\r\n    if action_id == hash(\"touch\") then\r\n        if action.pressed then\r\n            local percpective_camera = msg.url(\"#perspective_camera\")\r\n            local random_z = math.random(camera.get_near_z(percpective_camera) + 0.01, camera.get_far_z(percpective_camera) - 0.01)\r\n            local world_position = camera.screen_to_world(vmath.vector3(action.screen_x, action.screen_y, random_z), percpective_camera)\r\n            go.set_position(world_position, \"/go1\")\r\n        end\r\n    end\r\nend\r\n```\r\n\r\n```lua\r\n-- Convert go position into screen position\r\ngo.update_world_transform(\"/go1\")\r\nlocal world_pos = go.get_world_position(\"/go1\")\r\nlocal screen_pos = camera.world_to_screen(world_pos)\r\n```",
+            "closed_issues": [
+                11386
+            ],
+            "duplicate": false,
+            "issue_number": 11386,
+            "labels": [
+                "feature request",
+                "engine",
+                "camera"
+            ],
+            "mergecommit": "76ba0a0ce98a685607db4f9f40c70b758e7f84dd",
+            "pr_number": 11403,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Added new camera functions for converting between world and screen coordinates.  ",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11403"
+        },
+        {
+            "author": "JosephFerano",
+            "body": "Currently pressing ENTER in the welcome screen to select a project doesn't do anything. This PR adds the ENTER keybinding so it opens the currently selected project.",
+            "closed_issues": [
+                11184
+            ],
+            "duplicate": false,
+            "issue_number": 11184,
+            "labels": [
+                "feature request",
+                "editor",
+                "good first issue",
+                "quick win?",
+                "ux"
+            ],
+            "mergecommit": "c7d7ea55c944ea77f47502ccce2e00cd30c0c567",
+            "pr_number": 11367,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "WelcomeScreen: Enter keybinding to open selected project",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11367"
+        },
+        {
+            "author": "vlaaad",
+            "body": "Defold Java version is updated to 25 (from 21). If you are only using the editor, you don't need to do anything, but if you use bob.jar (e.g., in a CI pipeline), you'll need to update Java from 21 to 25.\r\n\r\nThe update gives us a small, but noticeable performance and memory use improvement:\r\n- memory usage when opening a big project decreased by 5% (7.4Gb -> 7Gb)\r\n- time to open a big project decreased by 17% (4m34s -> 3m47s)\r\n- time to build a big project decreased by 10% (8m18s -> 7m20s)",
+            "closed_issues": [
+                11354
+            ],
+            "duplicate": false,
+            "issue_number": 11354,
+            "labels": [
+                "editor",
+                "performance"
+            ],
+            "mergecommit": "65b16389ce8a65188d05dc4d06200ff1bc0459eb",
+            "pr_number": 11354,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Update Java version to 25",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11354"
+        },
+        {
+            "author": "JosephFerano",
+            "body": "Editor used to ignore `DM_SERVICE_PORT` and always use a dynamic port. Now the editor can read the port when the environment variable supplied.",
+            "closed_issues": [
+                11334
+            ],
+            "duplicate": false,
+            "issue_number": 11334,
+            "labels": [
+                "feature request",
+                "editor",
+                "quick win?"
+            ],
+            "mergecommit": "d6c456c94fe6902461918db8642d867cef58fe5d",
+            "pr_number": 11407,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Check ENV and validate DM_SERVICE_PORT",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11407"
+        },
+        {
+            "author": "vlaaad",
+            "body": "Now it's possible to enter the tilde character (`~`) when using the Swedish keyboard layout by pressing <kbd>\u2325 ^</kbd> followed by space or another character.",
+            "closed_issues": [
+                11379
+            ],
+            "duplicate": false,
+            "issue_number": 11379,
+            "labels": [
+                "bug",
+                "editor",
+                "macos",
+                "javafx",
+                "text-editor"
+            ],
+            "mergecommit": "40fb931de427ef22da77326a6df03fd685563dc4",
+            "pr_number": 11414,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Allow typing tilde (`~`) on Swedish keyboard layout",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11414"
+        },
+        {
+            "author": "JosephFerano",
+            "body": "The minimap in the code editor wasn't syntax highlighting all the lines visible in larger files. Now the minimap will have syntax colors all the way through.",
+            "closed_issues": [
+                11377
+            ],
+            "duplicate": false,
+            "issue_number": 11377,
+            "labels": [
+                "bug",
+                "editor",
+                "text-editor"
+            ],
+            "mergecommit": "b8e58101f1d5212d5484305e02d155fff71eea88",
+            "pr_number": 11412,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Repaint up to last visible minimap row",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11412"
+        },
+        {
+            "author": "Klaleus",
+            "body": "**Describe the bug (REQUIRED)**\n\nPressing Ctrl++ while editing text does not increase font size, whereas pressing Ctrl+- does successfully decrease it.\n\n**To Reproduce (REQUIRED)**\nSteps to reproduce the behavior:\n1. Enter the text editor.\n2. Type something.\n3. Test the hotkeys for increasing and decreasing font size.\n\n**Expected behavior (REQUIRED)**\n\nHotkeys should work as intended.\n\n**Defold version (REQUIRED):**\n\n1.10.2\n\n**Platforms (REQUIRED):**\n\nLinux\nPop!_OS 24.04 LTS alpha\n\nI recall this also being a problem on my Windows 11 machine, but I'm not certain.\n\n**Workaround (OPTIONAL):**\n\nRepeatedly pressing the increase and decrease menu items, which takes a lot of time.",
+            "closed_issues": [
+                10891
+            ],
+            "duplicate": false,
+            "issue_number": 10891,
+            "labels": [
+                "bug",
+                "editor",
+                "input",
+                "javafx",
+                "text-editor"
+            ],
+            "mergecommit": null,
+            "pr_number": 10891,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Changing font size via hotkeys does not work",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/issues/10891"
+        },
+        {
+            "author": "matgis",
+            "body": "",
+            "closed_issues": [
+                11400
+            ],
+            "duplicate": false,
+            "issue_number": 11400,
+            "labels": [
+                "bug",
+                "editor",
+                "atlas"
+            ],
+            "mergecommit": "543de0ed9ed57ab36b5a2fb3fc1ba960f2e7ecb7",
+            "pr_number": 11428,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Show errors from exceptions thrown during tile source texture layout",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11428"
+        },
+        {
+            "author": "AGulev",
+            "body": "[Because of a Chromium-side issue](https://issues.chromium.org/issues/434983812), Defold uses a workaround that disables ASTC compression when the issue is detected, falling back to ETC2 - which offers lower visual quality.  \r\n\r\nThis update narrows the fallback to ETC2 so it only applies to **paged atlases** in affected cases.  \r\nAs a result, single-paged atlases now use ASTC for maximum texture quality, while multi-paged atlases remain visible even on devices impacted by the Chromium problem.",
+            "closed_issues": [
+                11416
+            ],
+            "duplicate": false,
+            "issue_number": 11416,
+            "labels": [
+                "bug",
+                "engine",
+                "android",
+                "html5",
+                "texture compression"
+            ],
+            "mergecommit": "dc6fa15e63db7c0670765c79ca33e0412dc671d9",
+            "pr_number": 11434,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Make sure ASTC used in maximum possible cases in HTML5 bundle",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11434"
+        },
+        {
+            "author": "JosephFerano",
+            "body": "Currently, when a user has open tabs and assigned to different panes, when they close the editor, they are all closed out and require opening them up again. This PR will restore all previous open tabs, in the correct order, and in the proper splits.",
+            "closed_issues": [
+                3868
+            ],
+            "duplicate": false,
+            "issue_number": 3868,
+            "labels": [
+                "feature request",
+                "editor",
+                "good first issue",
+                "ux"
+            ],
+            "mergecommit": "9a9ff461d0478a451f88469e503afd8146cea54a",
+            "pr_number": 11385,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Save and Restore open tabs",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11385"
+        },
+        {
+            "author": "JCash",
+            "body": "This api allows the developer to skip engine updates altogether, except input detection.\r\n* No update or rendering will occur once the engine is throttled\r\n* Any input will wake up the engine again\r\n* The engine will be throttled again after the cooldown period\r\n\r\nApi:\r\n```lua\r\nsys.set_engine_throttle(false) -- No throttling, full engine updates + rendering (default)\r\nsys.set_engine_throttle(true, 1.0) -- Throttling with a cooldown. Engine will wake up for 1 second after each input\r\nsys.set_engine_throttle(true, 0.0) -- Throttling with a cooldown. Engine will wake up for 1 frame after each input.\r\n```",
+            "closed_issues": [
+                8309
+            ],
+            "duplicate": false,
+            "issue_number": 8309,
+            "labels": [
+                "feature request",
+                "engine"
+            ],
+            "mergecommit": "d335834ee75cbb35f798e60b92303e1079ae63c0",
+            "pr_number": 11445,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Added engine throttle performance Lua api",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11445"
+        },
+        {
+            "author": "matgis",
+            "body": "* All invalid properties in Tile Sources now generate clickable build errors.\r\n* Highlight Tile Source Animations with invalid properties in the Outline View.\r\n* Render errors in the Scene View will now report the source file when the error originates from a substructure node.\r\n* Fixed Exception in the editor when setting the Tile Source Tile Margin to a negative value.\r\n* Tile Source Tile Width and Height must be positive.\r\n* The error tooltip for the Sprite Default Animation field now refers to the correct Image property label.",
+            "closed_issues": [
+                11166
+            ],
+            "duplicate": false,
+            "issue_number": 11166,
+            "labels": [
+                "bug",
+                "editor",
+                "tilesource"
+            ],
+            "mergecommit": "27f4066f85bb7f4fb368bb874b4ce1aadbd1696c",
+            "pr_number": 11442,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Produce user-friendly build errors from invalid Tile Sources",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11442"
+        },
+        {
+            "author": "DarkRavenStar",
+            "body": "This fixes a crash when the length of a 2D or 3D raycast is zero.\r\nThis fix specifically takes into account the case when the ray length becomes zero after applying the `physics.scale` setting in game.project.",
+            "closed_issues": [
+                10312
+            ],
+            "duplicate": false,
+            "issue_number": 10312,
+            "labels": [
+                "bug",
+                "engine",
+                "physics",
+                "quick win?"
+            ],
+            "mergecommit": "06975c83aaab6465b6607f79034a2750161ec6ee",
+            "pr_number": 11357,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Fixed Crash when using raycasts under certain conditions",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11357"
+        },
+        {
+            "author": "appsoluut",
+            "body": "Allow to get the config parameter as a boolean in Lua. Converts only `1` and `0` to their boolean counterparts.",
+            "closed_issues": [
+                9981
+            ],
+            "duplicate": false,
+            "issue_number": 9981,
+            "labels": [
+                "feature request",
+                "engine",
+                "good first issue",
+                "quick win?"
+            ],
+            "mergecommit": "fc89221108dadcf4f74a895eb0bdd6a3b98f8f28",
+            "pr_number": 11285,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Add sys.get_config_boolean()",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11285"
+        },
+        {
+            "author": "JCash",
+            "body": "This allows for using compressed textures in gui.\r\n\r\nThere are some restrictions on the input .astc file:\r\n* Format should be RGBA\r\n* The `flip` parameter is not supported, so make sure texture is already flipped\r\n\r\nExample:\r\n```lua\r\nlocal path = \"/assets/images/logo_4x4.astc\"\r\nlocal buffer = sys.load_resource(path)\r\nlocal n = gui.new_box_node(pos, vmath.vector3(size, size, 0))\r\ngui.new_texture(path, 0, 0, \"astc\", buffer, false)\r\ngui.set_texture(n, path)\r\n```",
+            "closed_issues": [
+                10948
+            ],
+            "duplicate": false,
+            "issue_number": 10948,
+            "labels": [
+                "task",
+                "engine",
+                "gui"
+            ],
+            "mergecommit": "4a4102f46d80b53aa608c4e11de386f0f8b646c3",
+            "pr_number": 11448,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Added support for .astc texture format in gui.new_texture()",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11448"
+        },
+        {
+            "author": "matgis",
+            "body": "",
+            "closed_issues": [
+                11452
+            ],
+            "duplicate": false,
+            "issue_number": 11452,
+            "labels": [
+                "bug",
+                "editor"
+            ],
+            "mergecommit": "18ff7cf2879da231e2f41a972666ee52de9bd9ee",
+            "pr_number": 11455,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Fix exceptions from removed nodes when getting overridden properties",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11455"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "",
+            "closed_issues": [
+                806
+            ],
+            "duplicate": false,
+            "issue_number": 806,
+            "labels": [],
+            "mergecommit": "58b53baee6de4eefb75c5f101c98787946f97638",
+            "pr_number": 810,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Rework health report collection",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/810"
+        },
+        {
+            "author": "vlaaad",
+            "body": "",
+            "closed_issues": [
+                11457
+            ],
+            "duplicate": false,
+            "issue_number": 11457,
+            "labels": [
+                "editor"
+            ],
+            "mergecommit": "2b9ea97fa0985ac3f64e924d9220baaa982702c6",
+            "pr_number": 11457,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Localize resource type labels",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11457"
+        },
+        {
+            "author": "vlaaad",
+            "body": "",
+            "closed_issues": [
+                11465
+            ],
+            "duplicate": false,
+            "issue_number": 11465,
+            "labels": [
+                "editor"
+            ],
+            "mergecommit": "f3f15295a8a5b2299cd7a8102a012ce565a9860f",
+            "pr_number": 11465,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Localize form views",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11465"
+        },
+        {
+            "author": "matgis",
+            "body": "* Fixed exception in the editor if the user double-clicked a Build Error originating from a resource whose Outline view was empty after opened.\r\n* Fixed empty Outline view for Tile Sources whose tile count couldn't be determined as a result of invalid property values. This was a regression introduced by #11442.",
+            "closed_issues": [
+                11462
+            ],
+            "duplicate": false,
+            "issue_number": 11462,
+            "labels": [
+                "bug",
+                "editor"
+            ],
+            "mergecommit": "8dc68937c6e9fa80377372766cac4288aceb1e67",
+            "pr_number": 11484,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Fix editor exception when double-clicking on a Build Error from a resource with an empty Outline ",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11484"
+        },
+        {
+            "author": "JCash",
+            "body": "Added memory fix when using ASTC texture compression. It previously leaked memory after each compressed image.",
+            "closed_issues": [
+                11464
+            ],
+            "duplicate": false,
+            "issue_number": 11464,
+            "labels": [
+                "bug",
+                "bob",
+                "texture compression"
+            ],
+            "mergecommit": "984d9fdf527ddf9bfd61a43317f07a08524ac548",
+            "pr_number": 11485,
+            "referencecommits": [
+                "20fd6a5c9089f90d25c4384662548e88c040dda5"
+            ],
+            "repository": "defold",
+            "title": "Add astc encoding context destruction to deallocate memory",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11485"
+        },
+        {
+            "author": "vlaaad",
+            "body": "",
+            "closed_issues": [
+                11487
+            ],
+            "duplicate": false,
+            "issue_number": 11487,
+            "labels": [
+                "editor"
+            ],
+            "mergecommit": "dc90bbcb26960f9c0d650d4d13f2947cbf64a08c",
+            "pr_number": 11487,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Localize editor scripts and bundle dialogs",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11487"
+        },
+        {
+            "author": "vlaaad",
+            "body": "We introduced a regression in 1.11.2 during the outline refactor that made re-ordering behavior erratic. Now the issue is fixed.",
+            "closed_issues": [
+                11461
+            ],
+            "duplicate": false,
+            "issue_number": 11461,
+            "labels": [
+                "bug",
+                "editor",
+                "gui"
+            ],
+            "mergecommit": "12d259dfc3dc5d3c30a89629cf1034a8fa48c40c",
+            "pr_number": 11489,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Fix outline re-ordering",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11489"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "\u26a0\ufe0f \u26a0\ufe0f \u26a0\ufe0f **Possible breaking change** \u26a0\ufe0f \u26a0\ufe0f \u26a0\ufe0f\r\n* `FixedUpdate` moved before regular `Update`. It means that all transform's changes introduced by physics components will be applied before execution of regular component's `Update`.\r\n* Order of lua callbacks `update(self)` and `fixed_update(self)` stays the same as it was before.",
+            "closed_issues": [
+                11491
+            ],
+            "duplicate": false,
+            "issue_number": 11491,
+            "labels": [
+                "breaking change"
+            ],
+            "mergecommit": "d64611efa19a7035ab7618e01f21f90357c55b56",
+            "pr_number": 11491,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Rearrange component's update",
+            "type": "BREAKING CHANGE",
+            "url": "https://github.com/defold/defold/pull/11491"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "",
+            "closed_issues": [
+                807
+            ],
+            "duplicate": false,
+            "issue_number": 807,
+            "labels": [],
+            "mergecommit": "e96451bf3684d8b17e09c653c621e5198dd73b03",
+            "pr_number": 809,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Fix sdk mapping download when mapping doesn't exist initially",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/809"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "Fixed culling for sprites with pivot points. Also implemented some optimization on how geometry data calculated and stored between batches. So now it should be a bit faster in terms of calculation but consume some memory to store cached information.",
+            "closed_issues": [
+                9917
+            ],
+            "duplicate": false,
+            "issue_number": 9917,
+            "labels": [
+                "bug",
+                "engine",
+                "sprite",
+                "performance"
+            ],
+            "mergecommit": "072260b4ea698f1821f577b7973a50b738643161",
+            "pr_number": 11498,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Fix frustrum culling for sprites with pivot point ",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11498"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "",
+            "closed_issues": [
+                771
+            ],
+            "duplicate": false,
+            "issue_number": 771,
+            "labels": [],
+            "mergecommit": "200e7cef5857532081f85bee0f24b1c8324e3cac",
+            "pr_number": 811,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Change how contexts are merged",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/811"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "Errors about unsupported engine's version or platform become more clear.",
+            "closed_issues": [
+                465,
+                720
+            ],
+            "duplicate": false,
+            "issue_number": 465,
+            "labels": [
+                "enhancement"
+            ],
+            "mergecommit": "b6dab53e99a2235cdac9dc31c6a3cb3b67dcd3d5",
+            "pr_number": 712,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Implemented instance type",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/712"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "Errors about unsupported engine's version or platform become more clear.",
+            "closed_issues": [
+                720
+            ],
+            "duplicate": true,
+            "issue_number": 720,
+            "labels": [],
+            "mergecommit": "b6dab53e99a2235cdac9dc31c6a3cb3b67dcd3d5",
+            "pr_number": 712,
+            "referencecommits": [],
+            "repository": "extender",
+            "title": "Implemented instance type",
+            "type": "FIX",
+            "url": "https://github.com/defold/extender/pull/712"
+        },
+        {
+            "author": "ekharkunov",
+            "body": "New script function `late_update(self, dt)` was introduced. That function runs **after** regular `update(self, dt)` function. All in-games messages are dispacthed in between `update(self, dt)` and `late_update(self, dt)`. You can safely update game object's transforms in `late_update(self, dt)` because components will update inner transforms after script execution.",
+            "closed_issues": [
+                7277
+            ],
+            "duplicate": false,
+            "issue_number": 7277,
+            "labels": [
+                "feature request",
+                "engine",
+                "physics",
+                "community vote"
+            ],
+            "mergecommit": "f3724533f97e50be1ceeb1b95f7b950eacd447de",
+            "pr_number": 11512,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Introduce `late_update` script function",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11512"
+        },
+        {
+            "author": "matgis",
+            "body": "The editor now respects the `font.runtime_generation` setting in `game.project`. Previously only Bob would produce runtime-generated fonts when this setting was enabled for the project.",
+            "closed_issues": [
+                10999
+            ],
+            "duplicate": false,
+            "issue_number": 10999,
+            "labels": [
+                "task",
+                "editor",
+                "font"
+            ],
+            "mergecommit": "d2a83e15274e166075fac17c65b4de70720c3882",
+            "pr_number": 11518,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Build runtime-generated fonts from the editor",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11518"
+        },
+        {
+            "author": "AGulev",
+            "body": "- Updated the ASTC encoder to version 5.3.0\r\n- Enabled the release flag to ensure full performance\r\n- Fixed the ASTC 4x4 RGB build",
+            "closed_issues": [
+                11519
+            ],
+            "duplicate": false,
+            "issue_number": 11519,
+            "labels": [
+                "texture compression"
+            ],
+            "mergecommit": "9ddd80bbd16bccb7adf7af819da4cc33334c5393",
+            "pr_number": 11519,
+            "referencecommits": [
+                "36db88bbf89ba5b4d7d8ff3f7065947dab28ca6b"
+            ],
+            "repository": "defold",
+            "title": "ASTC encoder fixes",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11519"
+        },
+        {
+            "author": "matgis",
+            "body": "The editor responsiveness in scenes that feature Models has been drastically improved, especially when per-instance vertex attributes are involved.\r\n\r\nPartially adresses #9817.",
+            "closed_issues": [
+                11508
+            ],
+            "duplicate": false,
+            "issue_number": 11508,
+            "labels": [
+                "task",
+                "editor",
+                "3d",
+                "performance"
+            ],
+            "mergecommit": "6a33b0e3625406af5904828e567a9349acba557b",
+            "pr_number": 11508,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Improve Model rendering performance in Scene View",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11508"
+        },
+        {
+            "author": "deurell",
+            "body": "Add functionality to mute sound groups from extensions.",
+            "closed_issues": [
+                8763
+            ],
+            "duplicate": false,
+            "issue_number": 8763,
+            "labels": [
+                "feature request",
+                "engine",
+                "html5",
+                "extension",
+                "dmsdk"
+            ],
+            "mergecommit": "3acc3a02453b9de38fe31b88c2a8c05835d7631a",
+            "pr_number": 11427,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Added sound group mute functionality to C++ dmSDK",
+            "type": "NEW",
+            "url": "https://github.com/defold/defold/pull/11427"
+        }
+    ],
+    "timestamp": 1763642439.460351,
+    "version": "1.12.0"
+}
