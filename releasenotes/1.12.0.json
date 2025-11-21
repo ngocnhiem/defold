@@ -695,8 +695,25 @@
             "title": "Added support for text shaping",
             "type": "NEW",
             "url": "https://github.com/defold/defold/pull/11014"
+        },
+        {
+            "author": "paweljarosz",
+            "body": "Added gamepad mapping for the Microsoft Xbox Series S|X controller for Linux to the built-in default.gamepads.",
+            "closed_issues": [
+                11419
+            ],
+            "duplicate": false,
+            "issue_number": 11419,
+            "labels": [],
+            "mergecommit": "31eca70f7d9c671d94e1adab0ccefe48534dc032",
+            "pr_number": 11419,
+            "referencecommits": [],
+            "repository": "defold",
+            "title": "Added Microsoft Xbox Series S|X Controller for Linux",
+            "type": "FIX",
+            "url": "https://github.com/defold/defold/pull/11419"
         }
     ],
-    "timestamp": 1763651662.921986,
+    "timestamp": 1763734425.199709,
     "version": "1.12.0"
 }
