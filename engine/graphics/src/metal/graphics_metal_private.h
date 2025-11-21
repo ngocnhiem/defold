@@ -223,6 +223,23 @@ namespace dmGraphics
         MTL::Texture*              m_MSAADepthTexture;
     };
 
+    struct MetalClearData
+    {
+        struct CacheKey
+        {
+            uint32_t         m_ColorAttachmentCount;
+            uint32_t         m_ColorWriteMaskBits;
+            MTL::PixelFormat m_ColorFormats[MAX_BUFFER_COLOR_ATTACHMENTS];
+            MTL::PixelFormat m_DepthStencilFormat;
+            uint8_t          m_ClearColor   : 1;
+            uint8_t          m_ClearDepth   : 1;
+            uint8_t          m_ClearStencil : 1;
+        };
+
+        PipelineCache  m_PipelineCache;
+        MTL::Library*  m_Library;
+    };
+
     struct MetalContext
     {
         MetalContext(const ContextParams& params);
@@ -242,6 +259,7 @@ namespace dmGraphics
         MetalViewport                      m_MainViewport;
         HRenderTarget                      m_MainRenderTarget;
         MTL::Texture*                      m_MainDepthStencilTexture;
+        MetalClearData                     m_ClearData;
 
         // Async process resources
         dmJobThread::HContext              m_JobThread;

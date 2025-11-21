@@ -52,7 +52,16 @@ namespace dmGraphics
     static MetalTexture* MetalNewTextureInternal(const TextureCreationParams& params);
     static void          MetalSetTextureInternal(MetalContext* context, MetalTexture* texture, const TextureParams& params);
     static void          CreateMetalTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage);
+    static void          CreateMetalDepthStencilTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage);
     static int16_t       CreateTextureSampler(MetalContext* context, TextureFilter minFilter, TextureFilter magFilter, TextureWrap uWrap, TextureWrap vWrap, uint8_t maxLod, float maxAnisotropy);
+
+    struct ClearParams
+    {
+        float    m_ClearColor[4];
+        float    m_ClearDepth;
+        uint32_t m_ClearStencil;
+        uint32_t m_Padding[2]; // metal will pad this struct to 32 bytes
+    };
 
     MetalContext::MetalContext(const ContextParams& params)
     {
@@ -396,6 +405,219 @@ namespace dmGraphics
         return 1;
     }
 
+    static MetalPipeline* GetOrCreateClearPipeline(MetalContext* context, const MetalClearData::CacheKey& key)
+    {
+        HashState64 pipeline_hash_state;
+        dmHashInit64(&pipeline_hash_state, false);
+        dmHashUpdateBuffer64(&pipeline_hash_state, &key, sizeof(key));
+        uint64_t hash = dmHashFinal64(&pipeline_hash_state);
+
+        MetalPipeline* cached_pipeline = context->m_ClearData.m_PipelineCache.Get(hash);
+        if (cached_pipeline)
+        {
+            return cached_pipeline;
+        }
+
+        // create descriptor
+        MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
+
+        // vertex + fragment
+        MTL::Function* vs = context->m_ClearData.m_Library->newFunction(NS::String::string("ClearVS", NS::StringEncoding::UTF8StringEncoding));
+        MTL::Function* fs = context->m_ClearData.m_Library->newFunction(NS::String::string("ClearFS", NS::StringEncoding::UTF8StringEncoding));
+        desc->setVertexFunction(vs);
+        desc->setFragmentFunction(fs);
+        vs->release();
+        fs->release();
+
+        // color attachments
+        for (size_t i = 0; i < key.m_ColorAttachmentCount; ++i)
+        {
+            MTL::RenderPipelineColorAttachmentDescriptor* ca = desc->colorAttachments()->object((uint32_t)i);
+            ca->setPixelFormat(key.m_ColorFormats[i]);
+
+            // apply write mask from key
+            if (key.m_ColorWriteMaskBits & (1u << (uint32_t)i))
+            {
+                ca->setWriteMask(MTL::ColorWriteMaskAll);
+            }
+            else
+            {
+                ca->setWriteMask(MTL::ColorWriteMaskNone);
+            }
+        }
+
+        // depth/stencil format (if RT has one)
+        desc->setDepthAttachmentPixelFormat(key.m_DepthStencilFormat);
+        desc->setStencilAttachmentPixelFormat(key.m_DepthStencilFormat);
+
+        NS::Error* error = NULL;
+        MetalPipeline pipeline = {};
+
+        pipeline.m_RenderPipelineState = context->m_Device->newRenderPipelineState(desc, &error);
+        desc->release();
+
+        if (!pipeline.m_RenderPipelineState)
+        {
+            dmLogError("Failed to create Metal pipeline: %s", error ? error->localizedDescription()->utf8String() : "Unknown error");
+            return 0;
+        }
+
+        MTL::DepthStencilDescriptor* desc_ds = MTL::DepthStencilDescriptor::alloc()->init();
+        desc_ds->setDepthWriteEnabled(key.m_ClearDepth);
+        desc_ds->setDepthCompareFunction(MTL::CompareFunctionAlways);
+
+        if (key.m_ClearStencil)
+        {
+            MTL::StencilDescriptor* sd = MTL::StencilDescriptor::alloc()->init();
+            sd->setStencilCompareFunction(MTL::CompareFunctionAlways);
+            // Replace on pass so the reference value is written
+            sd->setDepthFailureOperation(MTL::StencilOperationReplace);
+            sd->setStencilFailureOperation(MTL::StencilOperationReplace);
+            sd->setDepthStencilPassOperation(MTL::StencilOperationReplace);
+            sd->setWriteMask(0xFF);
+            desc_ds->setFrontFaceStencil(sd);
+            desc_ds->setBackFaceStencil(sd);
+            sd->release();
+        }
+
+        pipeline.m_DepthStencilState = context->m_Device->newDepthStencilState(desc_ds);
+        desc_ds->release();
+
+        if (!pipeline.m_DepthStencilState)
+        {
+            dmLogError("Failed to create Metal depth stencil state");
+            return 0;
+        }
+
+        context->m_ClearData.m_PipelineCache.Put(hash, pipeline);
+        return context->m_ClearData.m_PipelineCache.Get(hash);
+    }
+
+    /*
+    static MetalPipeline* GetOrCreateClearPipeline(MetalContext* context, const MetalClearData::CacheKey& key)
+    {
+        HashState64 pipeline_hash_state;
+        dmHashInit64(&pipeline_hash_state, false);
+        dmHashUpdateBuffer64(&pipeline_hash_state, &key, sizeof(key));
+        uint64_t hash = dmHashFinal64(&pipeline_hash_state);
+
+        MetalPipeline* cached_pipeline = context->m_ClearData.m_PipelineCache.Get(hash);
+        if (cached_pipeline)
+        {
+            return cached_pipeline;
+        }
+
+        MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
+
+        MTL::Function* func_vs = context->m_ClearData.m_Library->newFunction(NS::String::string("ClearVS", NS::StringEncoding::UTF8StringEncoding));
+        desc->setVertexFunction(func_vs);
+        func_vs->release();
+
+        if (key.m_ClearColor)
+        {
+            MTL::Function* func_fs = context->m_ClearData.m_Library->newFunction(NS::String::string("ClearFSColor", NS::StringEncoding::UTF8StringEncoding));
+            desc->setFragmentFunction(func_fs);
+            func_fs->release();
+        }
+        else
+        {
+            MTL::Function* func_fs = context->m_ClearData.m_Library->newFunction(NS::String::string("ClearFSDepthStencil", NS::StringEncoding::UTF8StringEncoding));
+            desc->setFragmentFunction(func_fs);
+            func_fs->release();
+        }
+
+        // Configure color formats
+        for (uint32_t i = 0; i < key.m_ColorAttachmentCount; ++i)
+        {
+            MTL::RenderPipelineColorAttachmentDescriptor* ca = desc->colorAttachments()->object(i);
+            ca->setPixelFormat(key.m_ColorFormats[i]);
+            ca->setWriteMask(key.m_ClearColor ? MTL::ColorWriteMaskAll : MTL::ColorWriteMaskNone);
+        }
+
+        if (key.m_DepthStencilFormat != MTL::PixelFormatInvalid)
+        {
+            desc->setDepthAttachmentPixelFormat(key.m_DepthStencilFormat);
+        }
+
+        NS::Error* error = NULL;
+
+        MetalPipeline pipeline = {};
+        pipeline.m_RenderPipelineState = context->m_Device->newRenderPipelineState(desc, &error);
+        desc->release();
+
+        if (pipeline.m_RenderPipelineState == NULL)
+        {
+            dmLogError("Failed to create Metal pipeline: %s", error ? error->localizedDescription()->utf8String() : "Unknown error");
+            return NULL;
+        }
+
+        context->m_ClearData.m_PipelineCache.Put(hash, pipeline);
+        return context->m_ClearData.m_PipelineCache.Get(hash);
+    }
+    */
+
+    static void SetupClearPipeline(MetalContext* context)
+    {
+        static const char* src = R"(
+            #include <metal_stdlib>
+            using namespace metal;
+
+            struct VSOut {
+                float4 position [[position]];
+            };
+
+            // Fullscreen triangle
+            vertex VSOut ClearVS(uint vid [[vertex_id]])
+            {
+                float2 positions[3] = {
+                    float2(-1.0, -1.0),
+                    float2(-1.0,  3.0),
+                    float2( 3.0, -1.0)
+                };
+
+                VSOut out;
+                out.position = float4(positions[vid], 0.0, 1.0);
+                return out;
+            }
+
+            struct ClearParams
+            {
+                float4 clearColor;
+                float  clearDepth;
+                uint   clearStencil;
+            };
+
+            // Always-returning outputs; actual writes controlled via pipeline write masks and DS state
+            struct ClearFSOutput {
+                float4 color [[color(0)]];
+                float depth [[depth(any)]];
+                uint stencil [[stencil]];
+            };
+
+            fragment ClearFSOutput ClearFS(constant ClearParams& params [[buffer(0)]])
+            {
+                ClearFSOutput out;
+                out.color = params.clearColor;
+                out.depth = params.clearDepth;
+                out.stencil = params.clearStencil;
+                return out;
+            }
+            )";
+
+        NS::Error* error  = 0;
+        MTL::Library* library = context->m_Device->newLibrary(NS::String::string(src, NS::StringEncoding::UTF8StringEncoding), 0, &error);
+
+        if (error)
+        {
+            dmLogError("Failed to create Metal clear pipeline: %s", error ? error->localizedDescription()->utf8String() : "Unknown error");
+        }
+        else
+        {
+            context->m_ClearData.m_Library = library;
+            context->m_ClearData.m_PipelineCache.SetCapacity(16,32);
+        }
+    }
+
     static bool MetalInitialize(HContext _context)
     {
         MetalContext* context        = (MetalContext*) _context;
@@ -407,6 +629,7 @@ namespace dmGraphics
         context->m_CullFaceChanged   = true;
         context->m_MSAASampleCount   = MetalGetClosestSampleCount(dmPlatform::GetWindowStateParam(context->m_Window, dmPlatform::WINDOW_STATE_SAMPLE_COUNT));
 
+        SetupClearPipeline(context);
         SetupMainRenderTarget(context);
         context->m_CurrentRenderTarget = context->m_MainRenderTarget;
         context->m_PipelineCache.SetCapacity(32,64);
@@ -760,9 +983,83 @@ namespace dmGraphics
         context->m_CurrentFrameInFlight = (context->m_CurrentFrameInFlight + 1) % context->m_NumFramesInFlight;
     }
 
-    static void MetalClear(HContext _context, uint32_t flags, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha, float depth, uint32_t stencil)
+    static void MetalClear(HContext _context, uint32_t flags,
+                           uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha,
+                           float depth, uint32_t stencil)
     {
+        MetalContext* context = (MetalContext*) _context;
+        MetalRenderTarget* current_rt = GetAssetFromContainer<MetalRenderTarget>(context->m_AssetHandleContainer, context->m_CurrentRenderTarget);
 
+        BeginRenderPass(context, context->m_CurrentRenderTarget);
+
+        // BeginRenderPass must have already bound the RT and created a MTLRenderCommandEncoder
+        MTL::RenderCommandEncoder* enc = context->m_RenderCommandEncoder;
+        assert(enc);
+
+        // Determine which buffers to clear
+        const BufferType color_buffers[] = {
+            BUFFER_TYPE_COLOR0_BIT,
+            BUFFER_TYPE_COLOR1_BIT,
+            BUFFER_TYPE_COLOR2_BIT,
+            BUFFER_TYPE_COLOR3_BIT,
+        };
+
+        const uint32_t any_color_clear_mask = BUFFER_TYPE_COLOR0_BIT | BUFFER_TYPE_COLOR1_BIT | BUFFER_TYPE_COLOR2_BIT | BUFFER_TYPE_COLOR3_BIT;
+        bool want_color                     = (flags & any_color_clear_mask) != 0;
+        bool want_depth                     = (flags & BUFFER_TYPE_DEPTH_BIT) != 0;
+        bool want_stencil                   = (flags & BUFFER_TYPE_STENCIL_BIT) != 0;
+        bool rt_has_depth_stencil           = (current_rt->m_DepthStencilFormat != MTL::PixelFormatInvalid);
+
+        // Build cache key
+        MetalClearData::CacheKey key = {};
+        key.m_ClearColor             = want_color;
+        key.m_ClearDepth             = want_depth;
+        key.m_ClearStencil           = want_stencil;
+        key.m_DepthStencilFormat     = current_rt->m_DepthStencilFormat;
+        key.m_ColorAttachmentCount   = current_rt->m_ColorAttachmentCount;
+        key.m_ColorWriteMaskBits     = 0;  
+
+        for (uint32_t i = 0; i < key.m_ColorAttachmentCount; ++i)
+        {
+            key.m_ColorFormats[i] = current_rt->m_ColorFormat[i];
+
+            if (flags & color_buffers[i])
+            {
+                key.m_ColorWriteMaskBits |= (1 << i);
+            }
+        }
+
+        // Acquire pipeline
+        MetalPipeline* pipeline = GetOrCreateClearPipeline(context, key);
+        assert(pipeline);
+
+        enc->setRenderPipelineState(pipeline->m_RenderPipelineState);
+        enc->setDepthStencilState(pipeline->m_DepthStencilState);
+
+        ClearParams clear_params = {};
+        clear_params.m_ClearColor[0] = (float)red   / 255.0f;
+        clear_params.m_ClearColor[1] = (float)green / 255.0f;
+        clear_params.m_ClearColor[2] = (float)blue  / 255.0f;
+        clear_params.m_ClearColor[3] = (float)alpha / 255.0f;
+        clear_params.m_ClearDepth    = depth;
+        clear_params.m_ClearStencil  = stencil;
+
+        enc->setFragmentBytes(&clear_params, sizeof(clear_params), 0);
+
+         // If writing stencil, set the stencil reference value to the desired replacement value
+        if (want_stencil)
+        {
+            enc->setStencilReferenceValue((uint32_t) stencil);
+        }
+        else
+        {
+            // If not writing stencil, reference value doesn't matter; still set to 0 to be explicit
+            enc->setStencilReferenceValue(0);
+        }
+
+        // Draw fullscreen triangle
+        enc->setCullMode(MTL::CullModeNone);
+        enc->drawPrimitives(MTL::PrimitiveTypeTriangle, (uint32_t) 0, (uint32_t) 3);
     }
 
     static HVertexBuffer MetalNewVertexBuffer(HContext _context, uint32_t size, const void* data, BufferUsage buffer_usage)
@@ -2166,13 +2463,14 @@ namespace dmGraphics
         if (has_depth || has_stencil)
         {
             const TextureCreationParams& ds_create_params = has_depth ? params.m_DepthBufferCreationParams : params.m_StencilBufferCreationParams;
+            const TextureParams& ds_params = has_depth ? params.m_DepthBufferParams : params.m_StencilBufferParams;
 
             // create engine texture wrapper for depth/stencil
             texture_depth_stencil = NewTexture(context, ds_create_params);
             MetalTexture* depth_texture_ptr = GetAssetFromContainer<MetalTexture>(context->m_AssetHandleContainer, texture_depth_stencil);
             assert(depth_texture_ptr);
 
-            CreateMetalTexture(context, depth_texture_ptr, rt->m_DepthStencilTextureParams, MTL::TextureUsageRenderTarget);
+            CreateMetalDepthStencilTexture(context, depth_texture_ptr, ds_params, MTL::TextureUsageRenderTarget);
         }
 
         // record info into the render target object
@@ -2539,6 +2837,34 @@ namespace dmGraphics
         stagingBuffer->release();
     }
     */
+
+    static void CreateMetalDepthStencilTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage)
+    {
+        MTL::TextureDescriptor* desc = MTL::TextureDescriptor::texture2DDescriptor(
+            MTL::PixelFormatDepth32Float_Stencil8,
+            params.m_Width,
+            params.m_Height,
+            false
+        );
+
+        desc->setStorageMode(MTL::StorageModePrivate);
+        desc->setUsage(usage);
+
+        if (texture->m_Texture)
+        {
+            texture->m_Texture->release();
+        }
+
+        texture->m_Texture = context->m_Device->newTexture(desc);
+        desc->release();
+
+        texture->m_Width          = params.m_Width;
+        texture->m_Height         = params.m_Height;
+        texture->m_GraphicsFormat = params.m_Format;
+        texture->m_Depth          = 1;
+        texture->m_LayerCount     = 1;
+        texture->m_MipMapCount    = 1;
+    }
 
     static void CreateMetalTexture(MetalContext* context, MetalTexture* texture, const TextureParams& params, MTL::TextureUsage usage)
     {
