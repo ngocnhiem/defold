@@ -123,6 +123,9 @@ void InitializeJNITypes(JNIEnv* env, TypeInfos* infos) {
         GET_FLD_ARRAY(mSLResourceMappings, "MSLResourceMapping");
         GET_FLD_ARRAY(hLSLResourceMappings, "HLSLResourceMapping");
         GET_FLD_TYPESTR(hLSLNumWorkGroupsId, "B");
+        GET_FLD_TYPESTR(workGroupSizeX, "I");
+        GET_FLD_TYPESTR(workGroupSizeY, "I");
+        GET_FLD_TYPESTR(workGroupSizeZ, "I");
     }
     #undef GET_FLD
     #undef GET_FLD_ARRAY
@@ -252,6 +255,9 @@ jobject C2J_CreateShaderCompileResult(JNIEnv* env, TypeInfos* types, const Shade
     dmJNI::SetObjectDeref(env, obj, types->m_ShaderCompileResultJNI.mSLResourceMappings, C2J_CreateMSLResourceMappingArray(env, types, src->m_MSLResourceMappings.Begin(), src->m_MSLResourceMappings.Size()));
     dmJNI::SetObjectDeref(env, obj, types->m_ShaderCompileResultJNI.hLSLResourceMappings, C2J_CreateHLSLResourceMappingArray(env, types, src->m_HLSLResourceMappings.Begin(), src->m_HLSLResourceMappings.Size()));
     dmJNI::SetUByte(env, obj, types->m_ShaderCompileResultJNI.hLSLNumWorkGroupsId, src->m_HLSLNumWorkGroupsId);
+    dmJNI::SetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeX, src->m_WorkGroupSizeX);
+    dmJNI::SetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeY, src->m_WorkGroupSizeY);
+    dmJNI::SetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeZ, src->m_WorkGroupSizeZ);
     return obj;
 }
 
@@ -628,6 +634,9 @@ bool J2C_CreateShaderCompileResult(JNIEnv* env, TypeInfos* types, jobject obj, S
         }
     }
     out->m_HLSLNumWorkGroupsId = dmJNI::GetUByte(env, obj, types->m_ShaderCompileResultJNI.hLSLNumWorkGroupsId);
+    out->m_WorkGroupSizeX = dmJNI::GetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeX);
+    out->m_WorkGroupSizeY = dmJNI::GetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeY);
+    out->m_WorkGroupSizeZ = dmJNI::GetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeZ);
     return true;
 }
 

@@ -548,6 +548,10 @@ namespace dmShaderc
         bool can_remove_unused_variables = true;
         uint8_t hlsl_num_workgroups_id_binding = 0xff;
 
+        uint32_t workgroup_size_x = 0;
+        uint32_t workgroup_size_y = 0;
+        uint32_t workgroup_size_z = 0;
+
         spvc_compiler_set_entry_point(compiler->m_SPVCCompiler, options.m_EntryPoint, context->m_ExecutionModel);
         spvc_compiler_build_combined_image_samplers(compiler->m_SPVCCompiler);
 
@@ -615,6 +619,30 @@ namespace dmShaderc
             spvc_compiler_options_set_uint(spv_options, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_MACOS);
             spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_MSL_ARGUMENT_BUFFERS, SPVC_TRUE);
             spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_MSL_EMULATE_CUBEMAP_ARRAY, SPVC_FALSE);
+
+            // We need to extract this for metal + compute, for vulkan it is embedded in the spirv binary
+            if (context->m_Stage == SHADER_STAGE_COMPUTE)
+            {
+                workgroup_size_x = 1;
+                workgroup_size_y = 1;
+                workgroup_size_z = 1;
+
+                const SpvExecutionMode* modes = NULL;
+                size_t num_modes = 0;
+
+                if (spvc_compiler_get_execution_modes(compiler->m_SPVCCompiler, &modes, &num_modes) == SPVC_SUCCESS)
+                {
+                    for (size_t i = 0; i < num_modes; i++)
+                    {
+                        if (modes[i] == SpvExecutionModeLocalSize)
+                        {
+                            workgroup_size_x = spvc_compiler_get_execution_mode_argument_by_index(compiler->m_SPVCCompiler, SpvExecutionModeLocalSize, 0);
+                            workgroup_size_y = spvc_compiler_get_execution_mode_argument_by_index(compiler->m_SPVCCompiler, SpvExecutionModeLocalSize, 1);
+                            workgroup_size_z = spvc_compiler_get_execution_mode_argument_by_index(compiler->m_SPVCCompiler, SpvExecutionModeLocalSize, 2);
+                        }
+                    }
+                }
+            }
         }
         else
         {
@@ -647,6 +675,9 @@ namespace dmShaderc
         result->m_Data.SetSize(compile_result_size);
         result->m_LastError = "";
         result->m_HLSLNumWorkGroupsId = hlsl_num_workgroups_id_binding;
+        result->m_WorkGroupSizeX = workgroup_size_x;
+        result->m_WorkGroupSizeY = workgroup_size_y;
+        result->m_WorkGroupSizeZ = workgroup_size_z;
 
         if (compiler->m_BaseCompiler.m_Language == SHADER_LANGUAGE_MSL)
         {

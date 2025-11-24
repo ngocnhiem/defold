@@ -205,8 +205,8 @@ namespace dmGraphics
         MTL::ArgumentEncoder* m_ArgumentEncoders[MAX_SET_COUNT];
         MetalArgumentBinding  m_ArgumentBufferBindings[MAX_SET_COUNT];
 
-        //MTL::Buffer*          m_ArgumentBuffers[MAX_SET_COUNT];
         uint32_t              m_ResourceToMslIndex[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
+        uint32_t              m_WorkGroupSize[3]; // x,y,z
         uint8_t*              m_UniformData;
         uint64_t              m_Hash;
         uint32_t              m_UniformDataSizeAligned;

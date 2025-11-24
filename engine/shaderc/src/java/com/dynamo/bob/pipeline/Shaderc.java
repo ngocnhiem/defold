@@ -277,6 +277,9 @@ public class Shaderc {
         public MSLResourceMapping[] mSLResourceMappings;
         public HLSLResourceMapping[] hLSLResourceMappings;
         public byte hLSLNumWorkGroupsId = 0;
+        public int workGroupSizeX = 0;
+        public int workGroupSizeY = 0;
+        public int workGroupSizeZ = 0;
     };
 }
 

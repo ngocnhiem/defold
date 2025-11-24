@@ -242,6 +242,11 @@ namespace dmShaderc
         // manufactured gl_NumWorkGroups constant buffer that was generated.
         // The value will be set to 0xFF otherwise.
         uint8_t                    m_HLSLNumWorkGroupsId;
+
+        // Currently used for MSL/Metal only
+        uint32_t                   m_WorkGroupSizeX;
+        uint32_t                   m_WorkGroupSizeY;
+        uint32_t                   m_WorkGroupSizeZ;
     };
 
     // Shader context

@@ -395,13 +395,8 @@ namespace dmGraphics
     static uint32_t MetalGetClosestSampleCount(uint32_t requested)
     {
         if (requested <= 1) return 1;
-
-        // Metal universally guarantees up to 4× MSAA
-        const uint32_t maxSupported = 4;
-
         if (requested >= 4) return 4;
         if (requested >= 2) return 2;
-
         return 1;
     }
 
@@ -946,7 +941,6 @@ namespace dmGraphics
         bool want_color                     = (flags & any_color_clear_mask) != 0;
         bool want_depth                     = (flags & BUFFER_TYPE_DEPTH_BIT) != 0;
         bool want_stencil                   = (flags & BUFFER_TYPE_STENCIL_BIT) != 0;
-        bool rt_has_depth_stencil           = (current_rt->m_DepthStencilFormat != MTL::PixelFormatInvalid);
 
         // Build cache key
         MetalClearData::CacheKey key = {};
@@ -1415,6 +1409,24 @@ namespace dmGraphics
         return MTL::VertexFormatInvalid;
     }
 
+    static inline MTL::BlendFactor GetMetalBlendFactor(BlendFactor factor)
+    {
+        const MTL::BlendFactor blend_factors[] = {
+            MTL::BlendFactorZero,
+            MTL::BlendFactorOne,
+            MTL::BlendFactorSourceColor,
+            MTL::BlendFactorOneMinusSourceColor,
+            MTL::BlendFactorDestinationColor,
+            MTL::BlendFactorOneMinusDestinationColor,
+            MTL::BlendFactorSourceAlpha,
+            MTL::BlendFactorOneMinusSourceAlpha,
+            MTL::BlendFactorDestinationAlpha,
+            MTL::BlendFactorOneMinusDestinationAlpha,
+            MTL::BlendFactorSourceAlphaSaturated,
+        };
+        return blend_factors[(int)factor];
+    }
+
     static bool CreatePipeline(MetalContext* context, MetalRenderTarget* rt, const PipelineState pipeline_state,  MetalProgram* program, VertexDeclaration** vertexDeclaration, uint32_t vertexDeclarationCount, MetalPipeline* pipeline)
     {
         MTL::VertexDescriptor* vertex_desc = MTL::VertexDescriptor::alloc()->init();
@@ -1456,6 +1468,12 @@ namespace dmGraphics
             MTL::RenderPipelineColorAttachmentDescriptor* colorAttachment = pipeline_desc->colorAttachments()->object(i);
             colorAttachment->setPixelFormat(rt->m_ColorFormat[i]);
             colorAttachment->setBlendingEnabled(pipeline_state.m_BlendEnabled);
+
+            if (pipeline_state.m_BlendEnabled)
+            {
+                colorAttachment->setSourceRGBBlendFactor(GetMetalBlendFactor((BlendFactor) pipeline_state.m_BlendSrcFactor));
+                colorAttachment->setDestinationRGBBlendFactor(GetMetalBlendFactor((BlendFactor) pipeline_state.m_BlendDstFactor));
+            }
         }
         pipeline_desc->setDepthAttachmentPixelFormat(rt->m_DepthStencilFormat);
         pipeline_desc->setStencilAttachmentPixelFormat(rt->m_DepthStencilFormat);
@@ -1978,6 +1996,8 @@ namespace dmGraphics
         DM_PROFILE(__FUNCTION__);
         DM_PROPERTY_ADD_U32(rmtp_DispatchCalls, 1);
         MetalContext* context = (MetalContext*) _context;
+        MetalProgram* program = context->m_CurrentProgram;
+        assert(program);
 
         // We can't run compute if we have started a render pass
         // Perhaps it would work if we could run it in a separate command buffer or a dedicated compute queue?
@@ -1994,7 +2014,7 @@ namespace dmGraphics
 
         encoder->dispatchThreadgroups(
             MTL::Size{ group_count_x, group_count_y, group_count_z },
-            MTL::Size{ 1, 1, 1 }
+            MTL::Size{ program->m_WorkGroupSize[0], program->m_WorkGroupSize[1], program->m_WorkGroupSize[2] }
         );
 
         encoder->endEncoding();
@@ -2124,6 +2144,10 @@ namespace dmGraphics
                 DeleteProgram(_context, (HProgram) program);
                 return 0;
             }
+
+            program->m_WorkGroupSize[0] = ddf_cp->m_WorkGroupSize.m_X;
+            program->m_WorkGroupSize[1] = ddf_cp->m_WorkGroupSize.m_Y;
+            program->m_WorkGroupSize[2] = ddf_cp->m_WorkGroupSize.m_Z;
 
             shaders[0]     = program->m_ComputeModule;
             ddf_shaders[0] = ddf_cp;
@@ -2720,88 +2744,6 @@ namespace dmGraphics
         uint64_t offset;          // offset inside contiguous upload buffer (computed later)
     };
 
-    static float HalfToFloat(uint16_t h);
-
-    // Inspect what MetalCopyToTexture actually wrote
-    void DebugPrintUploadBuffer(const uint8_t* dstBase,
-                                const dmArray<MetalPlacedSubresource>& placed,
-                                uint32_t sliceCount,
-                                uint32_t copyWidth)
-    {
-        const uint32_t bytesPerPixel = 8; // RGBA16F = 4 * 2 bytes
-
-        for (uint32_t slice = 0; slice < sliceCount; ++slice)
-        {
-            printf("=== Slice %u ===\n", slice);
-
-            const MetalPlacedSubresource& p = placed[slice];
-            const uint8_t* sliceBase = dstBase + p.offset;
-
-            // print the first 10 pixels of the FIRST ROW
-            for (uint32_t i = 0; i < 10 && i < copyWidth; ++i)
-            {
-                const uint8_t* px = sliceBase + i * bytesPerPixel;
-
-                uint16_t r16 = *(uint16_t*)(px + 0);
-                uint16_t g16 = *(uint16_t*)(px + 2);
-                uint16_t b16 = *(uint16_t*)(px + 4);
-                uint16_t a16 = *(uint16_t*)(px + 6);
-
-                float r = HalfToFloat(r16);
-                float g = HalfToFloat(g16);
-                float b = HalfToFloat(b16);
-                float a = HalfToFloat(a16);
-
-                printf("Pixel[%u] = (%f, %f, %f, %f)\n", i, r, g, b, a);
-            }
-        }
-    }
-
-    // minimal half→float conversion
-    static float HalfToFloat(uint16_t h)
-    {
-        uint32_t sign = (h >> 15) & 1;
-        uint32_t exp  = (h >> 10) & 0x1F;
-        uint32_t mant =  h        & 0x3FF;
-
-        uint32_t f;
-        if (exp == 0)
-        {
-            if (mant == 0)
-            {
-                f = sign << 31; // zero
-            }
-            else
-            {
-                // denormalized
-                exp = 1;
-                while ((mant & 0x400) == 0)
-                {
-                    mant <<= 1;
-                    exp--;
-                }
-                mant &= 0x3FF;
-                exp += 127 - 15;
-                mant <<= 13;
-                f = (sign << 31) | (exp << 23) | mant;
-            }
-        }
-        else if (exp == 31)
-        {
-            // inf or NaN
-            f = (sign << 31) | (255 << 23) | (mant << 13);
-        }
-        else
-        {
-            exp = exp + (127 - 15);
-            mant <<= 13;
-            f = (sign << 31) | (exp << 23) | mant;
-        }
-        float out;
-        memcpy(&out, &f, sizeof(out));
-        return out;
-    }
-
     static void MetalCopyToTexture(MetalContext* context,
                                    MetalTexture* texture,
                                    TextureFormat format_src,
@@ -2894,8 +2836,6 @@ namespace dmGraphics
                 }
             }
         }
-
-        DebugPrintUploadBuffer(dstBase, placed, layerCount, copyWidth);
 
         // Create command buffer and blit encoder
         MTL::CommandBuffer* cmdBuf = context->m_CommandQueue->commandBuffer();
@@ -3169,17 +3109,7 @@ namespace dmGraphics
         }
     }
 
-    static inline MTL::SamplerMinMagFilter GetMetalFilter(TextureFilter filter)
-    {
-        switch (filter)
-        {
-            case TEXTURE_FILTER_NEAREST: return MTL::SamplerMinMagFilterNearest;
-            case TEXTURE_FILTER_LINEAR:  return MTL::SamplerMinMagFilterLinear;
-            default:                     return MTL::SamplerMinMagFilterNearest;
-        }
-    }
-
-    static inline void SplitMetalFilters(TextureFilter filter, MTL::SamplerMinMagFilter& outMin, MTL::SamplerMipFilter& outMip)
+    static inline void GetMetalFilters(TextureFilter filter, MTL::SamplerMinMagFilter& outMin, MTL::SamplerMipFilter& outMip)
     {
         switch (filter)
         {
@@ -3282,7 +3212,7 @@ namespace dmGraphics
             // Determine Metal min/mip filters (based on minFilter)
             MTL::SamplerMinMagFilter metalMinFilter;
             MTL::SamplerMipFilter metalMipFilter;
-            SplitMetalFilters(minFilter, metalMinFilter, metalMipFilter);
+            GetMetalFilters(minFilter, metalMinFilter, metalMipFilter);
 
             // Magnification filter ignores the mip component completely
             MTL::SamplerMinMagFilter metalMagFilter =

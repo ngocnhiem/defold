@@ -104,6 +104,9 @@ struct ShaderCompileResultJNI {
     jfieldID mSLResourceMappings;
     jfieldID hLSLResourceMappings;
     jfieldID hLSLNumWorkGroupsId;
+    jfieldID workGroupSizeX;
+    jfieldID workGroupSizeY;
+    jfieldID workGroupSizeZ;
 };
 struct TypeInfos {
     ShaderCompilerOptionsJNI m_ShaderCompilerOptionsJNI;
