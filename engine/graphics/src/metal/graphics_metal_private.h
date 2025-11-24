@@ -54,8 +54,9 @@ namespace dmGraphics
 
     struct MetalPipeline
     {
-        MTL::RenderPipelineState* m_RenderPipelineState;
-        MTL::DepthStencilState*   m_DepthStencilState;
+        MTL::RenderPipelineState*  m_RenderPipelineState;
+        MTL::DepthStencilState*    m_DepthStencilState;
+        MTL::ComputePipelineState* m_ComputePipelineState;
     };
 
     struct ResourceToDestroy
@@ -137,7 +138,8 @@ namespace dmGraphics
 
     struct MetalTexture
     {
-        MTL::Texture*     m_Texture;
+        MTL::Texture*      m_Texture;
+        MTL::ResourceUsage m_Usage;
 
         TextureType       m_Type;
         TextureFormat     m_GraphicsFormat;
