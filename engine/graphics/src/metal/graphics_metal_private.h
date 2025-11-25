@@ -236,10 +236,20 @@ namespace dmGraphics
             uint8_t          m_ClearColor   : 1;
             uint8_t          m_ClearDepth   : 1;
             uint8_t          m_ClearStencil : 1;
+            uint8_t          m_SampleCount  : 4;
         };
 
-        PipelineCache  m_PipelineCache;
-        MTL::Library*  m_Library;
+        struct ClearShader
+        {
+            MTL::Function* m_VsFunction;
+            MTL::Function* m_FsFunction;
+            uint8_t        m_ClearColor   : 1;
+            uint8_t        m_ClearDepth   : 1;
+            uint8_t        m_ClearStencil : 1;
+        };
+
+        PipelineCache        m_PipelineCache;
+        dmArray<ClearShader> m_ClearShaderPermutations;
     };
 
     struct MetalContext
