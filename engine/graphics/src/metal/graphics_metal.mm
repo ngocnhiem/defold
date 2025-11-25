@@ -1550,7 +1550,6 @@ namespace dmGraphics
         dmHashUpdateBuffer64(&pipeline_hash_state, &program->m_Hash, sizeof(program->m_Hash));
         dmHashUpdateBuffer64(&pipeline_hash_state, &pipeline_state, sizeof(pipeline_state));
         dmHashUpdateBuffer64(&pipeline_hash_state, &rt->m_Id, sizeof(rt->m_Id));
-        //dmHashUpdateBuffer64(&pipeline_hash_state, &vk_sample_count, sizeof(vk_sample_count));
 
         for (int i = 0; i < vertexDeclarationCount; ++i)
         {
@@ -1738,21 +1737,27 @@ namespace dmGraphics
                         texture = GetDefaultTexture(context, res->m_Type.m_ShaderType);
                     }
 
-                    arg_encoder->setTexture(texture->m_Texture, msl_index);
-
-                    // TODO: wrap into function for samplerless textures
-                    if (RequiresSampler(res->m_Type.m_ShaderType))
+                    if (res->m_Type.m_ShaderType == ShaderDesc::SHADER_TYPE_SAMPLER)
                     {
                         MetalTextureSampler* sampler = &context->m_TextureSamplers[texture->m_TextureSamplerIndex];
-                        arg_encoder->setSamplerState(sampler->m_Sampler, msl_index + 1);
+                        arg_encoder->setSamplerState(sampler->m_Sampler, msl_index);
+                    }
+                    else
+                    {
+                        arg_encoder->setTexture(texture->m_Texture, msl_index);
+
+                        // Handle combined sampler types
+                        if (RequiresSampler(res->m_Type.m_ShaderType))
+                        {
+                            MetalTextureSampler* sampler = &context->m_TextureSamplers[texture->m_TextureSamplerIndex];
+                            arg_encoder->setSamplerState(sampler->m_Sampler, msl_index + 1);
+                        }
                     }
 
                     if (is_compute)
                         cenc->useResource(texture->m_Texture, texture->m_Usage);
                     else
                         renc->useResource(texture->m_Texture, texture->m_Usage);
-
-                    // TODO: separate samplers
                 } break;
 
                 case ShaderResourceBinding::BINDING_FAMILY_STORAGE_BUFFER:
@@ -2036,6 +2041,8 @@ namespace dmGraphics
             dmSnPrintf(error_buffer, error_buffer_size, "%s", error->localizedDescription()->utf8String());
             return 0;
         }
+
+        dmLogInfo("Compiled shader: %s", src);
 
         MetalShaderModule* module = new MetalShaderModule;
         module->m_Library = library;
