@@ -179,6 +179,11 @@ public class Modelimporter {
         public boolean doubleSided = false;
         public boolean unlit = false;
     };
+    public static class MorphTarget {
+        public float[] positions;
+        public float[] normals;
+        public float[] tangents;
+    };
     public static class Mesh {
         public String name;
         public Material material;
@@ -192,6 +197,7 @@ public class Modelimporter {
         public float[] texCoords0;
         public int texCoords1NumComponents = 0;
         public float[] texCoords1;
+        public MorphTarget[] morphTargets;
         public Aabb aabb;
         public int[] indices;
         public int vertexCount = 0;

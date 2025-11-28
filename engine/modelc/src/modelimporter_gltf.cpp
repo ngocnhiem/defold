@@ -125,21 +125,21 @@ static dmModelImporter::Transform& TransformMul(const dmModelImporter::Transform
 //     }
 // }
 
-// static const char* GetAttributeTypeStr(cgltf_attribute_type type)
-// {
-//     switch(type)
-//     {
-//     case cgltf_attribute_type_invalid: return "cgltf_attribute_type_invalid";
-//     case cgltf_attribute_type_position: return "cgltf_attribute_type_position";
-//     case cgltf_attribute_type_normal: return "cgltf_attribute_type_normal";
-//     case cgltf_attribute_type_tangent: return "cgltf_attribute_type_tangent";
-//     case cgltf_attribute_type_texcoord: return "cgltf_attribute_type_texcoord";
-//     case cgltf_attribute_type_color: return "cgltf_attribute_type_color";
-//     case cgltf_attribute_type_joints: return "cgltf_attribute_type_joints";
-//     case cgltf_attribute_type_weights: return "cgltf_attribute_type_weights";
-//     default: return "unknown";
-//     }
-// }
+static const char* GetAttributeTypeStr(cgltf_attribute_type type)
+{
+    switch(type)
+    {
+    case cgltf_attribute_type_invalid: return "cgltf_attribute_type_invalid";
+    case cgltf_attribute_type_position: return "cgltf_attribute_type_position";
+    case cgltf_attribute_type_normal: return "cgltf_attribute_type_normal";
+    case cgltf_attribute_type_tangent: return "cgltf_attribute_type_tangent";
+    case cgltf_attribute_type_texcoord: return "cgltf_attribute_type_texcoord";
+    case cgltf_attribute_type_color: return "cgltf_attribute_type_color";
+    case cgltf_attribute_type_joints: return "cgltf_attribute_type_joints";
+    case cgltf_attribute_type_weights: return "cgltf_attribute_type_weights";
+    default: return "unknown";
+    }
+}
 
 // static const char* GetTypeStr(cgltf_type type)
 // {
@@ -883,6 +883,45 @@ static void LoadPrimitives(Scene* scene, Model* model, cgltf_data* gltf_data, cg
 
                 else if (attribute->type == cgltf_attribute_type_weights)
                     mesh->m_Weights.Set(fdata, data_count, data_count, false);
+            }
+        }
+
+        if (prim->targets_count > 0)
+        {
+            InitSize(mesh->m_MorphTargets, prim->targets_count, prim->targets_count);
+
+            for (uint32_t mt = 0; mt < prim->targets_count; ++mt)
+            {
+                const cgltf_morph_target* target = &prim->targets[mt];
+                MorphTarget& out = mesh->m_MorphTargets[mt];
+
+                // printf("  morph_target %i:\n", mt);
+
+                for (uint32_t a = 0; a < target->attributes_count; ++a)
+                {
+                    const cgltf_attribute* attr = &target->attributes[a];
+
+                    // printf("    attributes: %s   index: %u   type: %s  count: %u\n", attr->name, attr->index, GetAttributeTypeStr(attr->type), (uint32_t)attr->data->count);
+
+                    if (attr->type == cgltf_attribute_type_position)
+                    {
+                        uint32_t data_count = 0;
+                        float* fdata = ReadAccessorFloat(attr->data, 3, 0.0f, &data_count);
+                        out.m_Positions.Set(fdata, data_count, data_count, false);
+                    }
+                    else if (attr->type == cgltf_attribute_type_normal)
+                    {
+                        uint32_t data_count = 0;
+                        float* fdata = ReadAccessorFloat(attr->data, 3, 0.0f, &data_count);
+                        out.m_Normals.Set(fdata, data_count, data_count, false);
+                    }
+                    else if (attr->type == cgltf_attribute_type_tangent)
+                    {
+                        uint32_t data_count = 0;
+                        float* fdata = ReadAccessorFloat(attr->data, 4, 0.0f, &data_count);
+                        out.m_Tangents.Set(fdata, data_count, data_count, false);
+                    }
+                }
             }
         }
 

@@ -264,6 +264,13 @@ enum IndexBufferFormat
     INDEXBUFFER_FORMAT_32 = 1;
 }
 
+message MorphTarget
+{
+    repeated float positions_delta = 1;
+    repeated float normals_delta   = 2;
+    repeated float tangents_delta  = 3;
+}
+
 message Mesh
 {
     required dmMath.Vector3 aabb_min        = 1;
@@ -288,6 +295,7 @@ message Mesh
 
     optional uint32 material_index = 15; // index into the mesh set material list
 
+    repeated MorphTarget morph_targets = 16;
 }
 
 message Model // E.g. the Node in the Scene

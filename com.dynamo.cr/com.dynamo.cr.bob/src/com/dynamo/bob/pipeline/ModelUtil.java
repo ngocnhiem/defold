@@ -60,6 +60,7 @@ import com.dynamo.bob.pipeline.Modelimporter.Model;
 import com.dynamo.bob.pipeline.Modelimporter.Node;
 import com.dynamo.bob.pipeline.Modelimporter.Options;
 import com.dynamo.bob.pipeline.Modelimporter.Scene;
+import com.dynamo.bob.pipeline.Modelimporter.MorphTarget;
 
 
 import com.dynamo.rig.proto.Rig;
@@ -872,6 +873,46 @@ public class ModelUtil {
             meshBuilder.setMaterialIndex(mesh.material.index);
         else
             meshBuilder.setMaterialIndex(0x0); // We still need to assign a material at some point!
+
+        if (mesh.morphTargets != null)
+        {
+            for (MorphTarget morphTarget : mesh.morphTargets)
+            {
+                Rig.MorphTarget.Builder morphTargetBuilder = Rig.MorphTarget.newBuilder();
+
+                if (morphTarget.positions != null)
+                {
+                    List<Float> positions_list = new ArrayList<Float>(morphTarget.positions.length);
+                    for (int i = 0; i < morphTarget.positions.length; ++i)
+                    {
+                        positions_list.add(morphTarget.positions[i]);
+                    }
+                    morphTargetBuilder.addAllPositionsDelta(positions_list);
+                }
+
+                if (morphTarget.normals != null)
+                {
+                    List<Float> normals_list = new ArrayList<Float>(morphTarget.normals.length);
+                    for (int i = 0; i < morphTarget.normals.length; ++i)
+                    {
+                        normals_list.add(morphTarget.normals[i]);
+                    }
+                    morphTargetBuilder.addAllNormalsDelta(normals_list);
+                }
+
+                if (morphTarget.tangents != null)
+                {
+                    List<Float> tangents_list = new ArrayList<Float>(morphTarget.tangents.length);
+                    for (int i = 0; i < morphTarget.tangents.length; ++i)
+                    {
+                        tangents_list.add(morphTarget.tangents[i]);
+                    }
+                    morphTargetBuilder.addAllTangentsDelta(tangents_list);
+                }
+
+                meshBuilder.addMorphTargets(morphTargetBuilder);
+            }
+        }
 
         return meshBuilder.build();
     }

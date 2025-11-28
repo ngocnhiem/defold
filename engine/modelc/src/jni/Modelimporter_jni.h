@@ -177,6 +177,12 @@ struct MaterialJNI {
     jfieldID doubleSided;
     jfieldID unlit;
 };
+struct MorphTargetJNI {
+    jclass cls;
+    jfieldID positions;
+    jfieldID normals;
+    jfieldID tangents;
+};
 struct MeshJNI {
     jclass cls;
     jfieldID name;
@@ -191,6 +197,7 @@ struct MeshJNI {
     jfieldID texCoords0;
     jfieldID texCoords1NumComponents;
     jfieldID texCoords1;
+    jfieldID morphTargets;
     jfieldID aabb;
     jfieldID indices;
     jfieldID vertexCount;
@@ -299,6 +306,7 @@ struct TypeInfos {
     EmissiveStrengthJNI m_EmissiveStrengthJNI;
     IridescenceJNI m_IridescenceJNI;
     MaterialJNI m_MaterialJNI;
+    MorphTargetJNI m_MorphTargetJNI;
     MeshJNI m_MeshJNI;
     ModelJNI m_ModelJNI;
     BoneJNI m_BoneJNI;
@@ -349,6 +357,7 @@ jobject C2J_CreateSheen(JNIEnv* env, TypeInfos* types, const Sheen* src);
 jobject C2J_CreateEmissiveStrength(JNIEnv* env, TypeInfos* types, const EmissiveStrength* src);
 jobject C2J_CreateIridescence(JNIEnv* env, TypeInfos* types, const Iridescence* src);
 jobject C2J_CreateMaterial(JNIEnv* env, TypeInfos* types, const Material* src);
+jobject C2J_CreateMorphTarget(JNIEnv* env, TypeInfos* types, const MorphTarget* src);
 jobject C2J_CreateMesh(JNIEnv* env, TypeInfos* types, const Mesh* src);
 jobject C2J_CreateModel(JNIEnv* env, TypeInfos* types, const Model* src);
 jobject C2J_CreateBone(JNIEnv* env, TypeInfos* types, const Bone* src);
@@ -400,6 +409,8 @@ jobjectArray C2J_CreateIridescenceArray(JNIEnv* env, TypeInfos* types, const Iri
 jobjectArray C2J_CreateIridescencePtrArray(JNIEnv* env, TypeInfos* types, const Iridescence* const* src, uint32_t src_count);
 jobjectArray C2J_CreateMaterialArray(JNIEnv* env, TypeInfos* types, const Material* src, uint32_t src_count);
 jobjectArray C2J_CreateMaterialPtrArray(JNIEnv* env, TypeInfos* types, const Material* const* src, uint32_t src_count);
+jobjectArray C2J_CreateMorphTargetArray(JNIEnv* env, TypeInfos* types, const MorphTarget* src, uint32_t src_count);
+jobjectArray C2J_CreateMorphTargetPtrArray(JNIEnv* env, TypeInfos* types, const MorphTarget* const* src, uint32_t src_count);
 jobjectArray C2J_CreateMeshArray(JNIEnv* env, TypeInfos* types, const Mesh* src, uint32_t src_count);
 jobjectArray C2J_CreateMeshPtrArray(JNIEnv* env, TypeInfos* types, const Mesh* const* src, uint32_t src_count);
 jobjectArray C2J_CreateModelArray(JNIEnv* env, TypeInfos* types, const Model* src, uint32_t src_count);
@@ -445,6 +456,7 @@ bool J2C_CreateSheen(JNIEnv* env, TypeInfos* types, jobject obj, Sheen* out);
 bool J2C_CreateEmissiveStrength(JNIEnv* env, TypeInfos* types, jobject obj, EmissiveStrength* out);
 bool J2C_CreateIridescence(JNIEnv* env, TypeInfos* types, jobject obj, Iridescence* out);
 bool J2C_CreateMaterial(JNIEnv* env, TypeInfos* types, jobject obj, Material* out);
+bool J2C_CreateMorphTarget(JNIEnv* env, TypeInfos* types, jobject obj, MorphTarget* out);
 bool J2C_CreateMesh(JNIEnv* env, TypeInfos* types, jobject obj, Mesh* out);
 bool J2C_CreateModel(JNIEnv* env, TypeInfos* types, jobject obj, Model* out);
 bool J2C_CreateBone(JNIEnv* env, TypeInfos* types, jobject obj, Bone* out);
@@ -536,6 +548,10 @@ Material* J2C_CreateMaterialArray(JNIEnv* env, TypeInfos* types, jobjectArray ar
 void J2C_CreateMaterialArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, Material* dst, uint32_t dst_count);
 Material** J2C_CreateMaterialPtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
 void J2C_CreateMaterialPtrArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, Material** dst, uint32_t dst_count);
+MorphTarget* J2C_CreateMorphTargetArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
+void J2C_CreateMorphTargetArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, MorphTarget* dst, uint32_t dst_count);
+MorphTarget** J2C_CreateMorphTargetPtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
+void J2C_CreateMorphTargetPtrArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, MorphTarget** dst, uint32_t dst_count);
 Mesh* J2C_CreateMeshArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
 void J2C_CreateMeshArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, Mesh* dst, uint32_t dst_count);
 Mesh** J2C_CreateMeshPtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);

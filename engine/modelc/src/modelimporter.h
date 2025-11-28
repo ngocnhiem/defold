@@ -218,6 +218,13 @@ namespace dmModelImporter
         bool                    m_Unlit;
     };
 
+    struct MorphTarget
+    {
+        dmArray<float> m_Positions;   // 3 floats per vertex (delta)
+        dmArray<float> m_Normals;     // 3 floats per vertex (delta)
+        dmArray<float> m_Tangents;    // 3 floats per vertex (delta) (w ignored for morphs)
+    };
+
     struct Mesh
     {
         const char*         m_Name;
@@ -233,6 +240,7 @@ namespace dmModelImporter
         dmArray<float>      m_TexCoords0;              // m_TexCoord0NumComponents floats per vertex
         uint32_t            m_TexCoords1NumComponents; // e.g 2 or 3
         dmArray<float>      m_TexCoords1;              // m_TexCoord1NumComponents floats per vertex
+        dmArray<MorphTarget> m_MorphTargets;
 
         Aabb                m_Aabb; // The min/max of the positions data
 

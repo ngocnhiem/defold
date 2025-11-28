@@ -337,6 +337,8 @@ public class ModelImporterJni {
         PrintIndent(indent+1);
         System.out.printf("Num Vertices: %d\n", mesh.vertexCount);
         PrintIndent(indent+1);
+        System.out.printf("Num Morph Targets: %d\n", mesh.morphTargets.length);
+        PrintIndent(indent+1);
         System.out.printf("Material: %s\n", mesh.material!=null?mesh.material.name:"null");
         PrintIndent(indent+1);
         System.out.printf("Aabb: (%f, %f, %f), (%f, %f, %f)\n", mesh.aabb.min.x,mesh.aabb.min.y,mesh.aabb.min.z, mesh.aabb.max.x,mesh.aabb.max.y,mesh.aabb.max.z);
@@ -358,6 +360,15 @@ public class ModelImporterJni {
         if (max_count > mesh.indices.length/3)
             max_count = mesh.indices.length/3;
         DebugPrintIntArray(indent+1, "indices", mesh.indices, max_count, 3);
+
+        for (Modelimporter.MorphTarget target : mesh.morphTargets) {
+            PrintIndent(indent+1);
+            System.out.printf("Morph target:\n");
+
+            DebugPrintFloatArray(indent+2, "positions", target.positions, max_count, 3);
+            DebugPrintFloatArray(indent+2, "normals", target.normals, max_count, 3);
+            DebugPrintFloatArray(indent+2, "tangents", target.tangents, max_count, 3);
+        }
     }
 
     public static void DebugPrintModel(Modelimporter.Model model, int indent) {
