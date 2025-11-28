@@ -227,6 +227,106 @@ namespace dmGameSystem
         return buffers;
     }
 
+    static void ComputeMorphTextureSize(
+        uint32_t vertex_count,
+        uint32_t max_width,
+        uint32_t max_height,
+        uint32_t* out_width,
+        uint32_t* out_height)
+    {
+        // Try to make width close to vertex_count but clamp to GPU limits
+        uint32_t width = 1;
+        while (width < vertex_count && width < max_width)
+        {
+            width <<= 1; // next power of two
+        }
+
+        width = dmMath::Min(width, max_width);
+
+        uint32_t height = (vertex_count + width - 1) / width;
+
+        // Make height power-of-two if desired
+        uint32_t h2 = 1;
+        while (h2 < height && h2 < max_height)
+        {
+            h2 <<= 1;
+        }
+
+        *out_width = width;
+        *out_height = dmMath::Min(h2, max_height);
+    }
+
+    static dmGraphics::HTexture CreateMorphTargetTexture(dmGraphics::HContext context, const dmRigDDF::Mesh* ddf_mesh)
+    {
+        if (ddf_mesh->m_MorphTargets.m_Count == 0)
+            return 0;
+
+        uint32_t num_morph_targets = ddf_mesh->m_MorphTargets.m_Count;
+        uint32_t max_count = 0;
+
+        for (int i = 0; i < num_morph_targets; ++i)
+        {
+            uint32_t num_positions = ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Count / 3;
+            uint32_t num_normals = ddf_mesh->m_MorphTargets[i].m_NormalsDelta.m_Count / 3;
+            uint32_t num_tangents = ddf_mesh->m_MorphTargets[i].m_TangentsDelta.m_Count / 3;
+
+            max_count = dmMath::Max(max_count, num_positions);
+            max_count = dmMath::Max(max_count, num_normals);
+            max_count = dmMath::Max(max_count, num_tangents);
+        }
+
+        // TODO: Make this configurable
+        uint32_t width;
+        uint32_t height;
+        ComputeMorphTextureSize(max_count, 2048, 2048, &width, &height);
+
+        dmGraphics::TextureCreationParams params;
+        params.m_Type       = dmGraphics::TEXTURE_TYPE_2D_ARRAY;
+        params.m_Width      = width;
+        params.m_Height     = height;
+        params.m_LayerCount = num_morph_targets * 3;
+
+        dmGraphics::HTexture tex = dmGraphics::NewTexture(context, params);
+
+        uint32_t slice_size = width * height * 4 * sizeof(float);
+        uint32_t data_size = slice_size * num_morph_targets * 3;
+        void* data = malloc(data_size);
+        memset(data, 0, data_size);
+
+        dmGraphics::TextureParams set_params;
+        set_params.m_Format = dmGraphics::TEXTURE_FORMAT_RGBA32F;
+        set_params.m_Width = width;
+        set_params.m_Height = height;
+        set_params.m_LayerCount = num_morph_targets * 3;
+        set_params.m_MinFilter = dmGraphics::TEXTURE_FILTER_NEAREST;
+        set_params.m_MagFilter = dmGraphics::TEXTURE_FILTER_NEAREST;
+        set_params.m_Data = data;
+        set_params.m_DataSize = slice_size;
+
+        for (int i = 0; i < num_morph_targets; ++i)
+        {
+            uint8_t* d = (uint8_t*)data + slice_size * i * 3;
+            float* d_positions = (float*)d;
+
+            uint32_t num_positions = ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Count / 3;
+
+            for (int p = 0; p < num_positions; ++p)
+            {
+                d_positions[p * 4 + 0] = ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Data[p * 3 + 0];
+                d_positions[p * 4 + 1] = ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Data[p * 3 + 1];
+                d_positions[p * 4 + 2] = ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Data[p * 3 + 2];
+                d_positions[p * 4 + 3] = 0.0f;
+            }
+
+            // memcpy(d, ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Data, ddf_mesh->m_MorphTargets[i].m_PositionsDelta.m_Count * sizeof(float));
+            // memcpy(d + slice_size, ddf_mesh->m_MorphTargets[i].m_NormalsDelta.m_Data, ddf_mesh->m_MorphTargets[i].m_NormalsDelta.m_Count * sizeof(float));
+            // memcpy(d + slice_size * 2, ddf_mesh->m_MorphTargets[i].m_TangentsDelta.m_Data, ddf_mesh->m_MorphTargets[i].m_TangentsDelta.m_Count * sizeof(float));
+        }
+
+        dmGraphics::SetTexture(context, tex, set_params);
+        return tex;
+    }
+
     static void CreateBuffers(dmGraphics::HContext context, ModelResource* resource)
     {
         dmArray<uint8_t> scratch_buffer;
@@ -234,6 +334,7 @@ namespace dmGameSystem
         {
             MeshInfo& info = resource->m_Meshes[i];
             info.m_Buffers = CreateBuffers(context, resource, info.m_Mesh, scratch_buffer);
+            info.m_MorphTargetTexture = CreateMorphTargetTexture(context, info.m_Mesh);
         }
     }
 

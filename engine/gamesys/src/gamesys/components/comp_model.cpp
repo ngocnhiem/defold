@@ -115,6 +115,7 @@ namespace dmGameSystem
         dmRigDDF::Model*            m_Model;    // Used for world space materials
         dmRigDDF::Mesh*             m_Mesh;     // Used for world space materials
         HComponentRenderConstants   m_RenderConstants; // Used for PBR properties, will be null if PBR data not needed.
+        dmGraphics::HTexture        m_MorphTargetTexture;
         uint32_t                    m_InstanceRenderHash;
         uint32_t                    m_BoneIndex;
         uint32_t                    m_MaterialIndex;
@@ -921,6 +922,7 @@ namespace dmGameSystem
             item.m_Model = resource->m_Meshes[i].m_Model;
             item.m_Mesh = resource->m_Meshes[i].m_Mesh;
             item.m_RenderConstants = 0;
+            item.m_MorphTargetTexture = resource->m_Meshes[i].m_MorphTargetTexture;
             item.m_MaterialIndex = resource->m_Meshes[i].m_Mesh->m_MaterialIndex;
             item.m_AabbMin = item.m_Mesh->m_AabbMin;
             item.m_AabbMax = item.m_Mesh->m_AabbMax;
@@ -1434,6 +1436,26 @@ namespace dmGameSystem
         }
     }
 
+    static void SetupMorphTargets(dmRender::RenderObject& ro, dmRender::HMaterial material, dmGraphics::HTexture morph_target_texture, int32_t first_free_index)
+    {
+        if (first_free_index >= 0)
+        {
+            if (dmRender::SetMaterialSampler(material,
+                dmRender::SAMPLER_MORPH_TARGETS, first_free_index,
+                dmGraphics::TEXTURE_WRAP_CLAMP_TO_EDGE, dmGraphics::TEXTURE_WRAP_CLAMP_TO_EDGE,
+                dmGraphics::TEXTURE_FILTER_NEAREST, dmGraphics::TEXTURE_FILTER_NEAREST, 0.0f))
+            {
+                ro.m_Textures[first_free_index] = morph_target_texture;
+            }
+            else
+            {
+                // dmLogOnceError("Unable to bind morph target texture for component '%s', does the shader(s) have a sampler named '%s'?",
+                //     dmHashReverseSafe64(dmGameObject::GetIdentifier(ro.m_GameObject)),
+                //     dmHashReverseSafe64(dmRender::SAMPLER_MORPH_TARGETS));
+            }
+        }
+    }
+
     static inline void EnsureBindPoseCacheBufferSize(ModelWorld* world, uint32_t max_width, uint32_t max_height)
     {
         if (world->m_SkinnedAnimationData.m_BindPoseCacheTextureCurrentWidth < max_width ||
@@ -1764,6 +1786,22 @@ namespace dmGameSystem
 
             int32_t first_free_index = FillTextures(&ro, component, material_index);
             HComponentRenderConstants constants = component->m_RenderConstants;
+
+            if (render_item->m_MorphTargetTexture)
+            {
+                SetupMorphTargets(ro, render_material, render_item->m_MorphTargetTexture, first_free_index);
+
+                // TODO: Figure out if we have to do same as with skinned approach
+                if (!component->m_RenderConstants)
+                {
+                    component->m_RenderConstants = dmGameSystem::CreateRenderConstants();
+                    constants = component->m_RenderConstants;
+                }
+
+                // hard-coded weights for now
+                dmVMath::Vector4 morph_target_data(1.0f, 0.0f, 0.0f, 0.0f);
+                SetRenderConstant(constants, dmRender::CONSTANT_MORPH_TARGETS_WEIGHTS, &morph_target_data, 1);
+            }
 
             if (IsRenderItemSkinned(component, render_item))
             {

@@ -61,6 +61,7 @@ namespace dmGameSystem
     struct MeshInfo
     {
         ModelResourceBuffers*   m_Buffers; // Currently a vertex+index buffer per mesh
+        dmGraphics::HTexture    m_MorphTargetTexture;
         dmRigDDF::Model*        m_Model;   // For the transform
         dmRigDDF::Mesh*         m_Mesh;
     };
