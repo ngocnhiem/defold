@@ -1791,16 +1791,17 @@ namespace dmGameSystem
             {
                 SetupMorphTargets(ro, render_material, render_item->m_MorphTargetTexture, first_free_index);
 
+                /*
                 // TODO: Figure out if we have to do same as with skinned approach
                 if (!component->m_RenderConstants)
                 {
                     component->m_RenderConstants = dmGameSystem::CreateRenderConstants();
                     constants = component->m_RenderConstants;
                 }
-
                 // hard-coded weights for now
                 dmVMath::Vector4 morph_target_data(1.0f, 0.0f, 0.0f, 0.0f);
                 SetRenderConstant(constants, dmRender::CONSTANT_MORPH_TARGETS_WEIGHTS, &morph_target_data, 1);
+                */
             }
 
             if (IsRenderItemSkinned(component, render_item))
