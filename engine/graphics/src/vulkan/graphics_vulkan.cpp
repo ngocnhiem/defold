@@ -680,14 +680,14 @@ namespace dmGraphics
         attachments[0].m_ImageLayout        = context->m_SwapChain->HasMultiSampling() ?
                                               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL :
                                               VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        attachments[0].m_LoadOp             = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        attachments[0].m_LoadOp             = VK_ATTACHMENT_LOAD_OP_LOAD;
         attachments[0].m_StoreOp            = VK_ATTACHMENT_STORE_OP_STORE;
 
         // Depth/stencil attachment
         attachments[1].m_Format             = depth_stencil_texture->m_Format;
         attachments[1].m_ImageLayoutInitial = VK_IMAGE_LAYOUT_UNDEFINED;
         attachments[1].m_ImageLayout        = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        attachments[1].m_LoadOp             = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        attachments[1].m_LoadOp             = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachments[1].m_StoreOp            = VK_ATTACHMENT_STORE_OP_STORE;
 
         // Optional resolve attachment (for MSAA)
