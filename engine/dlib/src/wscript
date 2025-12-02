@@ -158,7 +158,7 @@ def build(bld):
     mbedtls = bld.stlib(features    = 'c cxx remove_flags',
                   includes    = '. ./mbedtls/include',
                   target      = 'mbedtls',
-                  source      = bld.path.ant_glob(mbedtls_dirs),
+                  source      = bld.path.ant_glob(mbedtls_dirs) + ['mbedtls/defold_mbedtls_threading.cpp'],
                   remove_flags= remove_flags,
                   defines     = ['VALGRIND'] + extra_defines)
     if new_opt_level:

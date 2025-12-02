@@ -31,6 +31,7 @@
 #include <mbedtls/ssl.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/x509_crt.h>
+#include <defold_mbedtls_threading.h>
 
 #define MBED_DEBUG_LEVEL 1
 
@@ -153,6 +154,15 @@ static dmSocket::Result SSLToSocket(int r) {
 
 Result Initialize()
 {
+#if defined(MBEDTLS_THREADING_ALT)
+    mbedtls_threading_set_alt(
+        defold_mbedtls_mutex_init,
+        defold_mbedtls_mutex_free,
+        defold_mbedtls_mutex_lock,
+        defold_mbedtls_mutex_unlock
+    );
+#endif
+
     g_SSLSocketContext.m_x509CertChain = 0;
     return RESULT_OK;
 }
@@ -165,6 +175,9 @@ Result Finalize()
         free((void*)g_SSLSocketContext.m_x509CertChain);
     }
     g_SSLSocketContext.m_x509CertChain = 0;
+#if defined(MBEDTLS_THREADING_ALT)
+    mbedtls_threading_free_alt();
+#endif
     return RESULT_OK;
 }
 

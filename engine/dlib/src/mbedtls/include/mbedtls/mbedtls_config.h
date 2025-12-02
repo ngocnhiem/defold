@@ -12,6 +12,10 @@
  *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
+/// DEFOLD BEGIN
+#include "defold_mbedtls_config.h"
+/// DEFOLD END
+
 /**
  * This is an optional version symbol that enables compatibility handling of
  * config files.
@@ -2038,7 +2042,7 @@
  *
  * Uncomment this to enable support for use_srtp extension.
  */
-//#define MBEDTLS_SSL_DTLS_SRTP
+#define MBEDTLS_SSL_DTLS_SRTP
 
 /**
  * \def MBEDTLS_SSL_DTLS_CLIENT_PORT_REUSE
