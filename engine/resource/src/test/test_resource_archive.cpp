@@ -23,6 +23,7 @@
 #include <dlib/dstrings.h>
 #include <dlib/endian.h>
 #include <dlib/sys.h>
+#include <dlib/sslsocket.h>  // needed to initialize mbedtls global mutexes
 #include <dlib/testutil.h>
 #include <testmain/testmain.h>
 
@@ -149,7 +150,21 @@ bool IsLiveUpdateResource(dmhash_t lu_path_hash)
     return false;
 }
 
-TEST(dmResourceArchive, ShiftInsertResource)
+class dmResourceArchiveTest : public jc_test_base_class
+{
+    public:
+        void SetUp() override
+        {
+            dmSSLSocket::Initialize(); // initialize MbedTLS global mutexes used in RSA related operations in threaded environment
+        }
+
+        void TearDown() override
+        {
+            dmSSLSocket::Finalize();
+        }
+};
+
+TEST_F(dmResourceArchiveTest, ShiftInsertResource)
 {
     const char* resource_filename = "test_resource_liveupdate.arcd";
     char host_name[512];
@@ -206,7 +221,7 @@ TEST(dmResourceArchive, ShiftInsertResource)
 }
 
 
-TEST(dmResourceArchive, ShiftInsertResource_InsertIssue)
+TEST_F(dmResourceArchiveTest, ShiftInsertResource_InsertIssue)
 {
     const char* resource_filename = "test_resource_liveupdate.arcd";
     char host_name[512];
@@ -306,7 +321,7 @@ TEST(dmResourceArchive, ShiftInsertResource_InsertIssue)
     dmSys::Unlink(path);
 }
 
-TEST(dmResourceArchive, NewArchiveIndexFromCopy)
+TEST_F(dmResourceArchiveTest, NewArchiveIndexFromCopy)
 {
     uint32_t single_entry_offset = dmResourceArchive::MAX_HASH;
 
@@ -330,7 +345,7 @@ TEST(dmResourceArchive, NewArchiveIndexFromCopy)
     dmResourceArchive::Delete(archive_container);
 }
 
-TEST(dmResourceArchive, GetInsertionIndex)
+TEST_F(dmResourceArchiveTest, GetInsertionIndex)
 {
     dmResourceArchive::HArchiveIndexContainer archive = 0;
     dmResourceArchive::Result result = dmResourceArchive::WrapArchiveBuffer((void*) RESOURCES_ARCI, RESOURCES_ARCI_SIZE, true, RESOURCES_ARCD, RESOURCES_ARCD_SIZE, true, &archive);
@@ -358,7 +373,7 @@ TEST(dmResourceArchive, GetInsertionIndex)
     dmResourceArchive::Delete(archive);
 }
 
-TEST(dmResourceArchive, ManifestHeader)
+TEST_F(dmResourceArchiveTest, ManifestHeader)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     dmLiveUpdateDDF::ManifestData* manifest_data;
@@ -376,7 +391,7 @@ TEST(dmResourceArchive, ManifestHeader)
     dmResource::DeleteManifest(manifest);
 }
 
-TEST(dmResourceArchive, HasLiveupdateContent_True)
+TEST_F(dmResourceArchiveTest, HasLiveupdateContent_True)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     dmResource::Result result = dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest);
@@ -388,7 +403,7 @@ TEST(dmResourceArchive, HasLiveupdateContent_True)
     dmResource::DeleteManifest(manifest);
 }
 
-TEST(dmResourceArchive, HasLiveupdateContent_False)
+TEST_F(dmResourceArchiveTest, HasLiveupdateContent_False)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     dmResource::Result result = dmResource::LoadManifestFromBuffer(RESOURCES_NO_LU_DMANIFEST, RESOURCES_NO_LU_DMANIFEST_SIZE, &manifest);
@@ -462,7 +477,7 @@ This test is failing intermittenly on Linux. Typical output from a failed test:
 2020-04-19T09:57:44.1814584Z Expected: (dmResource::RESULT_OK) == (dmResource::DecryptSignatureHash(manifest, RESOURCES_PUBLIC, RESOURCES_PUBLIC_SIZE, &hex_digest, &hex_digest_len)), actual: OK vs INVALID_DATA
 */
 #if !defined(__linux__)
-TEST(dmResourceArchive, ManifestSignatureVerification)
+TEST_F(dmResourceArchiveTest, ManifestSignatureVerification)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
@@ -509,7 +524,7 @@ This test is failing intermittenly on Linux. Typical output from a failed test:
 2020-04-24T11:09:51.7616663Z
 */
 #if !defined(__linux__)
-TEST(dmResourceArchive, ManifestSignatureVerificationLengthFail)
+TEST_F(dmResourceArchiveTest, ManifestSignatureVerificationLengthFail)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
@@ -530,7 +545,7 @@ This test is failing intermittenly on Linux. Typical output from a failed test:
 2020-04-28T05:00:04.1089868Z Expected: (dmResource::RESULT_OK) == (dmResource::DecryptSignatureHash(manifest, RESOURCES_PUBLIC, RESOURCES_PUBLIC_SIZE, &hex_digest, &hex_digest_len)), actual: OK vs INVALID_DATA
 */
 #if !defined(__linux__)
-TEST(dmResourceArchive, ManifestSignatureVerificationHashFail)
+TEST_F(dmResourceArchiveTest, ManifestSignatureVerificationHashFail)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
@@ -543,7 +558,7 @@ TEST(dmResourceArchive, ManifestSignatureVerificationHashFail)
 }
 #endif
 
-TEST(dmResourceArchive, ManifestSignatureVerificationWrongKey)
+TEST_F(dmResourceArchiveTest, ManifestSignatureVerificationWrongKey)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
@@ -557,7 +572,7 @@ TEST(dmResourceArchive, ManifestSignatureVerificationWrongKey)
     dmResource::DeleteManifest(manifest);
 }
 
-TEST(dmResourceArchive, ResourceEntries)
+TEST_F(dmResourceArchiveTest, ResourceEntries)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     dmLiveUpdateDDF::ManifestData* manifest_data;
@@ -581,7 +596,7 @@ TEST(dmResourceArchive, ResourceEntries)
     dmResource::DeleteManifest(manifest);
 }
 
-TEST(dmResourceArchive, ResourceEntries_Compressed)
+TEST_F(dmResourceArchiveTest, ResourceEntries_Compressed)
 {
     dmResource::HManifest manifest = new dmResource::Manifest();
     dmLiveUpdateDDF::ManifestData* manifest_data;
@@ -606,7 +621,7 @@ TEST(dmResourceArchive, ResourceEntries_Compressed)
     dmResource::DeleteManifest(manifest);
 }
 
-TEST(dmResourceArchive, Wrap)
+TEST_F(dmResourceArchiveTest, Wrap)
 {
     dmResourceArchive::HArchiveIndexContainer archive = 0;
     dmResourceArchive::Result result = dmResourceArchive::WrapArchiveBuffer((void*) RESOURCES_ARCI, RESOURCES_ARCI_SIZE, true, RESOURCES_ARCD, RESOURCES_ARCD_SIZE, true, &archive);
@@ -638,7 +653,7 @@ TEST(dmResourceArchive, Wrap)
     dmResourceArchive::Delete(archive);
 }
 
-TEST(dmResourceArchive, Wrap_Compressed)
+TEST_F(dmResourceArchiveTest, Wrap_Compressed)
 {
     dmResourceArchive::HArchiveIndexContainer archive = 0;
     dmResourceArchive::Result result = dmResourceArchive::WrapArchiveBuffer((void*) RESOURCES_COMPRESSED_ARCI, RESOURCES_COMPRESSED_ARCI_SIZE, true, (void*) RESOURCES_COMPRESSED_ARCD, RESOURCES_COMPRESSED_ARCD_SIZE, true, &archive);
@@ -669,7 +684,7 @@ TEST(dmResourceArchive, Wrap_Compressed)
     dmResourceArchive::Delete(archive);
 }
 
-TEST(dmResourceArchive, LoadFromDisk)
+TEST_F(dmResourceArchiveTest, LoadFromDisk)
 {
     dmResourceArchive::HArchiveIndexContainer archive = 0;
     char archive_path[512];
@@ -704,7 +719,7 @@ TEST(dmResourceArchive, LoadFromDisk)
     dmResourceArchive::Delete(archive);
 }
 
-TEST(dmResourceArchive, LoadFromDisk_MissingArchive)
+TEST_F(dmResourceArchiveTest, LoadFromDisk_MissingArchive)
 {
     dmResourceArchive::HArchiveIndexContainer archive = 0;
     char archive_path[512];
@@ -715,7 +730,7 @@ TEST(dmResourceArchive, LoadFromDisk_MissingArchive)
     ASSERT_EQ(dmResourceArchive::RESULT_IO_ERROR, result);
 }
 
-TEST(dmResourceArchive, LoadFromDisk_Compressed)
+TEST_F(dmResourceArchiveTest, LoadFromDisk_Compressed)
 {
     dmResourceArchive::HArchiveIndexContainer archive = 0;
     char archive_path[512];
@@ -760,7 +775,7 @@ static dmResource::Result TestDecryption(void* buffer, uint32_t buffer_len)
     return dmResource::RESULT_OK;
 }
 
-TEST(dmResourceArchive, ResourceDecryption)
+TEST_F(dmResourceArchiveTest, ResourceDecryption)
 {
     uint8_t buffer[] = { 0x00, 0x00, 0x00 };
     uint32_t buffer_len = 3;
