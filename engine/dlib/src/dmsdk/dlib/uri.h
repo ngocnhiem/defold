@@ -39,7 +39,7 @@ namespace dmURI
         RESULT_TOO_SMALL_BUFFER,            //!< RESULT_TOO_SMALL_BUFFER
     };
 
-    const uint32_t MAX_SCHEME_LEN = 8;      //!< MAX_SCHEME_LEN
+    const uint32_t MAX_SCHEME_LEN = 12;      //!< MAX_SCHEME_LEN
     const uint32_t MAX_LOCATION_LEN = 64;   //!< MAX_LOCATION_LEN
     const uint32_t MAX_PATH_LEN = 2048;     //!< MAX_PATH_LEN
 
