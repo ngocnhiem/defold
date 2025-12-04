@@ -41,8 +41,10 @@ namespace dmResource
         uint32_t index_length;
     };
 
-    Result MapAsset(AAssetManager* am, const char* path,  void*& out_asset, uint32_t& out_size, void*& out_map)
+    Result MapAsset(const char* path, void*& out_asset, uint32_t& out_size, void*& out_map)
     {
+        AAssetManager* am = g_AndroidApp->activity->assetManager;
+
         out_asset = (void*)AAssetManager_open(am, path, AASSET_MODE_RANDOM);
         if (!out_asset)
         {
@@ -87,11 +89,11 @@ namespace dmResource
         return RESULT_OK;
     }
 
-    static Result UnmapAsset(AAsset*& asset)
+    static Result UnmapAsset(void*& asset, uint32_t size)
     {
         if (asset != 0x0)
         {
-            AAsset_close(asset);
+            AAsset_close((AAsset*)asset);
         }
         return RESULT_OK;
     }
@@ -118,7 +120,6 @@ namespace dmResource
 
     Result MountArchiveInternal(const char* index_path, const char* data_path, dmResourceArchive::HArchiveIndexContainer* archive, void** mount_info)
     {
-        AAssetManager* am = g_AndroidApp->activity->assetManager;
         AAsset* index_asset = 0x0;
         uint32_t index_length = 0;
         void* index_map = 0x0;
@@ -132,7 +133,7 @@ namespace dmResource
         bool mem_mapped_data = false;
         if (strcmp(data_path, "game.arcd") == 0)
         {
-            r = MapAsset(am, data_path, (void*&)data_asset, data_length, data_map);
+            r = MapAsset(data_path, (void*&)data_asset, data_length, data_map);
             if (r != RESULT_OK)
             {
                 dmLogError("Error when mapping data file '%s', result = %i", data_path, r);
@@ -153,7 +154,7 @@ namespace dmResource
         bool mem_mapped_index = false;
         if (strcmp(index_path, "game.arci") == 0)
         {
-            r = MapAsset(am, index_path, (void*&)index_asset, index_length, index_map);
+            r = MapAsset(index_path, (void*&)index_asset, index_length, index_map);
             if (r != RESULT_OK)
             {
                 if (mem_mapped_data)
