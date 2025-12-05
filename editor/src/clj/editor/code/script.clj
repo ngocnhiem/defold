@@ -27,7 +27,8 @@
             [editor.properties :as properties]
             [editor.resource :as resource]
             [editor.types :as types]
-            [schema.core :as s]))
+            [schema.core :as s]
+            [util.coll :as coll]))
 
 (set! *warn-on-reflection* true)
 (set! *unchecked-math* :warn-on-boxed)
@@ -409,16 +410,18 @@
     original-resource-property-build-targets
     (partial project/get-resource-node (project/get-project _node-id))))
 
+(defn region->breakpoint [resource region]
+  (let [condition (:condition region)]
+    (cond-> {:resource resource
+             :row (data/breakpoint-row region)
+             :enabled (:enabled region)}
+      condition
+      (assoc :condition condition))))
+
 (g/defnk produce-breakpoints [resource regions]
-  (into []
-        (comp (filter data/breakpoint-region?)
-              (map (fn [region]
-                     (let [condition (:condition region)]
-                       (cond-> {:resource resource
-                                :row (data/breakpoint-row region)}
-                               condition
-                               (assoc :condition condition))))))
-        regions))
+  (coll/transfer regions []
+    (filter data/breakpoint-region?)
+    (map (partial region->breakpoint resource))))
 
 (g/defnode ScriptNode
   (inherits r/CodeEditorResourceNode)

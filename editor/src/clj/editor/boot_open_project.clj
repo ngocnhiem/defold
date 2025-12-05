@@ -16,7 +16,7 @@
   (:require [clojure.java.io :as io]
             [dynamo.graph :as g]
             [editor.app-view :as app-view]
-            [editor.prefs :as prefs]
+            [editor.breakpoints-view :as breakpoints-view]
             [editor.asset-browser :as asset-browser]
             [editor.build-errors-view :as build-errors-view]
             [editor.changes-view :as changes-view]
@@ -42,6 +42,7 @@
             [editor.os :as os]
             [editor.outline-view :as outline-view]
             [editor.pipeline.bob :as bob]
+            [editor.prefs :as prefs]
             [editor.properties-view :as properties-view]
             [editor.resource :as resource]
             [editor.resource-types :as resource-types]
@@ -205,6 +206,8 @@
                                                       open-resource
                                                       (partial app-view/debugger-state-changed! scene tool-tabs)
                                                       localization)
+
+          breakpoints-view (breakpoints-view/make-breakpoints-view workspace project open-resource *view-graph* prefs (.lookup root "#breakpoints-container"))
           server-handler (web-server/make-dynamic-handler
                            (into []
                                  cat
@@ -238,6 +241,7 @@
       (localization/localize! (.lookup root "#status-label") localization (localization/message "progress.ready"))
       (localization/localize! console-tab localization (localization/message "pane.console"))
       (localization/localize! curve-tab localization (localization/message "pane.curve-editor"))
+      (localization/localize! (find-tab tool-tabs "breakpoints-tab") localization (localization/message "pane.breakpoints"))
       (localization/localize! (find-tab tool-tabs "build-errors-tab") localization (localization/message "pane.build-errors"))
       (localization/localize! (find-tab tool-tabs "search-results-tab") localization (localization/message "pane.search-results"))
 
@@ -377,7 +381,8 @@
                             [asset-browser :tree-view]
                             [curve-view :update-list-view]
                             [debug-view :update-available-controls]
-                            [debug-view :update-call-stack]]]
+                            [debug-view :update-call-stack]
+                            [breakpoints-view :breakpoints-anchor-pane]]]
             (g/update-property app-view :auto-pulls into auto-pulls))))
 
       (reset! the-root root)
@@ -398,6 +403,8 @@
               (open-resource readme-resource))
             (g/with-auto-evaluation-context evaluation-context
               (app-view/restore-tabs-from-prefs! app-view prefs localization workspace project evaluation-context)))
+
+          (breakpoints-view/restore-breakpoints! project prefs)
 
           ;; Ensure .gitignore is configured to ignore build output and metadata
           ;; files.

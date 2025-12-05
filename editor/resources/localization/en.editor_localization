@@ -572,6 +572,7 @@ pane.console = Console
 pane.curve-editor = Curve Editor
 pane.build-errors = Build Errors
 pane.search-results = Search Results
+pane.breakpoints = Breakpoints
 
 # Console
 
@@ -580,6 +581,22 @@ console.button.filter = Filter
 console.filter.enable-filtering = Enable filtering
 console.filter.add-filter = Add filter (e.g. text, !exclude)
 console.search = Search
+
+# Breakpoints Tab
+
+breakpoints.button.enable-all = Enable All
+breakpoints.button.disable-all = Disable All
+breakpoints.button.toggle-all = Toggle All
+breakpoints.button.remove-all = Remove All
+breakpoints.column.enabled = Enabled
+breakpoints.column.line = Line
+breakpoints.column.name = Name
+breakpoints.column.condition = Condition
+breakpoints.column.path = Path
+breakpoints.context-menu.edit-selected = Edit Condition
+breakpoints.context-menu.remove-selected = Remove Selected Breakpoint
+breakpoints.context-menu.toggle-selected-enabled = Toggle Selected Breakpoint
+breakpoints.context-menu.go-to-line = Go to Line
 
 # Changes view
 
@@ -893,6 +910,7 @@ command.debugger.step-out = Step Out
 command.debugger.detach = Detach Debugger
 command.debugger.stop = Stop Debugger
 command.debugger.toggle-breakpoint = Toggle Breakpoint
+command.debugger.toggle-breakpoint-enabled = Toggle Breakpoint Enabled
 command.debugger.edit-breakpoint = Edit Breakpoint
 command.scene.set-manipulator-space = Set Manipulator Space
 command.scene.set-manipulator-space.option.world = World Space

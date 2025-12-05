@@ -119,6 +119,11 @@
                                         <AnchorPane id="search-results-container" styleClass="search-results-view" prefHeight="180.0" prefWidth="200.0" />
                                       </content>
                                     </Tab>
+                                    <Tab id="breakpoints-tab" text="Breakpoints">
+                                      <content>
+                                        <AnchorPane id="breakpoints-container" prefHeight="180.0" prefWidth="200.0" />
+                                      </content>
+                                    </Tab>
                                   </tabs>
                                 </TabPane>
                               </children>
