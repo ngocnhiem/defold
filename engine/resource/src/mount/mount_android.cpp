@@ -41,7 +41,7 @@ namespace dmResource
         uint32_t index_length;
     };
 
-    Result MapAsset(const char* path, void*& out_asset, uint32_t& out_size, void*& out_map)
+    Result MapAsset(const char* path, void*& out_asset, void*& out_map, uint32_t& out_size)
     {
         AAssetManager* am = g_AndroidApp->activity->assetManager;
 
@@ -133,7 +133,7 @@ namespace dmResource
         bool mem_mapped_data = false;
         if (strcmp(data_path, "game.arcd") == 0)
         {
-            r = MapAsset(data_path, (void*&)data_asset, data_length, data_map);
+            r = MapAsset(data_path, (void*&)data_asset, data_map, data_length);
             if (r != RESULT_OK)
             {
                 dmLogError("Error when mapping data file '%s', result = %i", data_path, r);
@@ -154,7 +154,7 @@ namespace dmResource
         bool mem_mapped_index = false;
         if (strcmp(index_path, "game.arci") == 0)
         {
-            r = MapAsset(index_path, (void*&)index_asset, index_length, index_map);
+            r = MapAsset(index_path, (void*&)index_asset, index_map, index_length);
             if (r != RESULT_OK)
             {
                 if (mem_mapped_data)

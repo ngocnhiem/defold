@@ -33,7 +33,7 @@ namespace dmResource
         return RESULT_OK;
     }
 
-    Result MapAsset(const char* name, void*& asset, void*& map, uint32_t& size)
+    Result MapAsset(const char* name, void*& out_asset, void*& out_map, uint32_t& out_size)
     {
         // Not used
         return RESULT_OK;

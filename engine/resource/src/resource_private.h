@@ -129,7 +129,7 @@ namespace dmResource
     Result MapFile(const char* filename, void*& map, uint32_t& size);
     Result UnmapFile(void*& map, uint32_t size);
     // Assets mapped with this function should be unmapped with UnmapAsset(...)
-    Result MapAsset(const char* name, void*& asset, void*& map, uint32_t& size);
+    Result MapAsset(const char* name, void*& out_asset, void*& out_map, uint32_t& out_size);
     Result UnmapAsset(void*& asset, uint32_t size);
 
     /**
