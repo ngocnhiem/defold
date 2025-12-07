@@ -194,12 +194,6 @@ static dmResourceProvider::Result LoadManifest(dmZip::HZip zip, const char* path
     return result;
 }
 
-void SetAndNormalizePath(const char* path, char* out, uint32_t out_len)
-{
-    dmSnPrintf(out, out_len, "%s", path);
-    dmPath::Normalize(out, out, out_len);
-}
-
 static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvider::HArchive base_archive, dmResourceProvider::HArchiveInternal* out_archive)
 {
     if (!MatchesUri(uri))
@@ -216,7 +210,8 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
     // starts with /android_asset/ ?
     if (strncmp(ANDROID_ASSET_PATH, uri->m_Path, ANDROID_ASSET_PATH_LENGTH) == 0)
     {
-        SetAndNormalizePath(uri->m_Path + ANDROID_ASSET_PATH_LENGTH, path, sizeof(path));
+        dmSnPrintf(path, sizeof(path), "%s", uri->m_Path + ANDROID_ASSET_PATH_LENGTH);
+        dmPath::Normalize(path, path, sizeof(path));
 
         dmLogInfo("Mount zipasset dmResource::MapAsset %s", path);
         void* zip_map = 0x0;
@@ -238,7 +233,8 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
     }
     else
     {
-        SetAndNormalizePath(uri->m_Path, path, sizeof(path));
+        dmSnPrintf(path, sizeof(path), "%s", uri->m_Path);
+        dmPath::Normalize(path, path, sizeof(path));
 
         dmLogInfo("Mount zip %s", path);
         char mount_path[1024];
