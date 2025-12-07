@@ -203,8 +203,6 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
     memset(archive, 0, sizeof(ZipProviderContext));
     memcpy(&archive->m_BaseUri, uri, sizeof(dmURI::Parts));
 
-    dmLogInfo("Mount %s", uri->m_Path);
-
     char path[1024];
 
     // starts with /android_asset/ ?
@@ -213,7 +211,6 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
         dmSnPrintf(path, sizeof(path), "%s", uri->m_Path + ANDROID_ASSET_PATH_LENGTH);
         dmPath::Normalize(path, path, sizeof(path));
 
-        dmLogInfo("Mount zipasset dmResource::MapAsset %s", path);
         void* zip_map = 0x0;
         dmResource::Result mr = dmResource::MapAsset((const char*)path, (void*&)archive->m_ZipAsset, archive->m_ZipLength, zip_map);
         if (dmResource::RESULT_OK != mr)
@@ -236,7 +233,6 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
         dmSnPrintf(path, sizeof(path), "%s", uri->m_Path);
         dmPath::Normalize(path, path, sizeof(path));
 
-        dmLogInfo("Mount zip %s", path);
         char mount_path[1024];
         if (dmSys::RESULT_OK != dmSys::ResolveMountFileName(mount_path, sizeof(mount_path), path))
         {
@@ -261,11 +257,9 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
         return result;
     }
 
-    dmLogInfo("MountCreateEntryMap error");
     CreateEntryMap(archive);
 
     *out_archive = (dmResourceProvider::HArchiveInternal)archive;
-    dmLogInfo("Mount great success");
     return dmResourceProvider::RESULT_OK;
 }
 
