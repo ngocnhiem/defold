@@ -220,7 +220,7 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
 
         dmLogInfo("Mount zipasset dmResource::MapAsset %s", path);
         void* zip_map = 0x0;
-        dmResource::Result mr = dmResource::MapAsset((const char*)path, (void*&)archive->m_ZipAsset, zip_map, archive->m_ZipLength);
+        dmResource::Result mr = dmResource::MapAsset((const char*)path, (void*&)archive->m_ZipAsset, archive->m_ZipLength, zip_map);
         if (dmResource::RESULT_OK != mr)
         {
             dmLogError("Could not map asset '%s'", path);
