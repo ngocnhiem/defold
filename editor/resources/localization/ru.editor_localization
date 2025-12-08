@@ -343,6 +343,9 @@ notification.fetch-libraries.dependencies-missing.warning = Отсутствую
 notification.fetch-libraries.dependencies-error.error = Не удалось установить следующие зависимости\:\n{dependencies}
 notification.fetch-libraries.dependencies-error.action.open-game-project = Открыть game.project
 
+# Settings notifications
+
+
 # Language server notification
 
 notification.lsp.language-server-missing.prompt = Невозможно выполнить это действие, потому что для языка {language} не запущен сервер LSP.
