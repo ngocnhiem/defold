@@ -38,7 +38,7 @@ namespace dmResourceProviderZip
 const char* LIVEUPDATE_ARCHIVE_MANIFEST_FILENAME = "liveupdate.game.dmanifest";
 
 const char* ANDROID_ASSET_PATH  = "/android_asset/";
-const uint32_t ANDROID_ASSET_PATH_LENGTH = strlen(ANDROID_ASSET_PATH);
+const uint32_t ANDROID_ASSET_PATH_LENGTH = sizeof(ANDROID_ASSET_PATH);
 
 struct EntryInfo
 {
@@ -50,9 +50,16 @@ struct EntryInfo
 struct ZipProviderContext
 {
     dmURI::Parts                m_BaseUri;
+    
+    // handle to the zip archive
     dmZip::HZip                 m_Zip;
+
+    // pointer to the asset associated with the mounted zip archive
+    // will only be set when the archive was mapped from an asset and not from a file
     void*                       m_ZipAsset;
-    uint32_t                    m_ZipLength;
+    // length of the mapped zip asset
+    uint32_t                    m_ZipAssetLength;
+
     dmResource::HManifest       m_Manifest;
     dmHashTable64<EntryInfo>    m_EntryMap; // url hash -> entry in the manifest
 };
@@ -77,7 +84,7 @@ static void DeleteZipArchiveInternal(dmResourceProvider::HArchiveInternal _archi
     if (archive->m_Zip)
         dmZip::Close(archive->m_Zip);
     if (archive->m_ZipAsset)
-        dmResource::UnmapAsset(archive->m_ZipAsset, archive->m_ZipLength);
+        dmResource::UnmapAsset(archive->m_ZipAsset, archive->m_ZipAssetLength);
     delete archive;
 }
 
@@ -212,18 +219,18 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
         dmPath::Normalize(path, path, sizeof(path));
 
         void* zip_map = 0x0;
-        dmResource::Result mr = dmResource::MapAsset((const char*)path, (void*&)archive->m_ZipAsset, archive->m_ZipLength, zip_map);
+        dmResource::Result mr = dmResource::MapAsset((const char*)path, (void*&)archive->m_ZipAsset, archive->m_ZipAssetLength, zip_map);
         if (dmResource::RESULT_OK != mr)
         {
-            dmLogError("Could not map asset '%s'", path);
+            dmLogError("Could not map asset '%s' (%d)", path, mr);
             DeleteZipArchiveInternal(archive);
             return dmResourceProvider::RESULT_NOT_FOUND;
         }
 
-        dmZip::Result zr = dmZip::OpenStream((const char*)zip_map, archive->m_ZipLength, &archive->m_Zip);
+        dmZip::Result zr = dmZip::OpenStream((const char*)zip_map, archive->m_ZipAssetLength, &archive->m_Zip);
         if (dmZip::RESULT_OK != zr)
         {
-            dmLogError("Could not open zip stream '%s'", path);
+            dmLogError("Could not open zip stream '%s' (%d)", path, zr);
             DeleteZipArchiveInternal(archive);
             return dmResourceProvider::RESULT_NOT_FOUND;
         }
@@ -234,9 +241,11 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
         dmPath::Normalize(path, path, sizeof(path));
 
         char mount_path[1024];
-        if (dmSys::RESULT_OK != dmSys::ResolveMountFileName(mount_path, sizeof(mount_path), path))
+
+        dmSys::Result rr = dmSys::ResolveMountFileName(mount_path, sizeof(mount_path), path)
+        if (dmSys::RESULT_OK != rr)
         {
-            dmLogError("Could not resolve a mount path '%s'", path);
+            dmLogError("Could not resolve a mount path '%s' (%d)", path, rr);
             DeleteZipArchiveInternal(archive);
             return dmResourceProvider::RESULT_NOT_FOUND;
         }
@@ -244,7 +253,7 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
         dmZip::Result zr = dmZip::Open(mount_path, &archive->m_Zip);
         if (dmZip::RESULT_OK != zr)
         {
-            dmLogError("Could not open zip file '%s'", mount_path);
+            dmLogError("Could not open zip file '%s' (%d)", mount_path, zr);
             DeleteZipArchiveInternal(archive);
             return dmResourceProvider::RESULT_NOT_FOUND;
         }
@@ -253,7 +262,7 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
     dmResourceProvider::Result result = LoadManifest(archive->m_Zip, LIVEUPDATE_ARCHIVE_MANIFEST_FILENAME, &archive->m_Manifest);
     if (dmResourceProvider::RESULT_OK != result)
     {
-        dmLogInfo("Mount LoadManifest error");
+        dmLogInfo("Could not load manifest (%d)", result);
         return result;
     }
 
