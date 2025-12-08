@@ -120,8 +120,4 @@
     :view-types [:cljfx-form-view :text]))
 
 (defn get-live-update-settings-path [project]
-  (let [project-settings (project/settings project)
-        file-resource (get project-settings ["liveupdate" "settings"])]
-    (if (resource/exists? file-resource)
-      (resource/proj-path file-resource)
-      "/liveupdate.settings")))
+  (resource/resource->proj-path (get (project/settings project) ["liveupdate" "settings"])))
