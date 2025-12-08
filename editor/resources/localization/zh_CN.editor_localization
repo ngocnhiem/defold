@@ -343,6 +343,9 @@ notification.fetch-libraries.dependencies-missing.warning = 以下依赖项缺�
 notification.fetch-libraries.dependencies-error.error = 无法安装以下依赖：\n{dependencies}
 notification.fetch-libraries.dependencies-error.action.open-game-project = 打开 game.project
 
+# Settings notifications
+
+
 # Language server notification
 
 notification.lsp.language-server-missing.prompt = 无法执行此操作，因为没有为 {language} 语言运行的语言服务器。
