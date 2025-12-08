@@ -345,6 +345,11 @@ notification.fetch-libraries.dependencies-error.action.open-game-project = От�
 
 # Settings notifications
 
+notification.liveupdate-settings.action.open-game-project = Открыть game.project
+notification.liveupdate-settings.unavailable.error = Невозможно открыть настройки Live Update\: {reason}
+notification.shared-editor-settings.unavailable.error = Невозможно открыть общие настройки редактора\: {reason}
+notification.ensure-exists.reason.missing = файл настроек не указан.
+notification.ensure-exists.reason.folder = указанный путь ссылается на папку.
 
 # Language server notification
 
@@ -575,6 +580,7 @@ pane.console = Консоль
 pane.curve-editor = Редактор Кривых
 pane.build-errors = Ошибки Сборки
 pane.search-results = Результаты Поиска
+pane.breakpoints = Точки останова
 
 # Console
 
@@ -586,6 +592,19 @@ console.search = Поиск
 
 # Breakpoints Tab
 
+breakpoints.button.enable-all = Включить все
+breakpoints.button.disable-all = Отключить все
+breakpoints.button.toggle-all = Переключить все
+breakpoints.button.remove-all = Удалить все
+breakpoints.column.enabled = Включена
+breakpoints.column.line = Строка
+breakpoints.column.name = Имя
+breakpoints.column.condition = Условие
+breakpoints.column.path = Путь
+breakpoints.context-menu.edit-selected = Изменить условие
+breakpoints.context-menu.remove-selected = Удалить выбранную точку останова
+breakpoints.context-menu.toggle-selected-enabled = Переключить выбранную точку останова
+breakpoints.context-menu.go-to-line = Перейти к строке
 
 # Changes view
 
@@ -899,6 +918,7 @@ command.debugger.step-out = Шаг из функции
 command.debugger.detach = Отсоединить отладчик
 command.debugger.stop = Остановить отладчик
 command.debugger.toggle-breakpoint = Переключить точку останова
+command.debugger.toggle-breakpoint-enabled = Переключить точку останова
 command.debugger.edit-breakpoint = Изменить точку останова
 command.scene.set-manipulator-space = Задать пространство манипулятора
 command.scene.set-manipulator-space.option.world = Глобальное пространство
