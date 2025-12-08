@@ -343,6 +343,9 @@ notification.fetch-libraries.dependencies-missing.warning = Estão faltando as s
 notification.fetch-libraries.dependencies-error.error = Não foi possível instalar as seguintes dependências\:\n{dependencies}
 notification.fetch-libraries.dependencies-error.action.open-game-project = Abrir game.project
 
+# Settings notifications
+
+
 # Language server notification
 
 notification.lsp.language-server-missing.prompt = Não é possível executar esta ação porque não há nenhum Servidor de Linguagem em execução para {language}.
