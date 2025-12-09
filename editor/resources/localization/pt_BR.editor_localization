@@ -978,6 +978,9 @@ override.aspect.generic.kind = {count, plural, one {\# Aspecto} other {\# Aspect
 
 gui.layout.default = Padrão
 
+# UI
+
+
 # Editing operations
 
 operation.atlas.add-animation = Adicionar Animação
