@@ -242,7 +242,7 @@ static dmResourceProvider::Result Mount(const dmURI::Parts* uri, dmResourceProvi
 
         char mount_path[1024];
 
-        dmSys::Result rr = dmSys::ResolveMountFileName(mount_path, sizeof(mount_path), path)
+        dmSys::Result rr = dmSys::ResolveMountFileName(mount_path, sizeof(mount_path), path);
         if (dmSys::RESULT_OK != rr)
         {
             dmLogError("Could not resolve a mount path '%s' (%d)", path, rr);
