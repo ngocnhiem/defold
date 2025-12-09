@@ -345,6 +345,11 @@ notification.fetch-libraries.dependencies-error.action.open-game-project = 打�
 
 # Settings notifications
 
+notification.liveupdate-settings.action.open-game-project = 打开 game.project
+notification.liveupdate-settings.unavailable.error = 无法打开热更新设置\: {reason}
+notification.shared-editor-settings.unavailable.error = 无法打开共享编辑器设置\: {reason}
+notification.ensure-exists.reason.missing = 未配置设置文件。
+notification.ensure-exists.reason.folder = 配置路径指向文件夹。
 
 # Language server notification
 
@@ -575,6 +580,7 @@ pane.console = 控制台
 pane.curve-editor = 曲线编辑
 pane.build-errors = 构建错误
 pane.search-results = 查找结果
+pane.breakpoints = 断点
 
 # Console
 
@@ -586,6 +592,19 @@ console.search = 搜索
 
 # Breakpoints Tab
 
+breakpoints.button.enable-all = 全部启用
+breakpoints.button.disable-all = 全部禁用
+breakpoints.button.toggle-all = 切换全部
+breakpoints.button.remove-all = 全部移除
+breakpoints.column.enabled = 启用
+breakpoints.column.line = 行
+breakpoints.column.name = 名称
+breakpoints.column.condition = 条件
+breakpoints.column.path = 路径
+breakpoints.context-menu.edit-selected = 编辑条件
+breakpoints.context-menu.remove-selected = 删除选定的断点
+breakpoints.context-menu.toggle-selected-enabled = 切换选定的断点
+breakpoints.context-menu.go-to-line = 转到行
 
 # Changes view
 
@@ -899,6 +918,7 @@ command.debugger.step-out = 单步跳出
 command.debugger.detach = 分离调试器
 command.debugger.stop = 停止调试器
 command.debugger.toggle-breakpoint = 切换断点
+command.debugger.toggle-breakpoint-enabled = 切换断点启用
 command.debugger.edit-breakpoint = 编辑断点
 command.scene.set-manipulator-space = 设置操纵器间距
 command.scene.set-manipulator-space.option.world = 世界空间
@@ -977,6 +997,9 @@ override.aspect.generic.kind = {count, plural, one {\# 个方面} other {\# 个�
 # GUI
 
 gui.layout.default = 默认
+
+# UI
+
 
 # Editing operations
 
