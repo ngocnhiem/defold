@@ -429,6 +429,7 @@
       fallback
       state)))
 
+;; SDK API
 (defn message
   "Create a message pattern
 
@@ -651,7 +652,6 @@
     items))
 
 ;; TODO:
-;;  - editor scripts localization
-;;  - build errors view
+;;  - build errors
 ;;  - missed things...
 ;;  - extensions: resource types, properties, outlines...

@@ -1085,7 +1085,7 @@
   (property color types/Color (default (protobuf/default Gui$NodeDesc :color))
             (dynamic visible (g/fnk [type] (not= type :type-template)))
             (dynamic edit-type (layout-property-edit-type color {:type types/Color
-                                                                 :ignore-alpha? true}))
+                                                                 :ignore-alpha true}))
             (dynamic label (properties/label-dynamic :gui :color))
             (dynamic tooltip (properties/tooltip-dynamic :gui :color))
             (value (layout-property-getter color))
@@ -2027,7 +2027,7 @@
             (set (layout-property-setter text-tracking)))
   (property outline types/Color (default (protobuf/default Gui$NodeDesc :outline))
             (dynamic edit-type (layout-property-edit-type outline {:type types/Color
-                                                                   :ignore-alpha? true}))
+                                                                   :ignore-alpha true}))
             (dynamic label (properties/label-dynamic :gui :outline))
             (dynamic tooltip (properties/tooltip-dynamic :gui :outline))
             (value (layout-property-getter outline))
@@ -2043,7 +2043,7 @@
             (set (layout-property-setter outline-alpha)))
   (property shadow types/Color (default (protobuf/default Gui$NodeDesc :shadow))
             (dynamic edit-type (layout-property-edit-type shadow {:type types/Color
-                                                                  :ignore-alpha? true}))
+                                                                  :ignore-alpha true}))
             (dynamic label (properties/label-dynamic :gui :shadow))
             (dynamic tooltip (properties/tooltip-dynamic :gui :shadow))
             (value (layout-property-getter shadow))
@@ -3514,6 +3514,7 @@
             (dynamic label (properties/label-dynamic :gui :current-nodes))
             (dynamic tooltip (properties/tooltip-dynamic :gui :current-nodes)))
   (property max-nodes g/Int (default (protobuf/default Gui$SceneDesc :max-nodes))
+            (dynamic edit-type (g/constantly {:type g/Int :min 1 :max 8192}))
             (dynamic error (g/fnk [_node-id max-nodes ^:try node-ids]
                              (when-not (g/error-value? node-ids)
                                (validate-max-nodes _node-id max-nodes node-ids))))
