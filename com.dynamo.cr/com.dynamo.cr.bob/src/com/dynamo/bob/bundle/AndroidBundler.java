@@ -590,7 +590,7 @@ public class AndroidBundler implements IBundler {
             File aabDir = new File(outDir, "aab");
             File baseConfig = new File(aabDir, "BundleConfig.json");
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(baseConfig))) {
-                String uncompressedGlob = "\"assets/game.arcd\"";
+                String uncompressedGlob = "\"assets/game.arcd\",\"assets/**/*.zip\"";
                 if (!extractNativeLibs) {
                     uncompressedGlob += ",";
                     uncompressedGlob += "\"lib/**/*.so\"";
