@@ -1000,6 +1000,9 @@ gui.layout.default = Базовая
 
 # UI
 
+ui.combo-box.filter-prompt = Отфильтровать
+ui.combo-box.no-items = Нет доступных элементов
+ui.combo-box.not-found = Ничего не найдено
 
 # Editing operations
 
