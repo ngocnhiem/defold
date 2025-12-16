@@ -42,7 +42,7 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreateImage(JNIEnv* env, jclass cls,
         dmJNI::ScopedString j_path(env, _path);
         const char* path = strdup(j_path.m_String ? j_path.m_String : "null");
 
-        dmJNI::ScopedByteArrayCritical j_array(env, array);
+        dmJNI::ScopedByteArray j_array(env, array);
 
         dmTexc::Image* image = dmTexc::CreateImage(path, width, height, (dmTexc::PixelFormat)pixelFormat, (dmTexc::ColorSpace)colorSpace, j_array.m_ArraySize, (uint8_t*)j_array.m_Array);
         obj = (jlong)image;
@@ -55,7 +55,6 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreatePreviewImage(JNIEnv* env, jcla
                                                                jint width, jint height, jint pixelFormat, jint colorSpace,
                                                                jbyteArray array, jbyteArray outputArray)
 {
-    auto start = std::chrono::high_resolution_clock::now();
     dmLogDebug("%s: env = %p\n", __FUNCTION__, env);
     //DM_SCOPED_SIGNAL_CONTEXT(env, return 0;);
 
@@ -84,10 +83,6 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreatePreviewImage(JNIEnv* env, jcla
                                                           (uint8_t*)j_input_array.m_Array,
                                                           (uint8_t*)j_output_array.m_Array);
         obj = (jlong)image;
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    printf("CreateImage took %lld ms\n", (long long)duration.count());
 
     DM_JNI_GUARD_SCOPE_END(return 0;);
     return obj;
