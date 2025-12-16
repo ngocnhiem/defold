@@ -50,10 +50,15 @@ import com.dynamo.bob.util.TextureUtil;
 import com.dynamo.bob.util.TimeProfiler;
 import com.dynamo.graphics.proto.Graphics.PlatformProfile;
 import com.dynamo.graphics.proto.Graphics.TextureImage;
+import com.dynamo.graphics.proto.Graphics.TextureImage.Image;
 import com.dynamo.graphics.proto.Graphics.TextureImage.TextureFormat;
 import com.dynamo.graphics.proto.Graphics.TextureFormatAlternative;
 import com.dynamo.graphics.proto.Graphics.TextureImage.Type;
 import com.dynamo.graphics.proto.Graphics.TextureProfile;
+
+import static com.dynamo.graphics.proto.Graphics.TextureImage.CompressionType.COMPRESSION_TYPE_DEFAULT;
+import static com.dynamo.graphics.proto.Graphics.TextureImage.TextureFormat.TEXTURE_FORMAT_RGBA;
+import static com.dynamo.graphics.proto.Graphics.TextureImage.Type.TYPE_2D;
 
 public class TextureGenerator {
 
@@ -589,6 +594,50 @@ public class TextureGenerator {
         return TextureImage.CompressionType.COMPRESSION_TYPE_DEFAULT;
     }
 
+    public static GenerateResult generateAtlasPreview(BufferedImage image) throws TextureGeneratorException {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        ByteBuffer byteBuffer = getByteBuffer(image);
+        byte[] bytes = byteBuffer.array();
+        byte[] outputBuffer = new byte[width * height * 4];
+
+        long textureImage = TexcLibraryJni.CreatePreviewImage(null, width, height,
+                                                              Texc.PixelFormat.PF_A8B8G8R8.getValue(),
+                                                              Texc.ColorSpace.CS_SRGB.getValue(), bytes, outputBuffer);
+        if (textureImage == 0) {
+            throw new TextureGeneratorException("Failed to create texture");
+        }
+
+        try {
+            GenerateResult result = new GenerateResult();
+            result.imageDatas = new ArrayList<>();
+            result.imageDatas.add(outputBuffer);
+
+            result.textureImage = TextureImage.newBuilder()
+                .addAlternatives(Image.newBuilder()
+                                 .setWidth(width)
+                                 .setHeight(height)
+                                 .setOriginalWidth(width)
+                                 .setOriginalHeight(height)
+                                 .setFormat(TEXTURE_FORMAT_RGBA)
+                                 .setCompressionType(COMPRESSION_TYPE_DEFAULT)
+                                 .addMipMapOffset(0)
+                                 .addMipMapSize(outputBuffer.length)
+                                 .addMipMapSizeCompressed(outputBuffer.length)
+                                 .addMipMapDimensions(width)
+                                 .addMipMapDimensions(height)
+                                 .setDataSize(outputBuffer.length))
+                .setType(TYPE_2D)
+                .setCount(1)
+                .build();
+
+            return result;
+        } finally {
+            // TODO: We don't need to destroy, but make sure we know what's happening with textureImage
+            // TexcLibraryJni.DestroyImage(textureImage);
+        }
+    }
+
     // Main TextureGenerator.generate method that has all required arguments and the expected BufferedImage type for origImage.
     // Used by the editor
     public static GenerateResult generate(BufferedImage origImage, TextureProfile texProfile, boolean compress, EnumSet<FlipAxis> flipAxis) throws TextureGeneratorException {
@@ -608,6 +657,7 @@ public class TextureGenerator {
         TextureImage.Builder textureBuilder = TextureImage.newBuilder();
 
         GenerateResult result = new GenerateResult();
+        // TODO: Investigate whether this is reallocating when it grows
         result.imageDatas = new ArrayList<>();
 
         int currentDataOffset = 0;

@@ -42,10 +42,52 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreateImage(JNIEnv* env, jclass cls,
         dmJNI::ScopedString j_path(env, _path);
         const char* path = strdup(j_path.m_String ? j_path.m_String : "null");
 
-        dmJNI::ScopedByteArray j_array(env, array);
+        ScopedByteArrayCritical j_array(env, array);
 
         dmTexc::Image* image = dmTexc::CreateImage(path, width, height, (dmTexc::PixelFormat)pixelFormat, (dmTexc::ColorSpace)colorSpace, j_array.m_ArraySize, (uint8_t*)j_array.m_Array);
         obj = (jlong)image;
+
+    DM_JNI_GUARD_SCOPE_END(return 0;);
+    return obj;
+}
+
+JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreatePreviewImage(JNIEnv* env, jclass cls, jstring _path,
+                                                               jint width, jint height, jint pixelFormat, jint colorSpace,
+                                                               jbyteArray array, jbyteArray outputArray)
+{
+    auto start = std::chrono::high_resolution_clock::now();
+    dmLogDebug("%s: env = %p\n", __FUNCTION__, env);
+    //DM_SCOPED_SIGNAL_CONTEXT(env, return 0;);
+
+    if (!array)
+    {
+        dmLogError("%s: Image data array was null!", __FUNCTION__);
+        return 0;
+    }
+
+    jlong obj = 0;
+    DM_JNI_GUARD_SCOPE_BEGIN();
+
+        dmTexc::jni::ScopedContext jni_scope(env);
+        //dmTexc::jni::TypeInfos* types = &jni_scope.m_TypeInfos;
+
+        dmJNI::ScopedString j_path(env, _path);
+        const char* path = strdup(j_path.m_String ? j_path.m_String : "null");
+
+        ScopedByteArrayCritical j_input_array(env, array);
+        ScopedByteArrayCritical j_output_array(env, outputArray);
+
+        dmTexc::Image* image = dmTexc::CreatePreviewImage(path, width, height,
+                                                          (dmTexc::PixelFormat)pixelFormat,
+                                                          (dmTexc::ColorSpace)colorSpace,
+                                                          j_input_array.m_ArraySize,
+                                                          (uint8_t*)j_input_array.m_Array,
+                                                          (uint8_t*)j_output_array.m_Array);
+        obj = (jlong)image;
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    printf("CreateImage took %lld ms\n", (long long)duration.count());
 
     DM_JNI_GUARD_SCOPE_END(return 0;);
     return obj;
@@ -329,6 +371,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)
     static const JNINativeMethod methods[] = {
         // Image api
         JNIFUNC(CreateImage,           "(Ljava/lang/String;IIII[B)J"),
+        JNIFUNC(CreatePreviewImage,    "(Ljava/lang/String;IIII[B[B)J"),
         JNIFUNC(DestroyImage,           "(J)V"),
         JNIFUNC(GetWidth,               "(J)I"),
         JNIFUNC(GetHeight,              "(J)I"),
