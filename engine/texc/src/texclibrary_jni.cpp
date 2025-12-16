@@ -42,7 +42,7 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreateImage(JNIEnv* env, jclass cls,
         dmJNI::ScopedString j_path(env, _path);
         const char* path = strdup(j_path.m_String ? j_path.m_String : "null");
 
-        ScopedByteArrayCritical j_array(env, array);
+        dmJNI::ScopedByteArrayCritical j_array(env, array);
 
         dmTexc::Image* image = dmTexc::CreateImage(path, width, height, (dmTexc::PixelFormat)pixelFormat, (dmTexc::ColorSpace)colorSpace, j_array.m_ArraySize, (uint8_t*)j_array.m_Array);
         obj = (jlong)image;
@@ -74,8 +74,8 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreatePreviewImage(JNIEnv* env, jcla
         dmJNI::ScopedString j_path(env, _path);
         const char* path = strdup(j_path.m_String ? j_path.m_String : "null");
 
-        ScopedByteArrayCritical j_input_array(env, array);
-        ScopedByteArrayCritical j_output_array(env, outputArray);
+        dmJNI::ScopedByteArrayCritical j_input_array(env, array);
+        dmJNI::ScopedByteArrayCritical j_output_array(env, outputArray);
 
         dmTexc::Image* image = dmTexc::CreatePreviewImage(path, width, height,
                                                           (dmTexc::PixelFormat)pixelFormat,
