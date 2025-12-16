@@ -34,9 +34,9 @@ final class DiscordRichPresence {
     public static final String STATE = "Making a game";
 
     static void startAsync() {
-        Thread thread = new Thread(DiscordRichPresence::connect, "discord-rich-presence");
-        thread.setDaemon(true);
-        thread.start();
+        Thread.ofVirtual()
+                .name("discord-rich-presence")
+                .start(DiscordRichPresence::connect);
     }
 
     private static void connect() {
