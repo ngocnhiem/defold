@@ -326,7 +326,9 @@ public class TextureGenerator {
         byte[] bytes = byteBuffer.array();
 
         TimeProfiler.start("CreateTexture");
-        long textureImage = TexcLibraryJni.CreateImage(null, width, height, Texc.PixelFormat.PF_A8B8G8R8.getValue(), Texc.ColorSpace.CS_SRGB.getValue(), bytes);
+        long textureImage = TexcLibraryJni.CreateImage(null, width, height,
+                                                       Texc.PixelFormat.PF_A8B8G8R8.getValue(),
+                                                       Texc.ColorSpace.CS_SRGB.getValue(), bytes);
 
         TimeProfiler.stop();
         if (textureImage == 0) {
