@@ -99,10 +99,16 @@
                     :premultiply-alpha (:premultiply-alpha platform-profile)}]})))
 
 ;; SDK api (DEPRECATE 2-arity version with the next release of extension-texturepacker).
-(defn make-preview-texture-image
-  ^TextureGenerator$GenerateResult [^BufferedImage image texture-profile _]
-   (let [texture-generator-result (TextureGenerator/generateAtlasPreview image)]
-     texture-generator-result))
+ (defn make-preview-texture-image
+  (^TextureGenerator$GenerateResult [^BufferedImage image texture-profile]
+   (let [preview-profile (make-preview-profile texture-profile)]
+     (make-texture-image image preview-profile false)))
+  (^TextureGenerator$GenerateResult [^BufferedImage image texture-profile flip-y]
+   (if flip-y
+     ;; TODO: We might be able to pass a flip-y bool arg to TexcLib.CreatePreviewImage and make this work for all
+     (TextureGenerator/generateAtlasPreview image) ;; Fast path
+     (let [preview-profile (make-preview-profile texture-profile)]
+      (make-texture-image image preview-profile false flip-y)))))
 
 (defn make-cubemap-texture-images
   ^TextureGenerator$GenerateResult [images texture-profile compress?]

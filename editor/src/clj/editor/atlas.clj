@@ -609,11 +609,11 @@
                           flat-image-resources)
         ;; Note: Dragging or reordering images up and down the outline for animations results in a different order,
         ;; which produces a different hash, which triggers an unnecessary atlas regeneration, so hash unordered
-        images-sha (Murmur3/hashUnordered image-sha1s)]
+        images-sha1 (Murmur3/hashUnordered image-sha1s)]
     (g/precluding-errors image-sha1s
       (let [packed-image-sha1 (digestable/sha1-hash
                                 {:extrude-borders extrude-borders
-                                 :image-sha1s images-sha
+                                 :images-sha1 images-sha1
                                  :inner-padding inner-padding
                                  :max-page-size max-page-size
                                  :margin margin

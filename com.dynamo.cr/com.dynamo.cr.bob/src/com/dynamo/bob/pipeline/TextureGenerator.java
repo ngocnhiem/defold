@@ -585,8 +585,7 @@ public class TextureGenerator {
     public static GenerateResult generateAtlasPreview(BufferedImage image) throws TextureGeneratorException {
         int width = image.getWidth();
         int height = image.getHeight();
-        ByteBuffer byteBuffer = getByteBuffer(image);
-        byte[] inputBuffer = byteBuffer.array();
+        byte[] inputBuffer = getByteBuffer(image).array();
         byte[] outputBuffer = new byte[width * height * 4];
 
         int res = TexcLibraryJni.CreatePreviewImage(width, height, inputBuffer, outputBuffer);
@@ -634,7 +633,6 @@ public class TextureGenerator {
         TextureImage.Builder textureBuilder = TextureImage.newBuilder();
 
         GenerateResult result = new GenerateResult();
-        // TODO: Investigate whether this is reallocating when it grows
         result.imageDatas = new ArrayList<>();
 
         int currentDataOffset = 0;

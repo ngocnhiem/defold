@@ -340,6 +340,7 @@ namespace dmTexc
     // We merge all the required steps to optimize since this blocks the editor UI while this is generated
     void ConvertPremultiplyAndFlip_ABGR8888ToRGBA8888(const uint8_t* input_data, uint8_t* output_data, const uint32_t width, const uint32_t height)
     {
+        // TODO: This is not being vectorized, a quick test showed potential 2x-3x with AVX2, might be worth doing
         for (uint32_t y = 0; y < height; ++y)
         {
             uint32_t flipped_y = height - y - 1;
