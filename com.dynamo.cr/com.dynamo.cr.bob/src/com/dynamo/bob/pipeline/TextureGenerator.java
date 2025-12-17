@@ -56,10 +56,6 @@ import com.dynamo.graphics.proto.Graphics.TextureFormatAlternative;
 import com.dynamo.graphics.proto.Graphics.TextureImage.Type;
 import com.dynamo.graphics.proto.Graphics.TextureProfile;
 
-import static com.dynamo.graphics.proto.Graphics.TextureImage.CompressionType.COMPRESSION_TYPE_DEFAULT;
-import static com.dynamo.graphics.proto.Graphics.TextureImage.TextureFormat.TEXTURE_FORMAT_RGBA;
-import static com.dynamo.graphics.proto.Graphics.TextureImage.Type.TYPE_2D;
-
 public class TextureGenerator {
 
     // specify what is maximum of threads TextureGenerator may use
@@ -619,15 +615,15 @@ public class TextureGenerator {
                                  .setHeight(height)
                                  .setOriginalWidth(width)
                                  .setOriginalHeight(height)
-                                 .setFormat(TEXTURE_FORMAT_RGBA)
-                                 .setCompressionType(COMPRESSION_TYPE_DEFAULT)
+                                 .setFormat(TextureFormat.TEXTURE_FORMAT_RGBA)
+                                 .setCompressionType(TextureImage.CompressionType.COMPRESSION_TYPE_DEFAULT)
                                  .addMipMapOffset(0)
                                  .addMipMapSize(outputBuffer.length)
                                  .addMipMapSizeCompressed(outputBuffer.length)
                                  .addMipMapDimensions(width)
                                  .addMipMapDimensions(height)
                                  .setDataSize(outputBuffer.length))
-                .setType(TYPE_2D)
+                .setType(Type.TYPE_2D)
                 .setCount(1)
                 .build();
 
