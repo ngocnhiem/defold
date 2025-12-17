@@ -45,12 +45,10 @@ import com.defold.extension.pipeline.texture.*;
 import com.dynamo.bob.pipeline.Texc.FlipAxis;
 
 import com.dynamo.bob.logging.Logger;
-import com.dynamo.bob.Project;
 import com.dynamo.bob.util.TextureUtil;
 import com.dynamo.bob.util.TimeProfiler;
 import com.dynamo.graphics.proto.Graphics.PlatformProfile;
 import com.dynamo.graphics.proto.Graphics.TextureImage;
-import com.dynamo.graphics.proto.Graphics.TextureImage.Image;
 import com.dynamo.graphics.proto.Graphics.TextureImage.TextureFormat;
 import com.dynamo.graphics.proto.Graphics.TextureFormatAlternative;
 import com.dynamo.graphics.proto.Graphics.TextureImage.Type;
@@ -64,7 +62,7 @@ public class TextureGenerator {
     public static class GenerateResult {
         public TextureImage textureImage;
         public ArrayList<byte[]> imageDatas;
-    };
+    }
 
     private static final HashMap<TextureFormat, Integer> pixelFormatLUT = new HashMap<>();
     static {
@@ -610,7 +608,7 @@ public class TextureGenerator {
             result.imageDatas.add(outputBuffer);
 
             result.textureImage = TextureImage.newBuilder()
-                .addAlternatives(Image.newBuilder()
+                .addAlternatives(TextureImage.Image.newBuilder()
                                  .setWidth(width)
                                  .setHeight(height)
                                  .setOriginalWidth(width)
