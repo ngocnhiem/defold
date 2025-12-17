@@ -602,14 +602,17 @@
 (g/defnk produce-packed-page-images-generator
   [_node-id extrude-borders image-resources inner-padding margin layout-data-generator max-page-size]
   (let [flat-image-resources (filterv some? (flatten image-resources))
-        image-sha1s (mapv (fn [resource]
+        image-sha1s (pmap (fn [resource]
                             (resource-io/with-error-translation resource _node-id nil
                               (resource/resource->path-inclusive-sha1-hex resource)))
-                          flat-image-resources)]
+                          flat-image-resources)
+        ;; Note: If we do not sort, dragging images up and down the outline for animations results in a different order,
+        ;; which produces a different hash, which triggers an unnecessary atlas regeneration
+        sorted-image-sha1s (sort image-sha1s)]
     (g/precluding-errors image-sha1s
       (let [packed-image-sha1 (digestable/sha1-hash
                                 {:extrude-borders extrude-borders
-                                 :image-sha1s image-sha1s
+                                 :image-sha1s sorted-image-sha1s
                                  :inner-padding inner-padding
                                  :max-page-size max-page-size
                                  :margin margin
