@@ -44,21 +44,9 @@ namespace dmTexc
         return image;
     }
 
-    Image* CreatePreviewImage(const char* path, uint32_t width, uint32_t height, PixelFormat pixel_format,
-                              ColorSpace color_space, uint32_t data_size, uint8_t* input_data, uint8_t* output_data)
+    void CreatePreviewImage(uint32_t width, uint32_t height, uint32_t data_size, const uint8_t* input_data, uint8_t* output_data)
     {
-        Image* image = new Image;
-        image->m_Path = strdup(path?path:"null");
-        image->m_Width = width;
-        image->m_Height = height;
-        image->m_PixelFormat = pixel_format;
-        image->m_ColorSpace = color_space;
-
-        image->m_DataCount = width * height * 4;
-        image->m_Data = output_data;
-
-        ConvertPremultiplyAndFlip_ABGR8888ToRGBA8888((uint8_t*)input_data, image->m_Data, width, height);
-        return image;
+        ConvertPremultiplyAndFlip_ABGR8888ToRGBA8888(input_data, output_data, width, height);
     }
 
     void DestroyImage(Image* image)
