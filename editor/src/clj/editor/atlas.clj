@@ -609,7 +609,7 @@
     (g/precluding-errors image-sha1s
       ;; Note: Dragging or reordering images up and down the outline for animations results in a different order,
       ;; which produces a different hash, which triggers an unnecessary atlas regeneration, so hash unordered
-      (let [images-sha1 (digestable/sha1s->unordered-sha1-hex image-sha1s)
+      (let [images-sha1 (time (digestable/sha1s->unordered-sha1-hex image-sha1s))
             packed-image-sha1 (digestable/sha1-hash
                                 {:extrude-borders extrude-borders
                                  :images-sha1 images-sha1

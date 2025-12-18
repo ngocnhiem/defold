@@ -23,7 +23,8 @@
            [com.defold.util IDigestable]
            [com.dynamo.bob.textureset TextureSetGenerator$LayoutResult]
            [com.dynamo.graphics.proto Graphics$ShaderDesc]
-           [java.io BufferedWriter OutputStreamWriter Writer]))
+           [java.io BufferedWriter OutputStreamWriter Writer]
+           [java.util Arrays]))
 
 (set! *warn-on-reflection* true)
 (set! *unchecked-math* :warn-on-boxed)
@@ -249,16 +250,28 @@
 
 (def sha1-hash? digest/sha1-hex?)
 
-(defn- byte-array-add! [^bytes result ^bytes b]
-  (dotimes [i (alength result)]
-    (aset-byte result i (unchecked-byte (+ (aget result i) (aget b i)))))
-  result)
-
 (defn sha1s->unordered-sha1-hex
-  "Takes a collection of SHA-1 byte arrays, and add them all together to produce
-  a sha1 hash that is independent of order. Not cryptographically secure."
+  "Takes a collection of SHA-1 byte arrays, and adds them all together
+  as 160-bit unsigned integers (mod 2^160) to produce an order-independent hash."
   [byte-arrays]
-  (let [result (byte-array 20)]
-    (doseq [ba byte-arrays]
-      (byte-array-add! result ^bytes ba))
-    (util.digest/bytes->hex result)))
+  (let [modulus (.shiftLeft BigInteger/ONE 160)
+        sum (reduce
+              (fn [acc ba]
+                (-> (BigInteger. 1 ^bytes ba)
+                    (.add acc)
+                    (.mod modulus)))
+              BigInteger/ZERO
+              byte-arrays)
+        result-bytes ^bytes (.toByteArray ^BigInteger sum)
+        ;; NOTE: BigInteger.toByteArray() returns variable length:
+        ;; 21 bytes if high bit set (adds sign byte), <20 if leading zeros, else 20
+        normalized (cond
+                     (= 20 (alength ^bytes result-bytes)) result-bytes
+                     (= 21 (alength ^bytes result-bytes)) (^[byte/1 int int] Arrays/copyOfRange result-bytes 1 21)
+                     :else (let [padded (byte-array 20)]
+                             (System/arraycopy result-bytes 0 padded
+                                              (- 20 (alength result-bytes))
+                                              (alength result-bytes))
+                             padded))]
+    (util.digest/bytes->hex normalized)))
+
