@@ -267,7 +267,7 @@
         ;; 21 bytes if high bit set (adds sign byte), <20 if leading zeros, else 20
         normalized (cond
                      (= 20 (alength ^bytes result-bytes)) result-bytes
-                     (= 21 (alength ^bytes result-bytes)) (^[byte/1 int int] Arrays/copyOfRange result-bytes 1 21)
+                     (= 21 (alength ^bytes result-bytes)) (Arrays/copyOfRange result-bytes 1 21)
                      :else (let [padded (byte-array 20)]
                              (System/arraycopy result-bytes 0 padded
                                               (- 20 (alength result-bytes))
