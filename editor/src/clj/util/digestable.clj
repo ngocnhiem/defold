@@ -249,13 +249,16 @@
 
 (def sha1-hash? digest/sha1-hex?)
 
-(defn- byte-array-xor! [^bytes result ^bytes b]
+(defn- byte-array-add! [^bytes result ^bytes b]
   (dotimes [i (alength result)]
-    (aset-byte result i (bit-xor (aget result i) (aget b i))))
+    (aset-byte result i (unchecked-byte (+ (aget result i) (aget b i)))))
   result)
 
-(defn sha1s->unordered-sha1-hex [byte-arrays]
+(defn sha1s->unordered-sha1-hex
+  "Takes a collection of SHA-1 byte arrays, and add them all together to produce
+  a sha1 hash that is independent of order. Not cryptographically secure."
+  [byte-arrays]
   (let [result (byte-array 20)]
     (doseq [ba byte-arrays]
-      (byte-array-xor! result ^bytes ba))
+      (byte-array-add! result ^bytes ba))
     (util.digest/bytes->hex result)))
