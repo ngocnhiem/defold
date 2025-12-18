@@ -584,6 +584,8 @@ public class TextureGenerator {
         return TextureImage.CompressionType.COMPRESSION_TYPE_DEFAULT;
     }
 
+    // NOTE: This is being used to generate atlas and tilesource previews in the Editor, avoiding some of the extra
+    // overhead of the generalized path, which helps since the editor currently blocks the UI during this operation
     public static GenerateResult generateAtlasPreview(BufferedImage image) throws TextureGeneratorException {
         int width = image.getWidth();
         int height = image.getHeight();
