@@ -254,7 +254,7 @@
     (aset-byte result i (bit-xor (aget result i) (aget b i))))
   result)
 
-(defn unordered-sha1s->sha1-hash [byte-arrays]
+(defn sha1s->unordered-sha1-hex [byte-arrays]
   (let [result (byte-array 20)]
     (doseq [ba byte-arrays]
       (byte-array-xor! result ^bytes ba))

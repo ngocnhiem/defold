@@ -602,15 +602,15 @@
 (g/defnk produce-packed-page-images-generator
   [_node-id extrude-borders image-resources inner-padding margin layout-data-generator max-page-size]
   (let [flat-image-resources (filterv some? (flatten image-resources))
-        ;; Note: Dragging or reordering images up and down the outline for animations results in a different order,
-        ;; which produces a different hash, which triggers an unnecessary atlas regeneration, so hash unordered
         image-sha1s (pmap (fn [resource]
                             (resource-io/with-error-translation resource _node-id nil
                               (resource/resource->path-inclusive-sha1 resource)))
-                          flat-image-resources)
-        images-sha1 (digestable/unordered-sha1s->sha1-hash image-sha1s)]
+                          flat-image-resources)]
     (g/precluding-errors image-sha1s
-      (let [packed-image-sha1 (digestable/sha1-hash
+      ;; Note: Dragging or reordering images up and down the outline for animations results in a different order,
+      ;; which produces a different hash, which triggers an unnecessary atlas regeneration, so hash unordered
+      (let [images-sha1 (digestable/sha1s->unordered-sha1-hex image-sha1s)
+            packed-image-sha1 (digestable/sha1-hash
                                 {:extrude-borders extrude-borders
                                  :images-sha1 images-sha1
                                  :inner-padding inner-padding
@@ -790,7 +790,7 @@
           (g/fnk [_node-id packed-page-images-generator texture-profile]
             ;; NOTE: Temporary fix until we can properly disconnect the image nodes that invalidate this
             (or (when (= (:sha1 packed-page-images-generator) (g/user-data _node-id :gpu-texture-sha1))
-                  (some-> (g/user-data _node-id :gpu-texture-cached) .get))
+                  (some-> ^WeakReference (g/user-data _node-id :gpu-texture-cached) .get))
                 (let [texture (-> (texture-util/construct-gpu-texture _node-id packed-page-images-generator texture-profile)
                                   (texture/set-params {:min-filter gl/nearest
                                                        :mag-filter gl/nearest}))
