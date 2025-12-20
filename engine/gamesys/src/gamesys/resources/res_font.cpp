@@ -62,7 +62,7 @@ namespace dmGameSystem
     {
         SwapVar(m_DDF, src->m_DDF);
         SwapVar(m_FontMap, src->m_FontMap);
-        SwapVar(m_Resource, src->m_Resource);
+        SwapVar(m_PathHash, src->m_PathHash);
         SwapVar(m_MaterialResource, src->m_MaterialResource);
         SwapVar(m_GlyphBankResource, src->m_GlyphBankResource);
         SwapVar(m_TTFResource, src->m_TTFResource);
@@ -145,9 +145,6 @@ namespace dmGameSystem
         resource->m_TTFResources.Iterate(ReleaseResourceIter, (void*)factory);
         resource->m_TTFResources.Clear();
         resource->m_FontHashes.Clear();
-
-        if (resource->m_DDF)
-            dmDDF::FreeMessage(resource->m_DDF);
     }
 
     static FontJobResourceInfo* CreateJobResourceInfo(dmResource::HFactory factory, FontResource* resource)
@@ -281,6 +278,12 @@ namespace dmGameSystem
         if (font_map->m_FontMap)
             dmRender::DeleteFontMap(font_map->m_FontMap);
 
+        if (font_map->m_DDF)
+        {
+            dmDDF::FreeMessage(font_map->m_DDF);
+            font_map->m_DDF = 0;
+        }
+
         delete font_map;
     }
 
@@ -296,10 +299,11 @@ namespace dmGameSystem
     static dmResource::Result AcquireResources(dmResource::HFactory factory, dmRenderDDF::FontMap* ddf,
                                                     FontResource* font_map, const char* filename)
     {
+        font_map->m_DDF = ddf;
+
         dmResource::Result result = dmResource::Get(factory, ddf->m_Material, (void**) &font_map->m_MaterialResource);
         if (result != dmResource::RESULT_OK)
         {
-            ReleaseResources(factory, font_map);
             return result;
         }
 
@@ -309,7 +313,6 @@ namespace dmGameSystem
             if (result != dmResource::RESULT_OK)
             {
                 dmLogError("Failed to find font '%s': %d\n", ddf->m_Font, result);
-                ReleaseResources(factory, font_map);
                 return result;
             }
         }
@@ -318,7 +321,6 @@ namespace dmGameSystem
             result = dmResource::Get(factory, ddf->m_GlyphBank, (void**) &font_map->m_GlyphBankResource);
             if (result != dmResource::RESULT_OK)
             {
-                ReleaseResources(factory, font_map);
                 return result;
             }
 
@@ -596,7 +598,6 @@ namespace dmGameSystem
             return dmResource::RESULT_INVALID_DATA;
         }
 
-        resource->m_DDF               = ddf;
         resource->m_CacheCellPadding  = params.m_CacheCellPadding;
         resource->m_Padding           = ddf->m_Padding;
 
@@ -658,7 +659,6 @@ namespace dmGameSystem
     {
         FontResource* font = new FontResource;
         font->m_Factory = params->m_Factory;
-        font->m_Resource = params->m_Resource;
 
         const char* path = params->m_Filename;
         dmRenderDDF::FontMap* ddf = (dmRenderDDF::FontMap*) params->m_PreloadData;
@@ -705,6 +705,7 @@ namespace dmGameSystem
             return r;
         }
 
+        font->m_PathHash = ResourceDescriptorGetNameHash(params->m_Resource);
         dmResource::SetResource(params->m_Resource, font);
         dmResource::SetResourceSize(params->m_Resource, GetResourceSize(font));
         return r;
@@ -745,7 +746,6 @@ namespace dmGameSystem
 
         const char* path = params->m_Filename;
         FontResource* tmp_font_map = new FontResource;
-        tmp_font_map->m_Resource = params->m_Resource;
 
         dmResource::Result r = AcquireResources(params->m_Factory, ddf, tmp_font_map, path);
         if(r != dmResource::RESULT_OK)
@@ -810,7 +810,8 @@ namespace dmGameSystem
             hfont = dmGameSystem::GetFont(font->m_TTFResource);
         }
         dmRender::AddGlyphByIndex(font->m_FontMap, hfont, glyph->m_GlyphIndex, glyph);
-        dmResource::SetResourceSize(font->m_Resource, GetResourceSize(font));
+        ResourceDescriptor* rd = dmResource::FindByHash(font->m_Factory, font->m_PathHash);
+        dmResource::SetResourceSize(rd, GetResourceSize(font));
         return dmResource::RESULT_OK;
     }
 
