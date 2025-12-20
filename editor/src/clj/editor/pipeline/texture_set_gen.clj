@@ -155,7 +155,7 @@
   [animations images margin inner-padding extrude-borders max-page-size]
   ;; NOTE: Images order matters when generating the layouts, especially if they are of the same size.
   ;; Since the SHA1 for the packed-page-images-generator is insensitive to order, things could get out of sync
-  (let [images (sort-by #(-> % :path :project-path) images)
+  (let [images (sort-by #(-> % :path resource/proj-path) images)
         sprite-geometries (mapv make-image-sprite-geometry images)]
     (g/precluding-errors sprite-geometries
       (let [img-to-index (into {}
