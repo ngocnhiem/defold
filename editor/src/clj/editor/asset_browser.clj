@@ -506,15 +506,33 @@
         contents (workspace/replace-template-name template base-name)]
     (spit new-file contents)))
 
+(def resource-ext-groups
+  {"Components" #{"sound" "factory" "model" "collisionobject" "label" "tilemap" "camera"
+                  "particlefx" "gui" "sprite" "mesh" "collectionfactory" "collectionproxy"}
+   "Resources" #{"atlas" "buffer" "render_target" "font" "animationset" "tilesource"
+                 "go" "collection" "cubemap" "material"}
+   "Shaders" #{"glsl" "fp" "vp" "compute"}
+   "Scripts" #{"cp" "gui_script" "render_script" "script" "lua" "editor_script"}
+   "Project" #{"gamepads" "texture_profiles" "editor_localization" "display_profiles"
+               "render" "input_binding" "appmanifest"}})
+
+(defn- find-group-for-resource-type [resource-type]
+  (or (some (fn [[group-name extensions]]
+              (when (extensions (:ext resource-type))
+                group-name))
+            resource-ext-groups)
+      "Other"))
+
 (handler/defhandler :file.new :global
   (label [user-data] (if-not user-data
                        (localization/message "command.file.new")
                        (let [rt (:resource-type user-data)]
                          (or (:label rt) (:ext rt)))))
-  (active? [selection selection-context] (or (= :global selection-context) (and (= :asset-browser selection-context)
-                                                                                (= (count selection) 1)
-                                                                                (not= nil (some-> (handler/adapt-single selection resource/Resource)
-                                                                                            resource/abs-path)))))
+  (active? [selection selection-context] (or (= :global selection-context)
+                                             (and (= :asset-browser selection-context)
+                                                  (= (count selection) 1)
+                                                  (not= nil (some-> (handler/adapt-single selection resource/Resource)
+                                                                    resource/abs-path)))))
   (enabled? [] (disk-availability/available?))
   (run [selection user-data asset-browser app-view prefs workspace project localization]
     (let [project-directory (workspace/project-directory workspace)
@@ -555,14 +573,20 @@
                 :icon "icons/64/Icons_29-AT-Unknown.png"
                 :command :file.new
                 :user-data {:any-file true}}]
-              (keep (fn [[_ext resource-type]]
-                      (when (workspace/has-template? workspace resource-type)
-                        {:label (or (:label resource-type) (:ext resource-type))
-                         :icon (:icon resource-type)
-                         :style (resource/type-style-classes resource-type)
-                         :command :file.new
-                         :user-data {:resource-type resource-type}})))
-              (workspace/get-resource-type-map workspace))))))
+              (->> workspace
+                   workspace/get-resource-type-map
+                   (keep (fn [[_ext resource-type]]
+                           (when (workspace/has-template? workspace resource-type)
+                             {:label (or (:label resource-type) (:ext resource-type))
+                              :icon (:icon resource-type)
+                              :style (resource/type-style-classes resource-type)
+                              :command :file.new
+                              :user-data {:resource-type resource-type}
+                              :group (find-group-for-resource-type resource-type)})))
+                   (group-by :group)
+                   (mapv (fn [[group-name items]]
+                           {:label group-name
+                            :children (mapv #(dissoc % :group) items)}))))))))
 
 (defn- resolve-sub-folder [^File base-folder ^String new-folder-name]
   (.toFile (.resolve (.toPath base-folder) new-folder-name)))
