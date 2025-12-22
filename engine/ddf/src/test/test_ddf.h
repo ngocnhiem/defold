@@ -21,5 +21,10 @@ struct MyVector2
     float m_Y;
 };
 
+void TestStructSimple(const char* msg, uint32_t msg_size);
+void TestStructNested(const char* msg, uint32_t msg_size);
+void TestStructList(const char* msg, uint32_t msg_size);
+void TestStructJSON(const char* msg, uint32_t msg_size);
+
 #endif
 
