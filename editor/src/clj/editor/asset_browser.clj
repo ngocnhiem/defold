@@ -506,22 +506,24 @@
         contents (workspace/replace-template-name template base-name)]
     (spit new-file contents)))
 
+;; NOTE: Neither "go" and "collection" are not here so they remain part of the top menu
 (def resource-ext-groups
-  {"Components" #{"sound" "factory" "model" "collisionobject" "label" "tilemap" "camera"
-                  "particlefx" "gui" "sprite" "mesh" "collectionfactory" "collectionproxy"}
-   "Resources" #{"atlas" "buffer" "render_target" "font" "animationset" "tilesource"
-                 "go" "collection" "cubemap" "material"}
-   "Shaders" #{"glsl" "fp" "vp" "compute"}
-   "Scripts" #{"cp" "gui_script" "render_script" "script" "lua" "editor_script"}
-   "Project" #{"gamepads" "texture_profiles" "editor_localization" "display_profiles"
-               "render" "input_binding" "appmanifest"}})
+  {"resource.group.components"
+   #{"sound" "factory" "model" "collisionobject" "label" "tilemap" "camera" "particlefx" "gui" "sprite" "mesh" "collectionfactory" "collectionproxy"}
+   "resource.group.resources"
+   #{"atlas" "buffer" "render_target" "font" "animationset" "tilesource" "cubemap" "material"}
+   "resource.group.shaders"
+   #{"glsl" "fp" "vp" "compute"}
+   "resource.group.scripts"
+   #{"cp" "gui_script" "render_script" "script" "lua" "editor_script"}
+   "resource.group.project"
+   #{"gamepads" "texture_profiles" "editor_localization" "display_profiles" "render" "input_binding" "appmanifest"}})
 
 (defn- find-group-for-resource-type [resource-type]
-  (or (some (fn [[group-name extensions]]
-              (when (extensions (:ext resource-type))
-                group-name))
-            resource-ext-groups)
-      "Other"))
+  (some (fn [[group-name extensions]]
+          (when (extensions (:ext resource-type))
+            group-name))
+        resource-ext-groups))
 
 (handler/defhandler :file.new :global
   (label [user-data] (if-not user-data
@@ -565,28 +567,33 @@
             (when (resource/loaded? resource)
               (app-view/open-resource app-view prefs localization workspace project resource))
             (select-resource! asset-browser resource))))))
-  (options [workspace selection user-data]
+  (options [workspace selection user-data localization]
     (when (not user-data)
-      (localization/annotate-as-sorted
-        localization/natural-sort-by-label
-        (into [{:label (localization/message "command.file.new.option.any-file")
-                :icon "icons/64/Icons_29-AT-Unknown.png"
-                :command :file.new
-                :user-data {:any-file true}}]
-              (->> workspace
-                   workspace/get-resource-type-map
-                   (keep (fn [[_ext resource-type]]
-                           (when (workspace/has-template? workspace resource-type)
-                             {:label (or (:label resource-type) (:ext resource-type))
-                              :icon (:icon resource-type)
-                              :style (resource/type-style-classes resource-type)
-                              :command :file.new
-                              :user-data {:resource-type resource-type}
-                              :group (find-group-for-resource-type resource-type)})))
-                   (group-by :group)
-                   (mapv (fn [[group-name items]]
-                           {:label group-name
-                            :children (mapv #(dissoc % :group) items)}))))))))
+      (into []
+            (->> workspace
+                 workspace/get-resource-type-map
+                 (keep (fn [[_ext resource-type]]
+                         (when (workspace/has-template? workspace resource-type)
+                           {:label (or (:label resource-type) (:ext resource-type))
+                            :icon (:icon resource-type)
+                            :style (resource/type-style-classes resource-type)
+                            :command :file.new
+                            :user-data {:resource-type resource-type}
+                            :group (find-group-for-resource-type resource-type)})))
+                 (group-by :group)
+                 ;; NOTE: Make the groups with sub-menus come after the resources
+                 (sort-by (fn [[group-name _]] (if group-name 1 0)))
+                 (mapcat (fn [[group-name items]]
+                           (if group-name
+                             [{:label (localization/message group-name)
+                               :children (localization/natural-sort-by-label localization items)}]
+                             (localization/natural-sort-by-label
+                               localization
+                               (into [{:label (localization/message "command.file.new.option.any-file")
+                                       :icon "icons/64/Icons_29-AT-Unknown.png"
+                                       :command :file.new
+                                       :user-data {:any-file true}}]
+                                     items))))))))))
 
 (defn- resolve-sub-folder [^File base-folder ^String new-folder-name]
   (.toFile (.resolve (.toPath base-folder) new-folder-name)))
