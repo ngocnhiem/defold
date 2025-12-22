@@ -352,16 +352,16 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)
     // Don't forget to add them to the corresponding java file (e.g. ModelImporter.java)
     static const JNINativeMethod methods[] = {
         // Image api
-        JNIFUNC(CreateImage,          "(Ljava/lang/String;IIII[B)J"),
-        JNIFUNC(CreatePreviewImage,   "(II[B[B)I"),
-        JNIFUNC(DestroyImage,         "(J)V"),
-        JNIFUNC(GetWidth,             "(J)I"),
-        JNIFUNC(GetHeight,            "(J)I"),
-        JNIFUNC(GetData,              "(J)[B"),
-        JNIFUNC(Resize,               "(JII)J"),
-        JNIFUNC(PreMultiplyAlpha,     "(J)Z"),
-        JNIFUNC(Flip,                 "(JI)Z"),
-        JNIFUNC(Dither,               "(JI)Z"),
+        JNIFUNC(CreateImage, "(Ljava/lang/String;IIII[B)J"),
+        JNIFUNC(CreatePreviewImage, "(II[B[B)I"),
+        JNIFUNC(DestroyImage, "(J)V"),
+        JNIFUNC(GetWidth, "(J)I"),
+        JNIFUNC(GetHeight, "(J)I"),
+        JNIFUNC(GetData, "(J)[B"),
+        JNIFUNC(Resize, "(JII)J"),
+        JNIFUNC(PreMultiplyAlpha, "(J)Z"),
+        JNIFUNC(Flip, "(JI)Z"),
+        JNIFUNC(Dither, "(JI)Z"),
 
         // Font glyph buffers
         JNIFUNC(CompressBuffer,         "([B)L" CLASS_NAME "$Buffer;"),
