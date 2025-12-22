@@ -569,31 +569,30 @@
             (select-resource! asset-browser resource))))))
   (options [workspace selection user-data localization]
     (when (not user-data)
-      (into []
-            (->> workspace
-                 workspace/get-resource-type-map
-                 (keep (fn [[_ext resource-type]]
-                         (when (workspace/has-template? workspace resource-type)
-                           {:label (or (:label resource-type) (:ext resource-type))
-                            :icon (:icon resource-type)
-                            :style (resource/type-style-classes resource-type)
-                            :command :file.new
-                            :user-data {:resource-type resource-type}
-                            :group (find-group-for-resource-type resource-type)})))
-                 (group-by :group)
-                 ;; NOTE: Make the groups with sub-menus come after the resources
-                 (sort-by (fn [[group-name _]] (if group-name 1 0)))
-                 (mapcat (fn [[group-name items]]
-                           (if group-name
-                             [{:label (localization/message group-name)
-                               :children (localization/natural-sort-by-label localization items)}]
-                             (localization/natural-sort-by-label
-                               localization
-                               (into [{:label (localization/message "command.file.new.option.any-file")
-                                       :icon "icons/64/Icons_29-AT-Unknown.png"
-                                       :command :file.new
-                                       :user-data {:any-file true}}]
-                                     items))))))))))
+      (let [all-items (->> workspace
+                           workspace/get-resource-type-map
+                           (keep (fn [[_ext resource-type]]
+                                   (when (workspace/has-template? workspace resource-type)
+                                     {:label (or (:label resource-type) (:ext resource-type))
+                                      :icon (:icon resource-type)
+                                      :style (resource/type-style-classes resource-type)
+                                      :command :file.new
+                                      :user-data {:resource-type resource-type}
+                                      :group (find-group-for-resource-type resource-type)})))
+                           (group-by :group))
+            ungrouped-items (localization/natural-sort-by-label
+                              localization
+                              (into [{:label (localization/message "command.file.new.option.any-file")
+                                      :icon "icons/64/Icons_29-AT-Unknown.png"
+                                      :command :file.new
+                                      :user-data {:any-file true}}]
+                                    (get all-items nil)))
+            grouped-items (->> (dissoc all-items nil)
+                               (mapv (fn [[group-name items]]
+                                       {:label (localization/message group-name)
+                                        :children (localization/natural-sort-by-label localization items)}))
+                               (localization/natural-sort-by-label localization))]
+        (into [] (concat ungrouped-items grouped-items))))))
 
 (defn- resolve-sub-folder [^File base-folder ^String new-folder-name]
   (.toFile (.resolve (.toPath base-folder) new-folder-name)))
