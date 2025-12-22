@@ -54,7 +54,7 @@ JNIEXPORT jlong JNICALL Java_TexcLibraryJni_CreateImage(JNIEnv* env, jclass cls,
 JNIEXPORT jint JNICALL Java_TexcLibraryJni_CreatePreviewImage(JNIEnv* env, jclass cls, jint width, jint height, jbyteArray inputArray, jbyteArray outputArray)
 {
     dmLogDebug("%s: env = %p\n", __FUNCTION__, env);
-    //DM_SCOPED_SIGNAL_CONTEXT(env, return 0;);
+    // DM_SCOPED_SIGNAL_CONTEXT(env, return 0;);
 
     if (!inputArray)
     {
@@ -64,12 +64,12 @@ JNIEXPORT jint JNICALL Java_TexcLibraryJni_CreatePreviewImage(JNIEnv* env, jclas
 
     DM_JNI_GUARD_SCOPE_BEGIN();
 
-        dmTexc::jni::ScopedContext jni_scope(env);
+    dmTexc::jni::ScopedContext     jni_scope(env);
 
-        dmJNI::ScopedByteArrayCritical j_input_array(env, inputArray);
-        dmJNI::ScopedByteArrayCritical j_output_array(env, outputArray);
+    dmJNI::ScopedByteArrayCritical j_input_array(env, inputArray);
+    dmJNI::ScopedByteArrayCritical j_output_array(env, outputArray);
 
-        dmTexc::CreatePreviewImage(width, height, j_input_array.m_ArraySize, (uint8_t*)j_input_array.m_Array, (uint8_t*)j_output_array.m_Array);
+    dmTexc::CreatePreviewImage(width, height, j_input_array.m_ArraySize, (uint8_t*)j_input_array.m_Array, (uint8_t*)j_output_array.m_Array);
 
     DM_JNI_GUARD_SCOPE_END(return -1;);
     return 0;

@@ -342,11 +342,11 @@ namespace dmTexc
     {
         for (uint32_t y = 0; y < height; ++y)
         {
-            uint32_t flipped_y = height - y - 1;
+            uint32_t       flipped_y = height - y - 1;
             const uint8_t* src = input_data + (y * width * 4);
-            uint8_t* dst = output_data + (flipped_y * width * 4);
+            uint8_t*       dst = output_data + (flipped_y * width * 4);
 
-            #pragma clang loop vectorize(enable) interleave(enable)
+#pragma clang loop vectorize(enable) interleave(enable)
             for (uint32_t x = 0; x < width; ++x)
             {
                 uint8_t a = *(src++);

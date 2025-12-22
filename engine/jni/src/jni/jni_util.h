@@ -160,15 +160,15 @@ namespace dmJNI
 
     struct ScopedByteArrayCritical
     {
-        JNIEnv*     m_Env;
-        jbyte*      m_Array;
-        jsize       m_ArraySize;
-        jbyteArray  m_JArray;
+        JNIEnv*    m_Env;
+        jbyte*     m_Array;
+        jsize      m_ArraySize;
+        jbyteArray m_JArray;
         ScopedByteArrayCritical(JNIEnv* env, jbyteArray arr)
-        : m_Env(env)
-        , m_Array(arr ? (jbyte*)env->GetPrimitiveArrayCritical(arr, 0) : 0)
-        , m_ArraySize(arr ? env->GetArrayLength(arr) : 0)
-        , m_JArray(arr)
+            : m_Env(env)
+            , m_Array(arr ? (jbyte*)env->GetPrimitiveArrayCritical(arr, 0) : 0)
+            , m_ArraySize(arr ? env->GetArrayLength(arr) : 0)
+            , m_JArray(arr)
         {
         }
         ~ScopedByteArrayCritical()
