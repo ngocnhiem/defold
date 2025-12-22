@@ -265,12 +265,12 @@
         result-bytes ^bytes (.toByteArray ^BigInteger sum)
         ;; NOTE: BigInteger.toByteArray() returns variable length:
         ;; 21 bytes if high bit set (adds sign byte), <20 if leading zeros, else 20
-        normalized (let [len (alength result-bytes)]
-                     (case len
-                       20 result-bytes
-                       21 (Arrays/copyOfRange result-bytes 1 21)
-                       (let [padded (byte-array 20)]
-                         (System/arraycopy result-bytes 0 padded (- 20 len) len)
-                         padded)))]
+        len (alength result-bytes)
+        normalized (case len
+                     20 result-bytes
+                     21 (Arrays/copyOfRange result-bytes 1 21)
+                     (let [padded (byte-array 20)]
+                       (System/arraycopy result-bytes 0 padded (- 20 len) len)
+                       padded))]
     (util.digest/bytes->hex normalized)))
 
