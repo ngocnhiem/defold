@@ -567,12 +567,11 @@
             (when (resource/loaded? resource)
               (app-view/open-resource app-view prefs localization workspace project resource))
             (select-resource! asset-browser resource))))))
-  (options [workspace selection user-data localization]
+  (options [workspace selection user-data localization evaluation-context]
     (when (not user-data)
-      (let [all-items (->> workspace
-                           workspace/get-resource-type-map
+      (let [all-items (->> (resource/resource-types-by-type-ext (:basis evaluation-context) workspace :editable)
                            (keep (fn [[_ext resource-type]]
-                                   (when (workspace/has-template? workspace resource-type)
+                                   (when (workspace/has-template? workspace resource-type evaluation-context)
                                      {:label (or (:label resource-type) (:ext resource-type))
                                       :icon (:icon resource-type)
                                       :style (resource/type-style-classes resource-type)
