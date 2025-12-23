@@ -2368,45 +2368,45 @@
   (run [selection app-view prefs localization workspace project user-data]
        (let [resource (context-openable-resource app-view selection)]
          (open-resource app-view prefs localization workspace project resource user-data)))
-  (options [app-view prefs workspace selection user-data]
-           (when-not user-data
-             (let [[resource active-view-type-id]
-                   (g/with-auto-evaluation-context evaluation-context
-                     (if-let [selected-resource (selection->single-resource selection)]
-                       (pair selected-resource nil)
-                       (let [active-resource (g/node-value app-view :active-resource evaluation-context)
-                             active-view-type-id (:id (:view-type (g/node-value app-view :active-view-info evaluation-context)))]
-                         (pair active-resource active-view-type-id))))
+  (options [app-view prefs workspace selection user-data evaluation-context]
+    (when-not user-data
+      (let [[resource active-view-type-id]
+            (if-let [selected-resource (selection->single-resource selection)]
+              (pair selected-resource nil)
+              (let [active-resource (g/node-value app-view :active-resource evaluation-context)
+                    active-view-type-id (:id (:view-type (g/node-value app-view :active-view-info evaluation-context)))]
+                (pair active-resource active-view-type-id)))]
+        (when (and (resource/openable-resource? resource)
+                   (resource/exists? resource))
+          (let [is-custom-code-editor-configured (some? (custom-code-editor-executable-path-preference prefs))
 
-                   is-custom-code-editor-configured (some? (custom-code-editor-executable-path-preference prefs))
+                make-option
+                (fn make-option [label user-data]
+                  {:label label
+                   :command :file.open-as
+                   :user-data user-data})
 
-                   make-option
-                   (fn make-option [label user-data]
-                     {:label label
-                      :command :file.open-as
-                      :user-data user-data})
+                view-type->option
+                (fn view-type->option [{:keys [label] :as view-type}]
+                  (make-option (or label (localization/message "command.file.open-as.option.associated-application"))
+                               {:selected-view-type view-type}))]
 
-                   view-type->option
-                   (fn view-type->option [{:keys [label] :as view-type}]
-                     (make-option (or label (localization/message "command.file.open-as.option.associated-application"))
-                                  {:selected-view-type view-type}))]
+            (into []
+                  (if is-custom-code-editor-configured
+                    (mapcat (fn [{:keys [id label] :as view-type}]
+                              (case id
+                                (:code :text)
+                                [(make-option (localization/message "command.file.open-as.option.in-custom-editor" {"view" label})
+                                              {:selected-view-type view-type})
+                                 (make-option (localization/message "command.file.open-as.option.in-defold-editor" {"view" label})
+                                              {:selected-view-type view-type
+                                               :use-custom-editor false})]
+                                [(view-type->option view-type)])))
+                    (map view-type->option))
+                  (cond->> (view-types resource)
 
-               (into []
-                     (if is-custom-code-editor-configured
-                       (mapcat (fn [{:keys [id label] :as view-type}]
-                                 (case id
-                                   (:code :text)
-                                   [(make-option (localization/message "command.file.open-as.option.in-custom-editor" {"view" label})
-                                                 {:selected-view-type view-type})
-                                    (make-option (localization/message "command.file.open-as.option.in-defold-editor" {"view" label})
-                                                 {:selected-view-type view-type
-                                                  :use-custom-editor false})]
-                                   [(view-type->option view-type)])))
-                       (map view-type->option))
-                     (cond->> (view-types resource)
-
-                              active-view-type-id
-                              (e/filter #(not= active-view-type-id (:id %)))))))))
+                           active-view-type-id
+                           (e/filter #(not= active-view-type-id (:id %)))))))))))
 
 (handler/defhandler :private/recent-files :global
   (enabled? [prefs workspace evaluation-context]
