@@ -387,9 +387,27 @@ public class LuaScanner {
 
     // replace the token with an empty string
     private static void removeTokens(TokenStreamRewriter rewriter, List<Token> tokens, boolean isDebug) {
-        for (Token token : tokens) {
-            removeToken(rewriter, token, isDebug);
+        if (tokens.isEmpty()) {
+            return;
         }
+        int rangeStartIndex = tokens.getFirst().getTokenIndex();
+        int rangeStopIndex = rangeStartIndex;
+        int rangeLength = tokens.getFirst().getText().length();
+        for (int i = 1; i < tokens.size(); i++) {
+            Token token = tokens.get(i);
+            int tokenIndex = token.getTokenIndex();
+            if (tokenIndex == rangeStopIndex + 1) {
+                rangeStopIndex = tokenIndex;
+                rangeLength += token.getText().length();
+            } else {
+                removeTokenRange(rewriter, rangeStartIndex, rangeStopIndex, rangeLength, isDebug);
+                rangeStartIndex = tokenIndex;
+                rangeStopIndex = tokenIndex;
+                rangeLength = token.getText().length();
+            }
+        }
+        removeTokenRange(rewriter, rangeStartIndex, rangeStopIndex, rangeLength, isDebug);
+
         int lastTokenIndex = tokens.getLast().getTokenIndex();
         int nextTokenIndex = lastTokenIndex + 1;
         Token token = rewriter.getTokenStream().get(nextTokenIndex);
@@ -402,6 +420,14 @@ public class LuaScanner {
         // as it will be removed after it has been parsed.
         if (token != null && token.getType() == LuaLexer.SEMICOLON) {
             removeToken(rewriter, token, isDebug);
+        }
+    }
+
+    private static void removeTokenRange(TokenStreamRewriter rewriter, int startTokenIndex, int stopTokenIndex, int length, boolean isDebug) {
+        if (isDebug) {
+            rewriter.replace(startTokenIndex, stopTokenIndex, " ".repeat(length));
+        } else {
+            rewriter.delete(startTokenIndex, stopTokenIndex);
         }
     }
 
