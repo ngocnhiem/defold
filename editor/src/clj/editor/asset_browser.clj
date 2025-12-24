@@ -569,29 +569,18 @@
             (select-resource! asset-browser resource))))))
   (options [workspace selection user-data localization evaluation-context]
     (when (not user-data)
-      (let [all-items (->> (resource/resource-types-by-type-ext (:basis evaluation-context) workspace :editable)
-                           (keep (fn [[_ext resource-type]]
-                                   (when (workspace/has-template? workspace resource-type evaluation-context)
-                                     {:label (or (:label resource-type) (:ext resource-type))
-                                      :icon (:icon resource-type)
-                                      :style (resource/type-style-classes resource-type)
-                                      :command :file.new
-                                      :user-data {:resource-type resource-type}
-                                      :group (find-group-for-resource-type resource-type)})))
-                           (group-by :group))
-            ungrouped-items (localization/natural-sort-by-label
-                              localization
-                              (into [{:label (localization/message "command.file.new.option.any-file")
-                                      :icon "icons/64/Icons_29-AT-Unknown.png"
-                                      :command :file.new
-                                      :user-data {:any-file true}}]
-                                    (get all-items nil)))
-            grouped-items (->> (dissoc all-items nil)
-                               (mapv (fn [[group-name items]]
-                                       {:label (localization/message group-name)
-                                        :children (localization/natural-sort-by-label localization items)}))
-                               (localization/natural-sort-by-label localization))]
-        (into [] (concat ungrouped-items grouped-items))))))
+      [{:label "Testing"
+        :grid-layout true
+        :children
+        (keep (fn [[_ext resource-type]]
+                (when (workspace/has-template? workspace resource-type evaluation-context)
+                  {:label (or (:label resource-type) (:ext resource-type))
+                   :icon (:icon resource-type)
+                   :style (resource/type-style-classes resource-type)
+                   :command :file.new
+                   :user-data {:resource-type resource-type}
+                   :group (find-group-for-resource-type resource-type)}))
+              (resource/resource-types-by-type-ext (:basis evaluation-context) workspace :editable))}])))
 
 (defn- resolve-sub-folder [^File base-folder ^String new-folder-name]
   (.toFile (.resolve (.toPath base-folder) new-folder-name)))

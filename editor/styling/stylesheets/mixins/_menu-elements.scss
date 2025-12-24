@@ -36,6 +36,36 @@
         @include extensions(menu);
     }
 
+    .grid-menu-button {
+    &.resource-kind-script > .image-view {
+        @include colorize-image-view(-df-script-file);
+    }
+    &:hover.resource-kind-script > .image-view {
+        @include colorize-image-view(-df-script-file-active);
+    }
+
+    &.resource-kind-design > .image-view {
+        @include colorize-image-view(-df-design-file);
+    }
+    &:hover.resource-kind-design > .image-view {
+        @include colorize-image-view(-df-design-file-active);
+    }
+
+    &.resource-kind-property > .image-view {
+        @include colorize-image-view(-df-property-file);
+    }
+    &:hover.resource-kind-property > .image-view {
+        @include colorize-image-view(-df-property-file-active);
+    }
+}
+    .custom-menu-item.no-hover-effect {
+        -fx-background-color: transparent !important;
+
+        &:hover, &:focused {
+            -fx-background-color: transparent !important;
+        }
+    }
+
     .separator {
         &:horizontal {
             -fx-padding: 3 0 3 0;
@@ -49,3 +79,4 @@
         }
     }
 }
+

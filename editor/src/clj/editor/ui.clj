@@ -54,14 +54,14 @@
            [javafx.css Styleable]
            [javafx.event ActionEvent Event EventDispatcher EventHandler EventTarget]
            [javafx.fxml FXMLLoader]
-           [javafx.geometry Orientation Point2D]
+           [javafx.geometry Orientation Point2D Insets]
            [javafx.scene Cursor Group Node Parent Scene]
-           [javafx.scene.control Button ButtonBase Cell CheckBox CheckMenuItem ChoiceBox ColorPicker ComboBox ComboBoxBase ContextMenu Control Label Labeled ListView Menu MenuBar MenuButton MenuItem MultipleSelectionModel ProgressBar SelectionMode SelectionModel Separator SeparatorMenuItem Tab TabPane TableView TextArea TextField TextInputControl Toggle ToggleButton Tooltip TreeItem TreeTableView TreeView]
+           [javafx.scene.control PopupControl Skin Label Button ButtonBase Cell CheckBox CheckMenuItem ChoiceBox ColorPicker ComboBox ComboBoxBase ContextMenu Control CustomMenuItem Label Labeled ListView Menu MenuBar MenuButton MenuItem MultipleSelectionModel ProgressBar SelectionMode SelectionModel Separator SeparatorMenuItem Tab TabPane TableView TextArea TextField TextInputControl Toggle ToggleButton Tooltip TreeItem TreeTableView TreeView]
            [javafx.scene.image Image ImageView]
            [javafx.scene.input Clipboard ContextMenuEvent DragEvent KeyCode KeyCombination KeyEvent MouseButton MouseEvent]
-           [javafx.scene.layout AnchorPane GridPane HBox Pane Priority]
+           [javafx.scene.layout AnchorPane GridPane HBox Pane Priority VBox]
            [javafx.scene.shape SVGPath]
-           [javafx.stage Modality PopupWindow Stage StageStyle Window]
+           [javafx.stage Popup Modality PopupWindow Stage StageStyle Window]
            [javafx.util Callback Duration]))
 
 (set! *warn-on-reflection* true)
@@ -1472,6 +1472,54 @@
 
 (declare make-menu-items)
 
+(run-now (reload-root-styles!))
+(defn- make-grid-menu-item [^Scene scene id label localization icon ^Collection style-classes children command-contexts keymap evaluation-context]
+  (let [hbox (HBox.)
+        custom-item (CustomMenuItem. hbox false)
+
+        ;; Create columns with headers
+        columns {"property" (VBox.)
+                 "design" (VBox.)
+                 "script" (VBox.)
+                 "other" (VBox.)}]
+
+    (.setSpacing hbox 10.0)
+    (.setPadding hbox (javafx.geometry.Insets. 5.0))
+    (doseq [col (vals columns)]
+      (.setSpacing col 5.0)
+      (-> (.getChildren hbox) (.add col)))
+    (-> (.getStyleClass custom-item) (.add "no-hover-effect"))
+
+    (doseq [child children]
+      (let [command (:command child)
+            user-data (:user-data child)
+            child-label (:label child)
+            child-icon (:icon child)
+            child-style (:style child)]
+        (when-let [handler-ctx (handler/active command command-contexts user-data evaluation-context)]
+          (let [enabled? (handler/enabled? handler-ctx evaluation-context)
+                button (Button.)
+                kind (some-> (disj child-style "resource")
+                             first
+                             (clojure.string/split #"-")
+                             last)
+                col (get columns kind (get columns "other"))]
+            (localization/localize! button localization child-label)
+            (.setDisable button (not enabled?))
+            (.setOnAction button (event-handler event
+                                   (.hide custom-item)
+                                   (invoke-handler (contexts scene) command user-data)))
+            (when child-icon
+              (.setGraphic button (icons/get-image-view child-icon 18)))
+            (when child-style
+              (doto (.getStyleClass button)
+                (.add "grid-menu-button")
+                (.addAll child-style)))
+            (-> (.getChildren col) (.add button))))))
+
+    (user-data! custom-item ::menu-item-id id)
+    custom-item))
+
 (defn- make-menu-item [^Scene scene item command-contexts keymap localization evaluation-context]
   (let [id (:id item)
         icon (:icon item)
@@ -1479,13 +1527,15 @@
         item-label (:label item)
         on-open (:on-submenu-open item)]
     (if-let [children (:children item)]
-      (make-submenu id
-                    item-label
-                    localization
-                    icon
-                    style-classes
-                    (make-menu-items scene children command-contexts keymap localization evaluation-context)
-                    on-open)
+      (if (:grid-layout item)
+        (make-grid-menu-item scene id item-label localization icon style-classes children command-contexts keymap evaluation-context)
+        (make-submenu id
+                      item-label
+                      localization
+                      icon
+                      style-classes
+                      (make-menu-items scene children command-contexts keymap localization evaluation-context)
+                      on-open))
       (if (= item-label :separator)
         (SeparatorMenuItem.)
         (let [command (:command item)
@@ -2545,3 +2595,88 @@
       (.remove node-properties key)
       (.removeListener running-property on-running-changed)
       (timer-stop! timer))))
+
+(defn make-fake-menu-items [n]
+  (mapv (fn [i]
+          {:label (str "Menu Item " i)
+           :icon "icons/32/Icons_01-Folder-closed.png"})
+        (range n)))
+
+(defn make-multi-column-grid [menu-items columns]
+  (let [grid (GridPane.)]
+    (.setHgap grid 10.0)
+    (.setVgap grid 5.0)
+    (.setPadding grid (Insets. 10.0))
+    (.setStyle grid
+               "-fx-background-color: -df-background-light;
+                -fx-border-color: -df-background-dark;
+
+                -fx-border-width: 1;")
+    (doseq [[idx item] (map-indexed vector menu-items)]
+      (let [row   (quot idx columns)
+            col   (rem idx columns)
+            label (Label. ^String (:label item))]
+        (when-let [icon (:icon item)]
+          (.setGraphic label (icons/get-image-view icon 16)))
+        (.setStyle label "-fx-padding: 5; -fx-cursor: hand; -fx-text-fill: -df-text;")
+        (.setOnMouseEntered label
+          (editor.ui/event-handler e
+                                   (.setStyle label "-fx-padding: 5; -fx-cursor: hand; -fx-background-color: -df-background-lighter; -fx-text-fill: -df-text-light")))
+        (.setOnMouseExited label
+          (editor.ui/event-handler e
+            (.setStyle label "-fx-padding: 5; -fx-cursor: hand; -fx-background-color: transparent; -fx-text-fill: -df-text;")))
+        (.add grid label col row)))
+    grid))
+
+(defn show-test-popup! [^javafx.scene.Node anchor-node x y]
+  (let [popup      (Popup.)
+        menu-items (make-fake-menu-items 20)
+        shadow     (javafx.scene.effect.DropShadow.)
+        content    (make-multi-column-grid menu-items 3)]
+    ;; configure popup
+    (.setAutoHide popup true)
+    (.setHideOnEscape popup true)
+
+    (.setRadius shadow 10.0)
+    (.setOffsetX shadow 0.0)
+    (.setOffsetY shadow 2.0)
+    (.setColor shadow (javafx.scene.paint.Color/rgb 0 0 0 0.3))
+    (.setEffect content shadow)
+
+    ;; add content
+    (doto (.getContent popup)
+      (.clear)
+      (.add content))
+
+    (apply-css! content)
+
+    (.setOpacity content 0.0)
+
+    (.show popup
+           (.getWindow (.getScene anchor-node))
+           (double x)
+           (double y))
+
+    (let [fade (javafx.animation.FadeTransition.
+                 (javafx.util.Duration/millis 150)
+                 content)]
+      (.setFromValue fade 0.0)
+      (.setToValue fade 1.0)
+      (.play fade))
+
+    popup))
+
+(defn register-popup-on-context-menu [^Node node]
+  (.addEventHandler node ContextMenuEvent/CONTEXT_MENU_REQUESTED
+    (event-handler event
+      (.consume event)
+      (show-test-popup! node (.getScreenX event) (.getScreenY event)))))
+
+(comment
+  (let [asset-browser (dev/view-of-type editor.asset-browser/AssetBrowser)]
+    (register-popup-on-context-menu (g/node-value asset-browser :raw-tree-view)))
+
+  (let [scene (.getScene (editor.ui/main-stage))]
+    (run-now (show-test-popup! (.getRoot scene) 1000 300)))
+
+  :-)
