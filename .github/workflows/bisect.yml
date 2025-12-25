@@ -69,15 +69,7 @@ jobs:
               python scripts/build.py distclean build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins
             fi
 
-            exe=$(python - <<'PY'
-import os
-for root, _, files in os.walk("."):
-    if "dmengine.exe" in files:
-        path = os.path.join(root, "dmengine.exe").replace("\\\\", "/")
-        print(path)
-        break
-PY
-)
+            exe=$(python -c "import os; p='';\nfor root, _, files in os.walk('.'):\n    if 'dmengine.exe' in files:\n        p=os.path.join(root, 'dmengine.exe');\n        break\nprint(p.replace('\\\\\\\\','/'))")
             if [ -z "$exe" ]; then
               echo "dmengine.exe not found for $sha" >&2
               exit 1
