@@ -19,16 +19,32 @@ jobs:
         platform: [x86_64-win32]
 
     runs-on: windows-latest
-    steps: [
-      { name: 'Checkout', uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11, with: { ref: '${{env.BUILD_BRANCH}}', fetch-depth: 0 } },
-      { name: 'Install Python', uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c, with: { python-version: 3.12} },
-      { name: 'Install Java', uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9, with: { java-version: '17.0.5+8', distribution: 'temurin'} },
-      { name: 'Setup dotnet', uses: actions/setup-dotnet@v4, with: {dotnet-version: '9.x', dotnet-quality: 'preview'}},
-      { name: 'Install dependencies', shell: bash, run: 'ci/ci.sh install --platform=${{ matrix.platform }}' },
-      {
-        name: 'Build range',
-        if: (github.event_name != 'repository_dispatch') || ((github.event_name == 'repository_dispatch') && (github.event.client_payload.skip_engine != true)),
-        shell: bash,
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: '${{env.BUILD_BRANCH}}'
+          fetch-depth: 0
+      - name: 'Install Python'
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: 3.12
+      - name: 'Install Java'
+        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
+        with:
+          java-version: '17.0.5+8'
+          distribution: 'temurin'
+      - name: 'Setup dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.x'
+          dotnet-quality: 'preview'
+      - name: 'Install dependencies'
+        shell: bash
+        run: 'ci/ci.sh install --platform=${{ matrix.platform }}'
+      - name: 'Build range'
+        if: (github.event_name != 'repository_dispatch') || ((github.event_name == 'repository_dispatch') && (github.event.client_payload.skip_engine != true))
+        shell: bash
         run: |
           set -e
           git fetch --tags --force
@@ -74,11 +90,9 @@ PY
             echo "- $name ($sha)" >> "$summary"
             idx=$((idx + 1))
           done
-      },
-      {
-        name: 'Upload artifacts',
-        if: always(),
-        uses: actions/upload-artifact@v4,
-        with: { name: 'bisect-artifacts', path: 'artifacts' }
-      }
-    ]
+      - name: 'Upload artifacts'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'bisect-artifacts'
+          path: 'artifacts'
