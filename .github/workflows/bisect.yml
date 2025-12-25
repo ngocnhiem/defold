@@ -47,6 +47,8 @@ jobs:
         shell: bash
         run: |
           set -e
+          export DYNAMO_HOME="$GITHUB_WORKSPACE/tmp/dynamo_home"
+          mkdir -p "$DYNAMO_HOME"
           git fetch --tags --force
           commits=$(git rev-list --reverse 1.9.5..1.9.6)
           if [ -z "$commits" ]; then
@@ -59,15 +61,13 @@ jobs:
           summary="$GITHUB_STEP_SUMMARY"
           echo "Bisect build artifacts" >> "$summary"
 
+          python scripts/build.py distclean install_sdk install_ext check_sdk --platform=${{ matrix.platform }}
+
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
             git checkout -f "$sha"
 
-            if [ "$idx" -eq 0 ]; then
-              python scripts/build.py distclean install_sdk install_ext check_sdk build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins
-            else
-              python scripts/build.py distclean build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins
-            fi
+            python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
             exe=$(python -c "import os; p='';\nfor root, _, files in os.walk('.'):\n    if 'dmengine.exe' in files:\n        p=os.path.join(root, 'dmengine.exe');\n        break\nprint(p.replace('\\\\\\\\','/'))")
             if [ -z "$exe" ]; then
