@@ -63,30 +63,11 @@ jobs:
           echo "Bisect build artifacts" >> "$summary"
 
           python scripts/build.py distclean install_sdk install_ext check_sdk --platform=${{ matrix.platform }}
-          cat > /tmp/skip_sdk_tests.patch <<'PATCH'
-*** Begin Patch
-*** Update File: engine/sdk/src/test/wscript
-@@
--#! /usr/bin/env python
--import os, sys, shutil
--from waflib.TaskGen import feature, before, after
--from waf_dynamo import platform_supports_feature
-+#! /usr/bin/env python
-+import os, sys, shutil
-+from waflib.TaskGen import feature, before, after
-+from waflib import Options
-+from waf_dynamo import platform_supports_feature
-@@
- def build(bld):
-+    if Options.options.skip_build_tests:
-+        return
-*** End Patch
-PATCH
 
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
             git checkout -f "$sha"
-            git apply --whitespace=nowarn /tmp/skip_sdk_tests.patch
+            python scripts/skip_sdk_tests_patch.py
 
             python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
