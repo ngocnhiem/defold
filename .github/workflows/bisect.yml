@@ -71,16 +71,33 @@ jobs:
           path = pathlib.Path('engine/sdk/src/test/wscript')
           text = path.read_text(encoding='utf-8')
 
-          marker = 'from waflib import Options\\n'
-          if marker not in text:
-              text = text.replace('from waflib.TaskGen import feature, before, after\\n',
-                                  'from waflib.TaskGen import feature, before, after\\nfrom waflib import Options\\n')
+          if 'Options.options.skip_build_tests' in text:
+              sys.exit(0)
 
-          hook = 'def build(bld):\\n'
-          if hook in text and 'Options.options.skip_build_tests' not in text:
-              text = text.replace(hook, hook + '    if Options.options.skip_build_tests:\\n        return\\n')
+          lines = text.splitlines(keepends=True)
 
-          path.write_text(text, encoding='utf-8')
+          if 'from waflib import Options\\n' not in lines:
+              insert_at = 0
+              for i, line in enumerate(lines):
+                  if line.startswith('import ') or line.startswith('from '):
+                      insert_at = i + 1
+                  else:
+                      break
+              lines.insert(insert_at, 'from waflib import Options\\n')
+
+          def_index = None
+          for i, line in enumerate(lines):
+              if line.startswith('def build('):
+                  def_index = i
+                  break
+          if def_index is None:
+              raise SystemExit('build() not found in engine/sdk/src/test/wscript')
+
+          indent = '    '
+          lines.insert(def_index + 1, f'{indent}if Options.options.skip_build_tests:\\n')
+          lines.insert(def_index + 2, f'{indent}{indent}return\\n')
+
+          path.write_text(''.join(lines), encoding='utf-8')
           PY
 
           for sha in $commits; do
