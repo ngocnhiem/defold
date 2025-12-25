@@ -29,6 +29,27 @@ jobs:
         name: 'Build engine',
         if: (github.event_name != 'repository_dispatch') || ((github.event_name == 'repository_dispatch') && (github.event.client_payload.skip_engine != true)),
         shell: bash,
-        run: 'ci/ci.sh --platform=${{ matrix.platform }} --archive --skip-builtins --skip-docs --skip-tests engine'
+        run: 'ci/ci.sh --platform=${{ matrix.platform }} --skip-builtins --skip-docs --skip-tests engine'
+      },
+      {
+        name: 'Package dmengine.exe',
+        shell: pwsh,
+        run: |
+          $exe = Get-ChildItem -Recurse -Filter dmengine.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error "dmengine.exe not found"; exit 1 }
+          $short = (git rev-parse --short=12 HEAD).Trim()
+          $name = "$env:GITHUB_RUN_NUMBER-$short.exe"
+          Copy-Item $exe.FullName -Destination $name
+          "ARTIFACT_NAME=$name" | Out-File -FilePath $env:GITHUB_ENV -Append
+      },
+      {
+        name: 'Upload artifact',
+        uses: actions/upload-artifact@v4,
+        with: { name: '${{ env.ARTIFACT_NAME }}', path: '${{ env.ARTIFACT_NAME }}' }
+      },
+      {
+        name: 'Summary',
+        shell: bash,
+        run: 'echo "Built artifact: `${ARTIFACT_NAME}`" >> "$GITHUB_STEP_SUMMARY"'
       }
     ]
