@@ -1504,7 +1504,6 @@
             (localization/localize! button localization child-label)
             (.setDisable button (not enabled?))
             (.setOnAction button (event-handler event
-                                   (.hide custom-item)
                                    (invoke-handler (contexts scene) command user-data)))
             (when child-icon
               (.setGraphic button (icons/get-image-view child-icon 18)))

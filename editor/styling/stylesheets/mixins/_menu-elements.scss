@@ -37,27 +37,50 @@
     }
 
     .grid-menu-button {
-    &.resource-kind-script > .image-view {
-        @include colorize-image-view(-df-script-file);
-    }
-    &:hover.resource-kind-script > .image-view {
-        @include colorize-image-view(-df-script-file-active);
-    }
+        -fx-border-width: 0;
+        -fx-background-radius: 0;
+        -fx-padding: 5 10 5 10;  // Match menu-item padding
+        -fx-background-color: transparent;
+        -fx-alignment: center-left;
+        -fx-max-width: infinity;  // Take full width
+        > .label {
+            -fx-text-fill: -df-text;
+        }
 
-    &.resource-kind-design > .image-view {
-        @include colorize-image-view(-df-design-file);
-    }
-    &:hover.resource-kind-design > .image-view {
-        @include colorize-image-view(-df-design-file-active);
-    }
+        > .image-view, > .graphic-container > .image-view {
+            @include colorize-image-view(-df-text);
+        }
 
-    &.resource-kind-property > .image-view {
-        @include colorize-image-view(-df-property-file);
+        &:hover {
+            -fx-background-color: -df-component-lighter;
+            > .label {
+                -fx-text-fill: -df-text-selected;
+            }
+            > .image-view, > .graphic-container > .image-view {
+                @include effect-lighten-blue();
+            }
+        }
+        &.resource-kind-script > .image-view {
+            @include colorize-image-view(-df-script-file);
+        }
+        &:hover.resource-kind-script > .image-view {
+            @include colorize-image-view(-df-script-file-active);
+        }
+
+        &.resource-kind-design > .image-view {
+            @include colorize-image-view(-df-design-file);
+        }
+        &:hover.resource-kind-design > .image-view {
+            @include colorize-image-view(-df-design-file-active);
+        }
+
+        &.resource-kind-property > .image-view {
+            @include colorize-image-view(-df-property-file);
+        }
+        &:hover.resource-kind-property > .image-view {
+            @include colorize-image-view(-df-property-file-active);
+        }
     }
-    &:hover.resource-kind-property > .image-view {
-        @include colorize-image-view(-df-property-file-active);
-    }
-}
     .custom-menu-item.no-hover-effect {
         -fx-background-color: transparent !important;
 
@@ -79,4 +102,3 @@
         }
     }
 }
-
