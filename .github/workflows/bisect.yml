@@ -63,11 +63,30 @@ jobs:
           echo "Bisect build artifacts" >> "$summary"
 
           python scripts/build.py distclean install_sdk install_ext check_sdk --platform=${{ matrix.platform }}
+          cat > "$RUNNER_TEMP/skip_sdk_tests_patch.py" <<'PY'
+          #!/usr/bin/env python3
+          import pathlib
+          import sys
+
+          path = pathlib.Path('engine/sdk/src/test/wscript')
+          text = path.read_text(encoding='utf-8')
+
+          marker = 'from waflib import Options\\n'
+          if marker not in text:
+              text = text.replace('from waflib.TaskGen import feature, before, after\\n',
+                                  'from waflib.TaskGen import feature, before, after\\nfrom waflib import Options\\n')
+
+          hook = 'def build(bld):\\n'
+          if hook in text and 'Options.options.skip_build_tests' not in text:
+              text = text.replace(hook, hook + '    if Options.options.skip_build_tests:\\n        return\\n')
+
+          path.write_text(text, encoding='utf-8')
+          PY
 
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
             git checkout -f "$sha"
-            python scripts/skip_sdk_tests_patch.py
+            python "$RUNNER_TEMP/skip_sdk_tests_patch.py"
 
             python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
