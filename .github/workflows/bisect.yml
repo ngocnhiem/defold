@@ -49,7 +49,7 @@ jobs:
           set -e
           export DYNAMO_HOME="$GITHUB_WORKSPACE/tmp/dynamo_home"
           mkdir -p "$DYNAMO_HOME"
-          export PYTHONPATH="$DYNAMO_HOME/lib/python:$GITHUB_WORKSPACE/build_tools:$DYNAMO_HOME/ext/lib/python"
+          export PYTHONPATH="$GITHUB_WORKSPACE/build_tools:$DYNAMO_HOME/ext/lib/python"
           git fetch --tags --force
           commits=$(git rev-list --reverse 1.9.5..1.9.6)
           if [ -z "$commits" ]; then
@@ -119,7 +119,10 @@ jobs:
             git checkout -f "$sha"
             python "$RUNNER_TEMP/skip_sdk_tests_patch.py"
 
-            python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
+            if ! python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests; then
+              sleep 2
+              python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
+            fi
 
             exe=$(python "$RUNNER_TEMP/find_dmengine.py")
             if [ -z "$exe" ]; then
