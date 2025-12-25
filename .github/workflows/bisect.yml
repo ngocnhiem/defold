@@ -64,6 +64,8 @@ jobs:
           idx=0
           summary="$GITHUB_STEP_SUMMARY"
           echo "Bisect build artifacts" >> "$summary"
+          start_time=$(date +%s)
+          max_seconds=$((340*60))
 
           python scripts/build.py distclean install_sdk install_ext check_sdk --platform=${{ matrix.platform }}
           cat > "$RUNNER_TEMP/skip_sdk_tests_patch.py" <<'PY'
@@ -134,6 +136,12 @@ jobs:
 
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
+            now=$(date +%s)
+            if [ $((now - start_time)) -ge $max_seconds ]; then
+              echo "Time budget reached, stopping at index $idx" >> "$summary"
+              echo "Stopping due to time budget at index $idx"
+              break
+            fi
             if [ "$idx" -lt "$start_idx" ]; then
               echo "Skipping $idx"
               idx=$((idx + 1))
