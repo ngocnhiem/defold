@@ -74,16 +74,18 @@ jobs:
           if 'Options.options.skip_build_tests' in text:
               sys.exit(0)
 
+          text = text.replace('from waflib import Options\\n', 'from waflib import Options\n')
+
           lines = text.splitlines(keepends=True)
 
-          if 'from waflib import Options\\n' not in lines:
+          if 'from waflib import Options\n' not in lines:
               insert_at = 0
               for i, line in enumerate(lines):
                   if line.startswith('import ') or line.startswith('from '):
                       insert_at = i + 1
                   else:
                       break
-              lines.insert(insert_at, 'from waflib import Options\\n')
+              lines.insert(insert_at, 'from waflib import Options\n')
 
           def_index = None
           for i, line in enumerate(lines):
@@ -94,8 +96,8 @@ jobs:
               raise SystemExit('build() not found in engine/sdk/src/test/wscript')
 
           indent = '    '
-          lines.insert(def_index + 1, f'{indent}if Options.options.skip_build_tests:\\n')
-          lines.insert(def_index + 2, f'{indent}{indent}return\\n')
+          lines.insert(def_index + 1, f'{indent}if Options.options.skip_build_tests:\n')
+          lines.insert(def_index + 2, f'{indent}{indent}return\n')
 
           path.write_text(''.join(lines), encoding='utf-8')
           PY
