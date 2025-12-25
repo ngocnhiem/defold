@@ -10,6 +10,7 @@ on:
 
 env:
   BUILD_BRANCH: ${{ github.event.client_payload.branch }}
+  DM_PACKAGES_URL: ${{ secrets.DM_PACKAGES_URL }}
 
 jobs:
   bld-eng-windows:
