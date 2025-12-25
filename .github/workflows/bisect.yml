@@ -12,7 +12,7 @@ on:
 env:
   BUILD_BRANCH: ${{ github.event.client_payload.branch }}
   DM_PACKAGES_URL: ${{ secrets.DM_PACKAGES_URL }}
-  BISect_START_INDEX: '88'
+  BISect_START_INDEX: '1'
 
 jobs:
   bld-eng-windows:
