@@ -101,6 +101,18 @@ jobs:
 
           path.write_text(''.join(lines), encoding='utf-8')
           PY
+          cat > "$RUNNER_TEMP/find_dmengine.py" <<'PY'
+          #!/usr/bin/env python3
+          import os
+          import sys
+
+          for root, _, files in os.walk('.'):
+              if 'dmengine.exe' in files:
+                  path = os.path.join(root, 'dmengine.exe').replace('\\', '/')
+                  print(path)
+                  sys.exit(0)
+          sys.exit(1)
+          PY
 
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
@@ -109,7 +121,7 @@ jobs:
 
             python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
-            exe=$(python -c "import os; p='';\nfor root, _, files in os.walk('.'):\n    if 'dmengine.exe' in files:\n        p=os.path.join(root, 'dmengine.exe');\n        break\nprint(p.replace('\\\\\\\\','/'))")
+            exe=$(python "$RUNNER_TEMP/find_dmengine.py")
             if [ -z "$exe" ]; then
               echo "dmengine.exe not found for $sha" >&2
               exit 1
