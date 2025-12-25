@@ -12,7 +12,7 @@ on:
 env:
   BUILD_BRANCH: ${{ github.event.client_payload.branch }}
   DM_PACKAGES_URL: ${{ secrets.DM_PACKAGES_URL }}
-  BISect_START_INDEX: '87'
+  BISect_START_INDEX: '88'
 
 jobs:
   bld-eng-windows:
@@ -121,7 +121,7 @@ jobs:
           sys.exit(1)
           PY
 
-          retry() {
+          retry_build() {
             local attempts=$1
             shift
             local n=1
@@ -130,7 +130,8 @@ jobs:
               if [ $n -ge $attempts ]; then
                 return 1
               fi
-              echo "Retry $n/$attempts failed, sleeping..."
+              echo "Build failed, running install_ext and retrying ($n/$attempts)..."
+              python scripts/build.py install_ext --platform=${{ matrix.platform }}
               sleep 3
               n=$((n + 1))
             done
@@ -152,7 +153,7 @@ jobs:
             git checkout -f "$sha"
             python "$RUNNER_TEMP/skip_sdk_tests_patch.py"
 
-            retry 3 python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
+            retry_build 3 python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
             exe=$(python "$RUNNER_TEMP/find_dmengine.py")
             if [ -z "$exe" ]; then
