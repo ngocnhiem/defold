@@ -49,6 +49,7 @@ jobs:
           set -e
           export DYNAMO_HOME="$GITHUB_WORKSPACE/tmp/dynamo_home"
           mkdir -p "$DYNAMO_HOME"
+          export PYTHONPATH="$DYNAMO_HOME/lib/python:$GITHUB_WORKSPACE/build_tools:$DYNAMO_HOME/ext/lib/python"
           git fetch --tags --force
           commits=$(git rev-list --reverse 1.9.5..1.9.6)
           if [ -z "$commits" ]; then
