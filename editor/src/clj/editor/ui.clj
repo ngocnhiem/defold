@@ -1472,12 +1472,9 @@
 
 (declare make-menu-items)
 
-(run-now (reload-root-styles!))
 (defn- make-grid-menu-item [^Scene scene id label localization icon ^Collection style-classes children command-contexts keymap evaluation-context]
   (let [hbox (HBox.)
         custom-item (CustomMenuItem. hbox false)
-
-        ;; Create columns with headers
         columns {"property" (VBox.)
                  "design" (VBox.)
                  "script" (VBox.)
@@ -2679,4 +2676,5 @@
   (let [scene (.getScene (editor.ui/main-stage))]
     (run-now (show-test-popup! (.getRoot scene) 1000 300)))
 
+  (run-now (reload-root-styles!))
   :-)
