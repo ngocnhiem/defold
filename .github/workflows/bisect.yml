@@ -130,8 +130,7 @@ jobs:
               if [ $n -ge $attempts ]; then
                 return 1
               fi
-              echo "Build failed, running install_ext and retrying ($n/$attempts)..."
-              python scripts/build.py install_ext --platform=${{ matrix.platform }}
+              echo "Build failed, retrying ($n/$attempts)..."
               sleep 3
               n=$((n + 1))
             done
@@ -153,6 +152,7 @@ jobs:
             git checkout -f "$sha"
             python "$RUNNER_TEMP/skip_sdk_tests_patch.py"
 
+            python scripts/build.py install_ext --platform=${{ matrix.platform }}
             retry_build 3 python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
             exe=$(python "$RUNNER_TEMP/find_dmengine.py")
