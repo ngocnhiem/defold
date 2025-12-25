@@ -11,6 +11,7 @@ on:
 env:
   BUILD_BRANCH: ${{ github.event.client_payload.branch }}
   DM_PACKAGES_URL: ${{ secrets.DM_PACKAGES_URL }}
+  BISect_START_INDEX: ${{ github.event.client_payload.start_index }}
 
 jobs:
   bld-eng-windows:
@@ -56,6 +57,8 @@ jobs:
             echo "No commits found between 1.9.5 and 1.9.6" >&2
             exit 1
           fi
+          start_idx="${BISect_START_INDEX:-0}"
+          echo "Starting from index: $start_idx"
 
           mkdir -p artifacts
           idx=0
@@ -131,6 +134,11 @@ jobs:
 
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
+            if [ "$idx" -lt "$start_idx" ]; then
+              echo "Skipping $idx"
+              idx=$((idx + 1))
+              continue
+            fi
             git checkout -f "$sha"
             python "$RUNNER_TEMP/skip_sdk_tests_patch.py"
 
