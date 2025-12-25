@@ -114,15 +114,27 @@ jobs:
           sys.exit(1)
           PY
 
+          retry() {
+            local attempts=$1
+            shift
+            local n=1
+            while true; do
+              "$@" && return 0
+              if [ $n -ge $attempts ]; then
+                return 1
+              fi
+              echo "Retry $n/$attempts failed, sleeping..."
+              sleep 3
+              n=$((n + 1))
+            done
+          }
+
           for sha in $commits; do
             echo "=== Building $idx $sha ==="
             git checkout -f "$sha"
             python "$RUNNER_TEMP/skip_sdk_tests_patch.py"
 
-            if ! python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests; then
-              sleep 2
-              python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
-            fi
+            retry 3 python scripts/build.py build_engine --platform=${{ matrix.platform }} --skip-tests --skip-docs --skip-builtins -- --skip-build-tests
 
             exe=$(python "$RUNNER_TEMP/find_dmengine.py")
             if [ -z "$exe" ]; then
