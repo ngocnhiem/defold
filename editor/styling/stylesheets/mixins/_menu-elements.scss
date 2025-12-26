@@ -3,6 +3,7 @@
         -fx-border-width: 0;
         -fx-background-radius: 0;
         -fx-background-color: -df-component-dark;
+
         > .label {
             -fx-text-fill: -df-text;
         }
@@ -37,27 +38,14 @@
     }
 
     .grid-menu-button {
-        -fx-border-width: 0;
-        -fx-background-radius: 0;
-        -fx-padding: 5 10 5 10;  // Match menu-item padding
-        -fx-background-color: transparent;
+        -fx-padding: 4 10 4 10;
         -fx-alignment: center-left;
-        -fx-max-width: infinity;  // Take full width
+        -fx-max-width: infinity;
         -fx-text-fill: -df-text;
-
-        > .label {
-            -fx-text-fill: -df-text;
-        }
-
-        > .image-view, > .graphic-container > .image-view {
-            @include colorize-image-view(-df-text);
-        }
 
         &:hover {
             -fx-background-color: -df-component-lighter;
-            > .label {
-                -fx-text-fill: -df-text-selected;
-            }
+            -fx-text-fill: -df-text-selected;
             > .image-view, > .graphic-container > .image-view {
                 @include effect-lighten-blue();
             }
