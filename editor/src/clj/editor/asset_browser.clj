@@ -569,8 +569,7 @@
             (select-resource! asset-browser resource))))))
   (options [workspace selection user-data localization evaluation-context]
     (when (not user-data)
-      [{:label "Testing"
-        :grid-layout true
+      [{:grid-layout true
         :children
         (keep (fn [[_ext resource-type]]
                 (when (workspace/has-template? workspace resource-type evaluation-context)

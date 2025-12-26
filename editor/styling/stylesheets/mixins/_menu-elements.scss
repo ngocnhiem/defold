@@ -43,6 +43,8 @@
         -fx-background-color: transparent;
         -fx-alignment: center-left;
         -fx-max-width: infinity;  // Take full width
+        -fx-text-fill: -df-text;
+
         > .label {
             -fx-text-fill: -df-text;
         }

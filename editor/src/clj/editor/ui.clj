@@ -13,7 +13,12 @@
 ;; specific language governing permissions and limitations under the License.
 
 (ns editor.ui
-  (:require [cljfx.fx.image-view :as fx.image-view]
+  (:require [cljfx.api :as fx]
+            [cljfx.fx.button :as fx.button]
+            [cljfx.fx.custom-menu-item :as fx.custom-menu-item]
+            [cljfx.fx.image-view :as fx.image-view]
+            [cljfx.fx.h-box :as fx.h-box]
+            [cljfx.fx.v-box :as fx.v-box]
             [clojure.java.io :as io]
             [clojure.set :as set]
             [clojure.string :as string]
@@ -1470,51 +1475,46 @@
     (user-data! menu-item ::menu-user-data user-data)
     menu-item))
 
+(defn- make-grid-menu-item [^Scene scene localization ^Collection style-classes children command-contexts  evaluation-context]
+  (let [grouped (group-by (fn [child]
+                            (let [child-style (:style child)
+                                  kind (some-> (disj child-style "resource")
+                                               first
+                                               (clojure.string/split #"-")
+                                               last)]
+                              (or kind "other")))
+                          children)]
+    (fx/instance
+      (fx/create-component
+        {:fx/type fx.custom-menu-item/lifecycle
+         :hide-on-click false
+         :style-class ["no-hover-effect"]
+         :content
+         {:fx/type fx.h-box/lifecycle
+          :spacing 10.0
+          :padding (javafx.geometry.Insets. 5.0)
+          :children (for [col-name ["property" "design" "script" "other"]
+                          :let [col-children (get grouped col-name [])]]
+                      {:fx/type fx.v-box/lifecycle
+                       :spacing 5.0
+                       :children
+                       (for [child col-children
+                             :let [command (:command child)
+                                   user-data (:user-data child)
+                                   child-label (:label child)
+                                   child-icon (:icon child)
+                                   child-style (:style child)]]
+                         (when-let [handler-ctx (handler/active command command-contexts user-data evaluation-context)]
+                           (let [enabled? (handler/enabled? handler-ctx evaluation-context)]
+                             {:fx/type fx.button/lifecycle
+                              :text (localization child-label)
+                              :disable (not enabled?)
+                              :on-action (fn [_] (invoke-handler (contexts scene) command user-data))
+                              :style-class (into ["grid-menu-button"] child-style)
+                              :graphic {:fx/type fx.image-view/lifecycle
+                                        :image (icons/get-image child-icon 18)}})))})}}))))
+
 (declare make-menu-items)
-
-(defn- make-grid-menu-item [^Scene scene id label localization icon ^Collection style-classes children command-contexts keymap evaluation-context]
-  (let [hbox (HBox.)
-        custom-item (CustomMenuItem. hbox false)
-        columns {"property" (VBox.)
-                 "design" (VBox.)
-                 "script" (VBox.)
-                 "other" (VBox.)}]
-
-    (.setSpacing hbox 10.0)
-    (.setPadding hbox (javafx.geometry.Insets. 5.0))
-    (doseq [col (vals columns)]
-      (.setSpacing col 5.0)
-      (-> (.getChildren hbox) (.add col)))
-    (-> (.getStyleClass custom-item) (.add "no-hover-effect"))
-
-    (doseq [child children]
-      (let [command (:command child)
-            user-data (:user-data child)
-            child-label (:label child)
-            child-icon (:icon child)
-            child-style (:style child)]
-        (when-let [handler-ctx (handler/active command command-contexts user-data evaluation-context)]
-          (let [enabled? (handler/enabled? handler-ctx evaluation-context)
-                button (Button.)
-                kind (some-> (disj child-style "resource")
-                             first
-                             (clojure.string/split #"-")
-                             last)
-                col (get columns kind (get columns "other"))]
-            (localization/localize! button localization child-label)
-            (.setDisable button (not enabled?))
-            (.setOnAction button (event-handler event
-                                   (invoke-handler (contexts scene) command user-data)))
-            (when child-icon
-              (.setGraphic button (icons/get-image-view child-icon 18)))
-            (when child-style
-              (doto (.getStyleClass button)
-                (.add "grid-menu-button")
-                (.addAll child-style)))
-            (-> (.getChildren col) (.add button))))))
-
-    (user-data! custom-item ::menu-item-id id)
-    custom-item))
 
 (defn- make-menu-item [^Scene scene item command-contexts keymap localization evaluation-context]
   (let [id (:id item)
@@ -1524,7 +1524,7 @@
         on-open (:on-submenu-open item)]
     (if-let [children (:children item)]
       (if (:grid-layout item)
-        (make-grid-menu-item scene id item-label localization icon style-classes children command-contexts keymap evaluation-context)
+        (make-grid-menu-item scene localization style-classes children command-contexts evaluation-context)
         (make-submenu id
                       item-label
                       localization
