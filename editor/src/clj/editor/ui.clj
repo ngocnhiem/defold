@@ -1475,7 +1475,7 @@
     (user-data! menu-item ::menu-user-data user-data)
     menu-item))
 
-(defn- make-grid-menu-item [^Scene scene localization ^Collection style-classes children command-contexts  evaluation-context]
+(defn- make-grid-menu-item [^Scene scene localization ^Collection style-classes children command-contexts evaluation-context]
   (let [grouped (group-by (fn [child]
                             (let [child-style (:style child)
                                   kind (some-> (disj child-style "resource")
@@ -2591,82 +2591,6 @@
       (.remove node-properties key)
       (.removeListener running-property on-running-changed)
       (timer-stop! timer))))
-
-(defn make-fake-menu-items [n]
-  (mapv (fn [i]
-          {:label (str "Menu Item " i)
-           :icon "icons/32/Icons_01-Folder-closed.png"})
-        (range n)))
-
-(defn make-multi-column-grid [menu-items columns]
-  (let [grid (GridPane.)]
-    (.setHgap grid 10.0)
-    (.setVgap grid 5.0)
-    (.setPadding grid (Insets. 10.0))
-    (.setStyle grid
-               "-fx-background-color: -df-background-light;
-                -fx-border-color: -df-background-dark;
-
-                -fx-border-width: 1;")
-    (doseq [[idx item] (map-indexed vector menu-items)]
-      (let [row   (quot idx columns)
-            col   (rem idx columns)
-            label (Label. ^String (:label item))]
-        (when-let [icon (:icon item)]
-          (.setGraphic label (icons/get-image-view icon 16)))
-        (.setStyle label "-fx-padding: 5; -fx-cursor: hand; -fx-text-fill: -df-text;")
-        (.setOnMouseEntered label
-          (editor.ui/event-handler e
-                                   (.setStyle label "-fx-padding: 5; -fx-cursor: hand; -fx-background-color: -df-background-lighter; -fx-text-fill: -df-text-light")))
-        (.setOnMouseExited label
-          (editor.ui/event-handler e
-            (.setStyle label "-fx-padding: 5; -fx-cursor: hand; -fx-background-color: transparent; -fx-text-fill: -df-text;")))
-        (.add grid label col row)))
-    grid))
-
-(defn show-test-popup! [^javafx.scene.Node anchor-node x y]
-  (let [popup      (Popup.)
-        menu-items (make-fake-menu-items 20)
-        shadow     (javafx.scene.effect.DropShadow.)
-        content    (make-multi-column-grid menu-items 3)]
-    ;; configure popup
-    (.setAutoHide popup true)
-    (.setHideOnEscape popup true)
-
-    (.setRadius shadow 10.0)
-    (.setOffsetX shadow 0.0)
-    (.setOffsetY shadow 2.0)
-    (.setColor shadow (javafx.scene.paint.Color/rgb 0 0 0 0.3))
-    (.setEffect content shadow)
-
-    ;; add content
-    (doto (.getContent popup)
-      (.clear)
-      (.add content))
-
-    (apply-css! content)
-
-    (.setOpacity content 0.0)
-
-    (.show popup
-           (.getWindow (.getScene anchor-node))
-           (double x)
-           (double y))
-
-    (let [fade (javafx.animation.FadeTransition.
-                 (javafx.util.Duration/millis 150)
-                 content)]
-      (.setFromValue fade 0.0)
-      (.setToValue fade 1.0)
-      (.play fade))
-
-    popup))
-
-(defn register-popup-on-context-menu [^Node node]
-  (.addEventHandler node ContextMenuEvent/CONTEXT_MENU_REQUESTED
-    (event-handler event
-      (.consume event)
-      (show-test-popup! node (.getScreenX event) (.getScreenY event)))))
 
 (comment
   (let [asset-browser (dev/view-of-type editor.asset-browser/AssetBrowser)]
