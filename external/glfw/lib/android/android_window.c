@@ -58,6 +58,7 @@ int g_KeyboardActive = 0;
 int g_autoCloseKeyboard = 0;
 // TODO: Hack. PRESS AND RELEASE is sent the same frame. Similar hack on iOS for handling of special keys
 int g_SpecialKeyActive = -1;
+static int g_PendingResize = 0;
 
 JNIEXPORT void JNICALL Java_com_dynamo_android_DefoldActivity_FakeBackspace(JNIEnv* env, jobject obj)
 {
@@ -290,6 +291,17 @@ static void _glfwPlatformSwapBuffersNoLock( void )
             }
         }
     }
+    /*
+     Handle orientation/size changes when signaled by APP_CMD_CONFIG_CHANGED,
+     APP_CMD_WINDOW_RESIZED or APP_CMD_CONTENT_RECT_CHANGED. Some devices
+     report the old EGL size at the time of the event, so we defer the query
+     until a swap occurs.
+     */
+    if (g_PendingResize)
+    {
+        update_width_height_info(&_glfwWin, &_glfwWinAndroid, 1);
+        g_PendingResize = 0;
+    }
 }
 
 void _glfwPlatformSwapBuffers( void )
@@ -405,12 +417,12 @@ void glfwAndroidFlushEvents()
 
         case APP_CMD_WINDOW_RESIZED:
         case APP_CMD_CONFIG_CHANGED:
-            update_width_height_info(&_glfwWin, &_glfwWinAndroid, 1);
+        case APP_CMD_CONTENT_RECT_CHANGED:
+            g_PendingResize = 1;
             computeIconifiedState();
             break;
 
         case APP_CMD_WINDOW_REDRAW_NEEDED:
-        case APP_CMD_CONTENT_RECT_CHANGED:
             break;
 
         case APP_CMD_PAUSE:
