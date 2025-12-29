@@ -404,6 +404,7 @@ void glfwAndroidFlushEvents()
             break;
 
         case APP_CMD_WINDOW_RESIZED:
+        case APP_CMD_CONFIG_CHANGED:
             update_width_height_info(&_glfwWin, &_glfwWinAndroid, 1);
             computeIconifiedState();
             break;
