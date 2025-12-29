@@ -290,14 +290,6 @@ static void _glfwPlatformSwapBuffersNoLock( void )
             }
         }
     }
-
-    /*
-     The preferred way of handling orientation changes is probably
-     in APP_CMD_CONFIG_CHANGED or APP_CMD_WINDOW_RESIZED but occasionally
-     the wrong previous orientation is reported (Tested on Samsung S2 GTI9100 4.1.2).
-     This might very well be a bug..
-     */
-    update_width_height_info(&_glfwWin, &_glfwWinAndroid, 0);
 }
 
 void _glfwPlatformSwapBuffers( void )
@@ -409,6 +401,15 @@ void glfwAndroidFlushEvents()
             if (_glfwWinAndroid.surface == EGL_NO_SURFACE) {
                 CreateGLSurface();
             }
+            break;
+
+        case APP_CMD_WINDOW_RESIZED:
+            update_width_height_info(&_glfwWin, &_glfwWinAndroid, 1);
+            computeIconifiedState();
+            break;
+
+        case APP_CMD_WINDOW_REDRAW_NEEDED:
+        case APP_CMD_CONTENT_RECT_CHANGED:
             break;
 
         case APP_CMD_PAUSE:
