@@ -55,6 +55,29 @@
 (defn- ->path [s]
   (Paths/get s empty-string-array))
 
+(declare asset-group-resource?)
+
+(def ^:private dependencies-root-proj-path "/__editor__dependencies")
+(def ^:private dependencies-root-icon "icons/32/Icons_03-Builtins.png")
+
+(defrecord AssetGroupResource [workspace proj-path name children]
+  resource/Resource
+  (children [_this] children)
+  (ext [_this] "")
+  (resource-type [this] (resource/lookup-resource-type (g/now) workspace this))
+  (source-type [_this] :folder)
+  (exists? [_this] false)
+  (read-only? [_this] true)
+  (path [_this] (subs proj-path 1))
+  (abs-path [_this] nil)
+  (proj-path [_this] proj-path)
+  (resource-name [_this] name)
+  (workspace [_this] workspace)
+  (resource-hash [_this] (hash proj-path))
+  (openable? [_this] true)
+  (editable? [_this] false)
+  (loaded? [_this] true))
+
 ; TreeItem creator
 (defn- list-children
   ^ObservableList [parent]
@@ -189,7 +212,8 @@
     (.setContent cb content)))
 
 (handler/defhandler :edit.copy :asset-browser
-  (enabled? [selection] (not (empty? selection)))
+  (enabled? [selection] (and (not (empty? selection))
+                             (not-any? asset-group-resource? selection)))
   (run [selection]
        (copy (-> selection roots fileify-resources!))))
 
@@ -614,6 +638,31 @@
 (defn- item->path [^TreeItem item]
   (-> item (.getValue) (resource/proj-path)))
 
+(defn- dependency-resource? [resource]
+  (not (resource/file-resource? resource)))
+
+(defn- asset-group-resource? [resource]
+  (instance? AssetGroupResource resource))
+
+(defn- dependencies-label [localization]
+  (if localization
+    (localization (localization/message "dialog.dependencies.title"))
+    "Dependencies"))
+
+(defn- with-dependencies-subtree [resource-tree localization]
+  (let [children (:children resource-tree)
+        dependencies (filter dependency-resource? children)
+        local-resources (remove dependency-resource? children)
+        dependencies-root (when (seq dependencies)
+                            (->AssetGroupResource
+                              (resource/workspace resource-tree)
+                              dependencies-root-proj-path
+                              (dependencies-label localization)
+                              (vec dependencies)))
+        new-children (vec (concat (when dependencies-root [dependencies-root])
+                                  local-resources))]
+    (assoc resource-tree :children new-children)))
+
 (defn- sync-tree! [old-root new-root]
   (let [item-seq (ui/tree-item-seq old-root)
         expanded (zipmap (map item->path item-seq)
@@ -624,9 +673,9 @@
   new-root)
 
 (g/defnk produce-tree-root
-  [^TreeView raw-tree-view resource-tree]
+  [^TreeView raw-tree-view resource-tree localization]
   (let [old-root (.getRoot raw-tree-view)
-        new-root (tree-item resource-tree)]
+        new-root (tree-item (with-dependencies-subtree resource-tree localization))]
     (when new-root
       (sync-tree! old-root new-root)
       (.setExpanded new-root true)
@@ -698,31 +747,37 @@
       :else
       raw-tree-view)))
 
+(defn- asset-browser-icon [resource]
+  (if (instance? AssetGroupResource resource)
+    dependencies-root-icon
+    (workspace/resource-icon resource)))
+
 (defn- drag-detected [^MouseEvent e selection]
-  (let [resources (roots selection)
-        files (fileify-resources! resources)
-        paths (->> resources
-                   (mapv resource/proj-path)
-                   (string/join "\n"))
-        ;; Note: It would seem we should use the TransferMode/COPY_OR_MOVE mode
-        ;; here in order to support making copies of non-readonly files, but
-        ;; that results in every drag operation becoming a copy on macOS due to
-        ;; https://bugs.openjdk.java.net/browse/JDK-8148025
-        mode (if (every? (fn [resource]
-                           (and (resource/editable? resource)
-                                (not (resource/read-only? resource))))
-                         resources)
-               TransferMode/MOVE
-               TransferMode/COPY)
-        db (.startDragAndDrop ^Node (.getSource e) (into-array TransferMode [mode]))
-        content (ClipboardContent.)]
-    (when (= 1 (count resources))
-      (.setDragView db (icons/get-image (workspace/resource-icon (first resources)) 16)
-                    0 16))
-    (.putFiles content files)
-    (.putString content paths)
-    (.setContent db content)
-    (.consume e)))
+  (when-not (some asset-group-resource? selection)
+    (let [resources (roots selection)
+          files (fileify-resources! resources)
+          paths (->> resources
+                     (mapv resource/proj-path)
+                     (string/join "\n"))
+          ;; Note: It would seem we should use the TransferMode/COPY_OR_MOVE mode
+          ;; here in order to support making copies of non-readonly files, but
+          ;; that results in every drag operation becoming a copy on macOS due to
+          ;; https://bugs.openjdk.java.net/browse/JDK-8148025
+          mode (if (every? (fn [resource]
+                             (and (resource/editable? resource)
+                                  (not (resource/read-only? resource))))
+                           resources)
+                 TransferMode/MOVE
+                 TransferMode/COPY)
+          db (.startDragAndDrop ^Node (.getSource e) (into-array TransferMode [mode]))
+          content (ClipboardContent.)]
+      (when (= 1 (count resources))
+        (.setDragView db (icons/get-image (workspace/resource-icon (first resources)) 16)
+                      0 16))
+      (.putFiles content files)
+      (.putString content paths)
+      (.setContent db content)
+      (.consume e))))
 
 (defn- target [^Node node]
   (when node
@@ -853,7 +908,7 @@
                           (if (nil? resource)
                             {}
                             {:text (resource/resource-name resource)
-                             :icon (workspace/resource-icon resource)
+                             :icon (asset-browser-icon resource)
                              :style (resource/style-classes resource)
                              :over-handler over-handler
                              :dropped-handler dropped-handler
@@ -865,6 +920,7 @@
 (g/defnode AssetBrowser
   (property raw-tree-view TreeView)
   (property prefs g/Any)
+  (property localization g/Any)
 
   (input resource-tree FileResource)
   (input active-resource resource/Resource :substitute nil)
@@ -877,7 +933,7 @@
                         (g/tx-nodes-added
                           (g/transact
                             (g/make-nodes graph
-                                          [asset-browser [AssetBrowser :raw-tree-view tree-view :prefs prefs]]
+                                          [asset-browser [AssetBrowser :raw-tree-view tree-view :prefs prefs :localization localization]]
                                           (g/connect workspace :resource-tree asset-browser :resource-tree)))))]
     (setup-asset-browser asset-browser workspace tree-view localization)
     asset-browser))
