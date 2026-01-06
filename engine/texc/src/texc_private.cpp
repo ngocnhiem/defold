@@ -336,6 +336,32 @@ namespace dmTexc
         }
     }
 
+    // NOTE: This is used by the Defold Editor when Generating a Preview Image for atlases
+    // We merge all the required steps to optimize since this blocks the editor UI while this is generated
+    void ConvertPremultiplyAndFlip_ABGR8888ToRGBA8888(const uint8_t* input_data, uint8_t* output_data, const uint32_t width, const uint32_t height)
+    {
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            uint32_t       flipped_y = height - y - 1;
+            const uint8_t* src = input_data + (y * width * 4);
+            uint8_t*       dst = output_data + (flipped_y * width * 4);
+
+#pragma clang loop vectorize(enable) interleave(enable)
+            for (uint32_t x = 0; x < width; ++x)
+            {
+                uint8_t a = *(src++);
+                uint8_t b = *(src++);
+                uint8_t g = *(src++);
+                uint8_t r = *(src++);
+
+                *(dst++) = (uint8_t)((r * a) / 255);
+                *(dst++) = (uint8_t)((g * a) / 255);
+                *(dst++) = (uint8_t)((b * a) / 255);
+                *(dst++) = a;
+            }
+        }
+    }
+
     static inline float fract(float v)
     {
         float f = v - (int32_t)v;
