@@ -37,6 +37,7 @@
             [editor.html-view :as html-view]
             [editor.http-server.prefs :as http-server.prefs]
             [editor.icons :as icons]
+            [editor.keymap :as keymap]
             [editor.localization :as localization]
             [editor.notifications :as notifications]
             [editor.notifications-view :as notifications-view]
@@ -61,9 +62,9 @@
             [util.http-server :as http-server])
   (:import [java.io File]
            [javafx.scene Node Scene]
-           [javafx.scene.control MenuBar SplitPane Tab TabPane TreeView]
+           [javafx.scene.control Button Label MenuBar SplitPane Tab TabPane TitledPane TreeView]
            [javafx.scene.input DragEvent InputEvent KeyCombination KeyEvent MouseEvent]
-           [javafx.scene.layout StackPane]
+           [javafx.scene.layout HBox Priority Region StackPane]
            [javafx.stage Stage]))
 
 (set! *warn-on-reflection* true)
@@ -236,7 +237,27 @@
           port-file (doto (io/file project-path ".internal" "editor.port")
                       (io/make-parents)
                       (spit port-file-content))]
-      (localization/localize! (.lookup root "#assets-pane") localization (localization/message "pane.assets"))
+      (let [^TitledPane assets-pane (.lookup root "#assets-pane")
+            assets-title (Label.)
+            search-button (Button.)
+            spacer (Region.)
+            header (HBox.)
+            shortcut-text (or (keymap/display-text (g/node-value app-view :keymap) :file.open nil)
+                              (if (= :macos (os/os)) "Cmd+P" "Ctrl+P"))
+            tooltip (localization/message "pane.assets.search.tooltip" {"shortcut" shortcut-text})]
+        (ui/add-styles! header ["assets-pane-header"])
+        (ui/add-style! assets-title "assets-pane-title")
+        (ui/add-styles! search-button ["assets-pane-title-button"])
+        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_M_09_search.png" 16)
+                          (ui/add-style! "assets-pane-title-icon"))]
+          (.setGraphic search-button icon-view))
+        (ui/tooltip! search-button tooltip localization)
+        (ui/on-action! search-button (fn [_] (ui/execute-command (ui/contexts (.getScene search-button)) :file.open nil)))
+        (HBox/setHgrow spacer Priority/ALWAYS)
+        (.setText assets-pane "")
+        (.setGraphic assets-pane header)
+        (.addAll (.getChildren header) (ui/node-array [assets-title spacer search-button]))
+        (localization/localize! assets-title localization (localization/message "pane.assets")))
       (localization/localize! (.lookup root "#changed-files-titled-pane") localization (localization/message "pane.changed-files"))
       (localization/localize! (.lookup root "#outline-pane") localization (localization/message "pane.outline"))
       (localization/localize! (.lookup root "#properties-pane") localization (localization/message "pane.properties"))

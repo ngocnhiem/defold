@@ -574,6 +574,7 @@ dialog.bundle.error.bundle-format.required = Не выбран формат сб
 # Editor panes
 
 pane.assets = Ресурсы
+pane.assets.search.tooltip = Поиск ресурсов ({shortcut})
 pane.changed-files = Изменённые Файлы
 pane.outline = Структура
 pane.properties = Свойства

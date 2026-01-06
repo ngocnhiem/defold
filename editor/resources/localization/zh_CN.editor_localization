@@ -565,6 +565,7 @@ dialog.bundle.error.bundle-format.required = 未选择打包格式。
 # Editor panes
 
 pane.assets = 资产
+pane.assets.search.tooltip = 搜索资产 ({shortcut})
 pane.changed-files = 更改的文件
 pane.outline = 大纲
 pane.properties = 属性

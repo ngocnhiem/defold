@@ -565,6 +565,7 @@ dialog.bundle.error.bundle-format.required = Nenhum formato de pacote selecionad
 # Editor panes
 
 pane.assets = Conteúdo
+pane.assets.search.tooltip = Pesquisar Conteúdo ({shortcut})
 pane.changed-files = Arquivos Modificados
 pane.outline = Estrutura
 pane.properties = Propriedades
