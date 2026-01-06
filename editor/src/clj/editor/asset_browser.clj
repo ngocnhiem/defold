@@ -645,11 +645,6 @@
 (defn- asset-group-resource? [resource]
   (instance? AssetGroupResource resource))
 
-(defn- dependencies-label [localization]
-  (if localization
-    (localization (localization/message "dialog.dependencies.title"))
-    "Dependencies"))
-
 (defn- with-dependencies-subtree [resource-tree localization]
   (let [children (:children resource-tree)
         dependencies (filter dependency-resource? children)
@@ -658,7 +653,7 @@
                             (->AssetGroupResource
                               (resource/workspace resource-tree)
                               dependencies-root-proj-path
-                              (dependencies-label localization)
+                              (localization (localization/message "dialog.dependencies.title"))
                               (vec dependencies)))
         project-root (assoc resource-tree :children (vec local-resources))
         top-children (cond-> []
