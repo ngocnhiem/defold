@@ -59,6 +59,7 @@
 
 (def ^:private dependencies-root-proj-path "/__editor__dependencies")
 (def ^:private dependencies-root-icon "icons/32/Icons_03-Builtins.png")
+(def ^:private asset-root-proj-path "/__editor__asset-root")
 
 (defrecord AssetGroupResource [workspace proj-path name children]
   resource/Resource
@@ -659,9 +660,15 @@
                               dependencies-root-proj-path
                               (dependencies-label localization)
                               (vec dependencies)))
-        new-children (vec (concat (when dependencies-root [dependencies-root])
-                                  local-resources))]
-    (assoc resource-tree :children new-children)))
+        project-root (assoc resource-tree :children (vec local-resources))
+        top-children (cond-> []
+                             dependencies-root (conj dependencies-root)
+                             true (conj project-root))]
+    (->AssetGroupResource
+      (resource/workspace resource-tree)
+      asset-root-proj-path
+      ""
+      (vec top-children))))
 
 (defn- sync-tree! [old-root new-root]
   (let [item-seq (ui/tree-item-seq old-root)
@@ -679,6 +686,12 @@
     (when new-root
       (sync-tree! old-root new-root)
       (.setExpanded new-root true)
+      (let [children (.getChildren new-root)
+            child-count (.size children)]
+        (dotimes [idx child-count]
+          (.setExpanded ^TreeItem (.get children idx) false))
+        (when (pos? child-count)
+          (.setExpanded ^TreeItem (.get children (dec child-count)) true)))
       new-root)))
 
 (defn- auto-expand [items selected-paths]
@@ -886,6 +899,7 @@
         exited-handler (ui/event-handler e (drag-exited e))
         original-dispatcher (.getEventDispatcher tree-view)]
     (doto tree-view
+      (.setShowRoot false)
       (ui/customize-tree-view! {:double-click-expand? true})
       (ui/bind-double-click! :file.open-selected)
       (ui/bind-key-commands! {"Enter" :file.open-selected})
