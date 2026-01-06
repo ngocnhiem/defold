@@ -239,24 +239,40 @@
                       (spit port-file-content))]
       (let [^TitledPane assets-pane (.lookup root "#assets-pane")
             assets-title (Label.)
+            new-file-button (Button.)
             search-button (Button.)
             spacer (Region.)
             header (HBox.)
-            shortcut-text (or (keymap/display-text (g/node-value app-view :keymap) :file.open nil)
-                              (if (= :macos (os/os)) "Cmd+P" "Ctrl+P"))
-            tooltip (localization/message "pane.assets.search.tooltip" {"shortcut" shortcut-text})]
+            open-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.open nil)
+            new-file-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.new nil)
+            open-tooltip (if (some? open-shortcut-text)
+                           (localization/message "pane.assets.search.tooltip" {"shortcut" open-shortcut-text})
+                           (localization/message "pane.assets.search.tooltip.no-shortcut"))
+            new-file-tooltip (if (some? new-file-shortcut-text)
+                               (localization/message "pane.assets.new-file.tooltip" {"shortcut" new-file-shortcut-text})
+                               (localization/message "pane.assets.new-file.tooltip.no-shortcut"))]
         (ui/add-styles! header ["assets-pane-header"])
         (ui/add-style! assets-title "assets-pane-title")
+        (ui/add-styles! new-file-button ["assets-pane-title-button"])
+        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_M_07_plus.png" 16)
+                          (ui/add-style! "assets-pane-title-icon"))]
+          (.setGraphic new-file-button icon-view))
+        (ui/tooltip! new-file-button new-file-tooltip localization)
+        (ui/on-action! new-file-button
+                       (fn [_]
+                         (let [scene (.getScene new-file-button)
+                               command-contexts (ui/contexts scene)]
+                           (ui/invoke-handler command-contexts :file.new))))
         (ui/add-styles! search-button ["assets-pane-title-button"])
         (let [icon-view (doto (icons/get-image-view "icons/32/Icons_M_09_search.png" 16)
                           (ui/add-style! "assets-pane-title-icon"))]
           (.setGraphic search-button icon-view))
-        (ui/tooltip! search-button tooltip localization)
+        (ui/tooltip! search-button open-tooltip localization)
         (ui/on-action! search-button (fn [_] (ui/execute-command (ui/contexts (.getScene search-button)) :file.open nil)))
         (HBox/setHgrow spacer Priority/ALWAYS)
         (.setText assets-pane "")
         (.setGraphic assets-pane header)
-        (.addAll (.getChildren header) (ui/node-array [assets-title spacer search-button]))
+        (.addAll (.getChildren header) (ui/node-array [assets-title spacer new-file-button search-button]))
         (localization/localize! assets-title localization (localization/message "pane.assets")))
       (localization/localize! (.lookup root "#changed-files-titled-pane") localization (localization/message "pane.changed-files"))
       (localization/localize! (.lookup root "#outline-pane") localization (localization/message "pane.outline"))
