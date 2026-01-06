@@ -246,8 +246,8 @@
             open-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.open nil)
             new-file-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.new nil)
             open-tooltip (if (some? open-shortcut-text)
-                           (localization/message "pane.assets.search.tooltip" {"shortcut" open-shortcut-text})
-                           (localization/message "pane.assets.search.tooltip.no-shortcut"))
+                           (localization/message "pane.assets.open-file.tooltip" {"shortcut" open-shortcut-text})
+                           (localization/message "pane.assets.open-file.tooltip.no-shortcut"))
             new-file-tooltip (if (some? new-file-shortcut-text)
                                (localization/message "pane.assets.new-file.tooltip" {"shortcut" new-file-shortcut-text})
                                (localization/message "pane.assets.new-file.tooltip.no-shortcut"))]
@@ -264,7 +264,7 @@
                                command-contexts (ui/contexts scene)]
                            (ui/invoke-handler command-contexts :file.new))))
         (ui/add-styles! search-button ["assets-pane-title-button"])
-        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_M_09_search.png" 16)
+        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_64-Open-File.png" 16)
                           (ui/add-style! "assets-pane-title-icon"))]
           (.setGraphic search-button icon-view))
         (ui/tooltip! search-button open-tooltip localization)

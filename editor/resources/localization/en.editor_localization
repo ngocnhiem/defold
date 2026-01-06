@@ -574,8 +574,8 @@ dialog.bundle.error.bundle-format.required = No bundle format selected.
 # Editor panes
 
 pane.assets = Assets
-pane.assets.search.tooltip = Search Assets ({shortcut})
-pane.assets.search.tooltip.no-shortcut = Search Assets
+pane.assets.open-file.tooltip = Open File ({shortcut})
+pane.assets.open-file.tooltip.no-shortcut = Open File
 pane.assets.new-file.tooltip = New File ({shortcut})
 pane.assets.new-file.tooltip.no-shortcut = New File
 pane.changed-files = Changed Files
