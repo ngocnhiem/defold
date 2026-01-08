@@ -179,6 +179,7 @@ namespace dmEngine
         bool                                        m_ThrottleEnabled;
 
         RecordData                                  m_RecordData;
+        uint8_t                                     m_GuiSafeAreaMode;
     };
 
 
