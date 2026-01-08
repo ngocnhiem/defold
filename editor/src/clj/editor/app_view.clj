@@ -365,25 +365,36 @@
 (defn- selection->single-resource [selection]
   (handler/adapt-single selection resource/Resource))
 
+(defn- allow-active-resource?
+  [selection selection-context]
+  (not (and (= :asset-browser selection-context)
+            (not= 1 (count selection)))))
+
 (defn- context-openable-resource
   ([app-view selection]
-   (when-let [resource (or (selection->single-resource selection)
-                           (g/node-value app-view :active-resource))]
-     (when (resource/openable-resource? resource)
-       resource)))
+   (context-openable-resource app-view selection nil nil))
   ([app-view selection evaluation-context]
-   (when-let [resource (or (selection->single-resource selection)
-                           (g/node-value app-view :active-resource evaluation-context))]
+   (context-openable-resource app-view selection nil evaluation-context))
+  ([app-view selection selection-context evaluation-context]
+   (let [resource (or (selection->single-resource selection)
+                      (when (allow-active-resource? selection selection-context)
+                        (if evaluation-context
+                          (g/node-value app-view :active-resource evaluation-context)
+                          (g/node-value app-view :active-resource))))]
      (when (resource/openable-resource? resource)
        resource))))
 
 (defn- context-resource
   ([app-view selection]
-   (or (selection->single-resource selection)
-       (g/node-value app-view :active-resource)))
+   (context-resource app-view selection nil nil))
   ([app-view selection evaluation-context]
+   (context-resource app-view selection nil evaluation-context))
+  ([app-view selection selection-context evaluation-context]
    (or (selection->single-resource selection)
-       (g/node-value app-view :active-resource evaluation-context))))
+       (when (allow-active-resource? selection selection-context)
+         (if evaluation-context
+           (g/node-value app-view :active-resource evaluation-context)
+           (g/node-value app-view :active-resource))))))
 
 (defn- disconnect-sources [target-node target-label]
   (for [[source-node source-label] (g/sources-of target-node target-label)]
@@ -2363,8 +2374,10 @@
       (open-resource app-view prefs localization workspace project resource))))
 
 (handler/defhandler :file.open-as :global
-  (active? [app-view selection evaluation-context] (context-openable-resource app-view selection evaluation-context))
-  (enabled? [app-view selection evaluation-context] (resource/exists? (context-openable-resource app-view selection evaluation-context)))
+  (active? [app-view selection selection-context evaluation-context]
+           (context-openable-resource app-view selection selection-context evaluation-context))
+  (enabled? [app-view selection selection-context evaluation-context]
+            (resource/exists? (context-openable-resource app-view selection selection-context evaluation-context)))
   (run [selection app-view prefs localization workspace project user-data]
        (let [resource (context-openable-resource app-view selection)]
          (open-resource app-view prefs localization workspace project resource user-data)))
@@ -2593,10 +2606,10 @@
   (run [app-view changes-view workspace] (async-reload! app-view changes-view workspace [])))
 
 (handler/defhandler :file.show-in-desktop :global
-  (active? [app-view selection evaluation-context]
-           (context-resource app-view selection evaluation-context))
-  (enabled? [app-view selection evaluation-context]
-            (when-let [r (context-resource app-view selection evaluation-context)]
+  (active? [app-view selection selection-context evaluation-context]
+           (context-resource app-view selection selection-context evaluation-context))
+  (enabled? [app-view selection selection-context evaluation-context]
+            (when-let [r (context-resource app-view selection selection-context evaluation-context)]
               (and (resource/abs-path r)
                    (or (resource/exists? r)
                        (empty? (resource/path r))))))
@@ -2605,10 +2618,10 @@
                                 (ui/open-file (fs/to-folder f))))))
 
 (handler/defhandler :file.show-references :global
-  (active? [app-view selection evaluation-context]
-           (context-openable-resource app-view selection evaluation-context))
-  (enabled? [app-view selection evaluation-context]
-            (when-let [r (context-openable-resource app-view selection evaluation-context)]
+  (active? [app-view selection selection-context evaluation-context]
+           (context-openable-resource app-view selection selection-context evaluation-context))
+  (enabled? [app-view selection selection-context evaluation-context]
+            (when-let [r (context-openable-resource app-view selection selection-context evaluation-context)]
               (and (resource/abs-path r)
                    (resource/exists? r))))
   (run [selection app-view prefs localization workspace project]
@@ -2623,10 +2636,10 @@
                  (e/filter resource/openable-resource? selected-resources))))))
 
 (handler/defhandler :file.show-dependencies :global
-  (active? [app-view selection evaluation-context]
-           (context-openable-resource app-view selection evaluation-context))
-  (enabled? [app-view selection evaluation-context]
-            (when-let [r (context-openable-resource app-view selection evaluation-context)]
+  (active? [app-view selection selection-context evaluation-context]
+           (context-openable-resource app-view selection selection-context evaluation-context))
+  (enabled? [app-view selection selection-context evaluation-context]
+            (when-let [r (context-openable-resource app-view selection selection-context evaluation-context)]
               (and (resource/abs-path r)
                    (resource/exists? r)
                    (resource/loaded? r))))
@@ -2765,10 +2778,10 @@
                    (.putString s)))))
 
 (handler/defhandler :edit.copy-resource-path :global
-  (active? [app-view selection evaluation-context]
-           (context-resource app-view selection evaluation-context))
-  (enabled? [app-view selection evaluation-context]
-            (when-let [r (context-resource app-view selection evaluation-context)]
+  (active? [app-view selection selection-context evaluation-context]
+           (context-resource app-view selection selection-context evaluation-context))
+  (enabled? [app-view selection selection-context evaluation-context]
+            (when-let [r (context-resource app-view selection selection-context evaluation-context)]
               (and (resource/proj-path r)
                    (resource/exists? r))))
   (run [selection app-view]
@@ -2776,10 +2789,10 @@
       (put-on-clipboard! (resource/proj-path r)))))
 
 (handler/defhandler :edit.copy-absolute-path :global
-  (active? [app-view selection evaluation-context]
-           (context-resource app-view selection evaluation-context))
-  (enabled? [app-view selection evaluation-context]
-            (when-let [r (context-resource app-view selection evaluation-context)]
+  (active? [app-view selection selection-context evaluation-context]
+           (context-resource app-view selection selection-context evaluation-context))
+  (enabled? [app-view selection selection-context evaluation-context]
+            (when-let [r (context-resource app-view selection selection-context evaluation-context)]
               (and (resource/abs-path r)
                    (resource/exists? r))))
   (run [selection app-view]
@@ -2787,11 +2800,11 @@
       (put-on-clipboard! (resource/abs-path r)))))
 
 (handler/defhandler :edit.copy-require-path :global
-  (active? [app-view selection evaluation-context]
-           (when-let [r (context-resource app-view selection evaluation-context)]
+  (active? [app-view selection selection-context evaluation-context]
+           (when-let [r (context-resource app-view selection selection-context evaluation-context)]
              (= "lua" (resource/type-ext r))))
-  (enabled? [app-view selection evaluation-context]
-            (when-let [r (context-resource app-view selection evaluation-context)]
+  (enabled? [app-view selection selection-context evaluation-context]
+            (when-let [r (context-resource app-view selection selection-context evaluation-context)]
               (and (resource/proj-path r)
                    (resource/exists? r))))
   (run [selection app-view]
