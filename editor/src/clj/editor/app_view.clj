@@ -368,7 +368,7 @@
 (defn- allow-active-resource?
   [selection selection-context]
   (not (and (= :asset-browser selection-context)
-            (not= 1 (count selection)))))
+            (nil? (selection->single-resource selection)))))
 
 (defn- context-openable-resource
   ([app-view selection]

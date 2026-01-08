@@ -14,7 +14,6 @@
 
 (ns editor.asset-browser
   (:require [clojure.java.io :as io]
-            [clojure.set :as set]
             [clojure.string :as string]
             [dynamo.graph :as g]
             [editor.app-view :as app-view]
@@ -39,9 +38,7 @@
            [editor.resource FileResource]
            [java.io File]
            [java.nio.file Path Paths]
-           [java.util Collection]
            [javafx.collections FXCollections ObservableList]
-           [javafx.css Styleable]
            [javafx.scene.input Clipboard ClipboardContent]
            [javafx.scene.input DragEvent MouseEvent TransferMode]
            [javafx.scene Node]
@@ -65,23 +62,9 @@
 (defn- asset-group? [node]
   (instance? AssetGroup node))
 
-(defn- make-style-applier []
-  (let [applied-style-classes (volatile! #{})]
-    (fn [^Styleable styleable style-classes]
-      (when-not (set? style-classes)
-        (throw (IllegalArgumentException. "style-classes must be a set")))
-      (let [current @applied-style-classes
-            removed ^Collection (set/difference current style-classes)
-            added ^Collection (set/difference style-classes current)]
-        (doto (.getStyleClass styleable)
-          (.removeAll removed)
-          (.addAll added)))
-      (vreset! applied-style-classes style-classes))))
-
 (defn- make-asset-tree-cell
   [localization over-handler dropped-handler entered-handler exited-handler]
-  (let [apply-style-classes! (make-style-applier)
-        icon-view (doto (ImageView.)
+  (let [icon-view (doto (ImageView.)
                     (.setFitWidth 16.0)
                     (.setFitHeight 16.0))]
     (proxy [TreeCell] []
@@ -91,7 +74,8 @@
           (ui/update-tree-cell-style! this)
           (if (or empty (nil? item))
             (do
-              (apply-style-classes! this #{})
+              (ui/remove-styles! this (ui/user-data this ::asset-browser-style-classes))
+              (ui/user-data! this ::asset-browser-style-classes #{})
               (localization/unlocalize! this localization)
               (proxy-super setText nil)
               (proxy-super setGraphic nil)
@@ -112,7 +96,9 @@
                   style (if asset-group?
                           #{"resource" "resource-folder"}
                           (resource/style-classes item))]
-              (apply-style-classes! this style)
+              (ui/remove-styles! this (ui/user-data this ::asset-browser-style-classes))
+              (ui/add-styles! this style)
+              (ui/user-data! this ::asset-browser-style-classes style)
               (if asset-group?
                 (if text
                   (localization/localize! this localization text)
