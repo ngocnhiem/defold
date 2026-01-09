@@ -565,10 +565,6 @@ dialog.bundle.error.bundle-format.required = 未选择打包格式。
 # Editor panes
 
 pane.assets = 资产
-pane.assets.open-file.tooltip = 打开文件 ({shortcut})
-pane.assets.open-file.tooltip.no-shortcut = 打开文件
-pane.assets.new-file.tooltip = 新建文件 ({shortcut})
-pane.assets.new-file.tooltip.no-shortcut = 新建文件
 pane.changed-files = 更改的文件
 pane.outline = 大纲
 pane.properties = 属性
@@ -742,6 +738,8 @@ menu.view = 视图
 menu.help = 帮助
 
 # Commands
+
+command.tooltip = {command}{shortcut, select, none {} other { ({shortcut})}}
 
 command.file.new = 新建…
 command.file.new.option.any-file = 文件

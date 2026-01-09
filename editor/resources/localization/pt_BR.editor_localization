@@ -565,10 +565,6 @@ dialog.bundle.error.bundle-format.required = Nenhum formato de pacote selecionad
 # Editor panes
 
 pane.assets = Conteúdo
-pane.assets.open-file.tooltip = Abrir Arquivo ({shortcut})
-pane.assets.open-file.tooltip.no-shortcut = Abrir Arquivo
-pane.assets.new-file.tooltip = Novo Arquivo ({shortcut})
-pane.assets.new-file.tooltip.no-shortcut = Novo Arquivo
 pane.changed-files = Arquivos Modificados
 pane.outline = Estrutura
 pane.properties = Propriedades
@@ -742,6 +738,8 @@ menu.view = Visualizar
 menu.help = Ajuda
 
 # Commands
+
+command.tooltip = {command}{shortcut, select, none {} other { ({shortcut})}}
 
 command.file.new = Novo…
 command.file.new.option.any-file = Arquivo

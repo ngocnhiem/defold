@@ -243,14 +243,14 @@
             search-button (Button.)
             spacer (Region.)
             header (HBox.)
-            open-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.open nil)
-            new-file-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.new nil)
-            open-tooltip (if (some? open-shortcut-text)
-                           (localization/message "pane.assets.open-file.tooltip" {"shortcut" open-shortcut-text})
-                           (localization/message "pane.assets.open-file.tooltip.no-shortcut"))
-            new-file-tooltip (if (some? new-file-shortcut-text)
-                               (localization/message "pane.assets.new-file.tooltip" {"shortcut" new-file-shortcut-text})
-                               (localization/message "pane.assets.new-file.tooltip.no-shortcut"))]
+            open-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.open "none")
+            new-file-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.new "none")
+            open-tooltip (localization/message "command.tooltip"
+                                               {"command" (localization/message "command.file.open")
+                                                "shortcut" open-shortcut-text})
+            new-file-tooltip (localization/message "command.tooltip"
+                                                  {"command" (localization/message "command.file.new")
+                                                   "shortcut" new-file-shortcut-text})]
         (ui/add-styles! header ["assets-pane-header"])
         (ui/add-style! assets-title "assets-pane-title")
         (ui/add-styles! new-file-button ["assets-pane-title-button"])
