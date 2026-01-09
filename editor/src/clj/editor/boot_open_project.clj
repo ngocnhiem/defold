@@ -296,11 +296,10 @@
       (let [^TitledPane assets-pane (.lookup root "#assets-pane")
             header-desc {:fx/type assets-pane-header
                          :localization localization
-                         :keymap (g/node-value app-view :keymap)}]
+                         :keymap (g/node-value app-view :keymap)}
+            component (fx/create-component header-desc)]
         (.setText assets-pane "")
-        (fxui/advance-ui-user-data-component! assets-pane ::assets-pane-header header-desc)
-        (when-let [component (ui/user-data assets-pane ::assets-pane-header)]
-          (.setGraphic assets-pane (fx/instance component))))
+        (.setGraphic assets-pane (fx/instance component)))
       (localization/localize! (.lookup root "#changed-files-titled-pane") localization (localization/message "pane.changed-files"))
       (localization/localize! (.lookup root "#outline-pane") localization (localization/message "pane.outline"))
       (localization/localize! (.lookup root "#properties-pane") localization (localization/message "pane.properties"))
