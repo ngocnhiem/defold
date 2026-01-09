@@ -294,7 +294,7 @@
 
 (defn delete? [resources]
   (and (disk-availability/available?)
-       (seq resources)
+       (not (coll/empty? resources))
        (every? deletable-resource? resources)))
 
 (handler/defhandler :edit.cut :asset-browser
@@ -317,7 +317,7 @@
               ext (FilenameUtils/getExtension path)
               new-path (str (FilenameUtils/getFullPath path)
                             (name-fn original-basename (FilenameUtils/getBaseName path))
-                            (when (seq ext) (str "." ext)))]
+                            (when (not (coll/empty? ext)) (str "." ext)))]
           (recur (File. new-path)))
         f))))
 
@@ -353,7 +353,7 @@
   (let [files-by-existence (group-by (fn [[src ^File dest]] (.exists dest)) src-dest-pairs)
         conflicts (get files-by-existence true)
         non-conflicts (get files-by-existence false [])]
-    (if (seq conflicts)
+    (if (not (coll/empty? conflicts))
       (when-let [strategy (dialogs/make-resolve-file-conflicts-dialog conflicts localization)]
         (into non-conflicts (resolve-conflicts strategy conflicts)))
       non-conflicts)))
@@ -366,7 +366,9 @@
   (resource-watch/reserved-proj-path? project-path (resource/file->proj-path project-path f)))
 
 (defn- illegal-copy-move-pairs [^File project-path prospect-pairs]
-  (seq (filter (comp (partial reserved-project-file project-path) second) prospect-pairs)))
+  (let [illegal (filter (comp (partial reserved-project-file project-path) second) prospect-pairs)]
+    (when (not (coll/empty? illegal))
+      illegal)))
 
 (defn allow-resource-move?
   "Returns true if it is legal to move all the supplied source files
@@ -485,7 +487,7 @@
                                ext (resource/ext resource)]
                            (pair resource-file
                                  (io/file parent (cond-> new-base-name
-                                                         (and (not dir) (seq ext))
+                                                        (and (not dir) (not (coll/empty? ext)))
                                                          (str "." ext))))))
                        resources)]
     (when-not (some #(resource-watch/reserved-proj-path?
@@ -498,7 +500,7 @@
             (group-by #(fs/same-file? (key %) (val %)) rename-pairs)]
         (when-let [resolved-conflicts (resolve-any-conflicts localization possible-conflicts)]
           (let [resolved-rename-pairs (into resolved-conflicts case-changes)]
-            (when (seq resolved-rename-pairs)
+            (when (not (coll/empty? resolved-rename-pairs))
               (workspace/resource-sync!
                 workspace
                 (into []
@@ -709,7 +711,7 @@
   (let [children (:children resource-tree)
         dependencies (filter dependency-resource? children)
         local-resources (remove dependency-resource? children)
-        dependencies-group (when (seq dependencies)
+        dependencies-group (when (not (coll/empty? dependencies))
                              (->AssetGroup "dialog.dependencies.title"
                                            "icons/32/Icons_03-Builtins.png"
                                            (vec dependencies)))
@@ -736,7 +738,7 @@
     (when-let [^TreeItem project-root-item (some (fn [^TreeItem item]
                                                    (when (resource/resource? (.getValue item))
                                                      item))
-                                                 (seq children))]
+                                                 (not (coll/empty? children)))]
       (.setExpanded project-root-item true))))
 
 (g/defnk produce-tree-root
@@ -765,7 +767,7 @@
   (let [root (.getRoot tree-view)
         selection-model (.getSelectionModel tree-view)]
     (.clearSelection selection-model)
-    (when (and root (seq selected-paths))
+    (when (and root (not (coll/empty? selected-paths)))
       (let [selected-paths (set selected-paths)]
         (auto-expand (.getChildren root) selected-paths)
         (let [count (.getExpandedItemCount tree-view)
@@ -819,7 +821,7 @@
 
 
 (defn- drag-detected [^MouseEvent e selection]
-  (when (seq selection)
+  (when (not (coll/empty? selection))
     (let [resources (roots selection)
           files (fileify-resources! resources)
           paths (->> resources
@@ -904,7 +906,7 @@
 
 (defn drop-files! [workspace dragged-pairs move?]
   (let [project-directory (workspace/project-directory workspace)]
-    (when (seq dragged-pairs)
+    (when (not (coll/empty? dragged-pairs))
       (let [moved (if move?
                     (let [{move-pairs false copy-pairs true} (group-by (partial fixed-move-source project-directory) dragged-pairs)]
                       (drag-copy-files copy-pairs)
@@ -929,7 +931,7 @@
                          (vec)))
             workspace (when (resource/resource? resource)
                         (resource/workspace resource))]
-        (when (seq pairs)
+        (when (not (coll/empty? pairs))
           (let [moved (drop-files! workspace pairs move?)]
             (select-files! workspace tree-view (mapv second pairs))
             (workspace/resource-sync! workspace moved))))))
