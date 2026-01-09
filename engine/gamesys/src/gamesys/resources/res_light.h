@@ -17,12 +17,18 @@
 
 #include <dmsdk/resource/resource.h>
 
+#include <gamesys/gamesys_ddf.h>
+
 namespace dmGameSystem
 {
+    struct LightResource
+    {
+        dmGameSystemDDF::LightDesc* m_DDF;
+    };
+
+    dmResource::Result ResLightPreload(const dmResource::ResourcePreloadParams* params);
     dmResource::Result ResLightCreate(const dmResource::ResourceCreateParams* params);
-
     dmResource::Result ResLightDestroy(const dmResource::ResourceDestroyParams* params);
-
     dmResource::Result ResLightRecreate(const dmResource::ResourceRecreateParams* params);
 }
 

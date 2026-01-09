@@ -20,37 +20,57 @@ namespace dmGameSystem
 {
     dmResource::Result ResLightCreate(const dmResource::ResourceCreateParams* params)
     {
-        dmGameSystemDDF::LightDesc* light_desc;
-        dmDDF::Result e  = dmDDF::LoadMessage(params->m_Buffer, params->m_BufferSize, &light_desc);
-        if ( e != dmDDF::RESULT_OK )
-        {
-            return dmResource::RESULT_FORMAT_ERROR;
-        }
-        dmGameSystemDDF::LightDesc** light_resource = new dmGameSystemDDF::LightDesc*;
-        *light_resource = light_desc;
+        LightResource* light_resource = new LightResource();
+        memset(light_resource, 0, sizeof(LightResource));
+
+        light_resource->m_DDF = (dmGameSystemDDF::LightDesc*) params->m_PreloadData;
+
         dmResource::SetResource(params->m_Resource, light_resource);
+
         return dmResource::RESULT_OK;
+    }
+
+    static inline void ReleaseResources(dmResource::HFactory factory, LightResource* resource)
+    {
+        if (resource->m_DDF != 0x0)
+            dmDDF::FreeMessage(resource->m_DDF);
     }
 
     dmResource::Result ResLightDestroy(const dmResource::ResourceDestroyParams* params)
     {
-        dmGameSystemDDF::LightDesc** light_resource = (dmGameSystemDDF::LightDesc**) dmResource::GetResource(params->m_Resource);
-        dmDDF::FreeMessage(*light_resource);
+        LightResource* light_resource = (LightResource*) dmResource::GetResource(params->m_Resource);
+        ReleaseResources(params->m_Factory, light_resource);
         delete light_resource;
+        return dmResource::RESULT_OK;
+    }
+
+    dmResource::Result ResLightPreload(const dmResource::ResourcePreloadParams* params)
+    {
+        dmGameSystemDDF::LightDesc *ddf;
+        dmDDF::Result e = dmDDF::LoadMessage(params->m_Buffer, params->m_BufferSize, &ddf);
+        if ( e != dmDDF::RESULT_OK )
+        {
+            return dmResource::RESULT_FORMAT_ERROR;
+        }
+
+        *params->m_PreloadData = ddf;
         return dmResource::RESULT_OK;
     }
 
     dmResource::Result ResLightRecreate(const dmResource::ResourceRecreateParams* params)
     {
-        dmGameSystemDDF::LightDesc* light_desc;
-        dmDDF::Result e  = dmDDF::LoadMessage(params->m_Buffer, params->m_BufferSize, &light_desc);
+        LightResource tmp_light_resource = {};
+
+        dmDDF::Result e = dmDDF::LoadMessage(params->m_Buffer, params->m_BufferSize, &tmp_light_resource.m_DDF);
         if ( e != dmDDF::RESULT_OK )
         {
             return dmResource::RESULT_FORMAT_ERROR;
         }
-        dmGameSystemDDF::LightDesc** light_resource = (dmGameSystemDDF::LightDesc**) dmResource::GetResource(params->m_Resource);
-        dmDDF::FreeMessage(*light_resource);
-        *light_resource = light_desc;
+
+        LightResource* light_resource = (LightResource*) dmResource::GetResource(params->m_Resource);
+        ReleaseResources(params->m_Factory, light_resource);
+        *light_resource = tmp_light_resource;
+
         return dmResource::RESULT_OK;
     }
 }

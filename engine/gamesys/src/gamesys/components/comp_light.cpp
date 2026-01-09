@@ -15,6 +15,8 @@
 #include "comp_light.h"
 #include "resources/res_light.h"
 #include <gamesys/gamesys_ddf.h>
+#include <gamesys/gamesys.h>
+#include <gamesys/gamesys_private.h>
 
 #include <dlib/array.h>
 #include <dlib/log.h>
@@ -29,28 +31,29 @@ namespace dmGameSystem
 {
     using namespace dmVMath;
 
-    struct DM_ALIGNED(16) Light
+    struct LightComponent
     {
-        dmGameObject::HInstance      m_Instance;
-        dmGameSystemDDF::LightDesc** m_LightResource;
-        uint16_t                     m_AddedToUpdate : 1;
-        uint16_t                     m_Padding : 15;
-        Light(dmGameObject::HInstance instance, dmGameSystemDDF::LightDesc** light_resource)
-        {
-            m_Instance = instance;
-            m_LightResource = light_resource;
-            m_AddedToUpdate = 1;
-        }
+        dmGameObject::HInstance m_Instance;
+        LightResource*          m_LightResource;
+        uint16_t                m_AddedToUpdate : 1;
+        uint16_t                m_Padding : 15;
     };
 
     struct LightWorld
     {
-        dmArray<Light*> DM_ALIGNED(16) m_Lights;
+        dmArray<LightComponent*> m_Components;
     };
 
     dmGameObject::CreateResult CompLightNewWorld(const dmGameObject::ComponentNewWorldParams& params)
     {
-        *params.m_World = new LightWorld;
+        LightContext* light_context = (LightContext*) params.m_Context;
+        LightWorld* world = new LightWorld;
+
+        uint32_t comp_count = dmMath::Min(params.m_MaxComponentInstances, light_context->m_MaxLightCount);
+        world->m_Components.SetCapacity(comp_count);
+
+        *params.m_World = world;
+
         return dmGameObject::CREATE_RESULT_OK;
     }
 
@@ -63,16 +66,23 @@ namespace dmGameSystem
 
     dmGameObject::CreateResult CompLightCreate(const dmGameObject::ComponentCreateParams& params)
     {
-        dmGameSystemDDF::LightDesc** light_resource = (dmGameSystemDDF::LightDesc**) params.m_Resource;
-        LightWorld* light_world = (LightWorld*) params.m_World;
-        if (light_world->m_Lights.Full())
-        {
-            light_world->m_Lights.OffsetCapacity(16);
-        }
-        Light* light = new Light(params.m_Instance, light_resource);
-        light_world->m_Lights.Push(light);
+        LightWorld* world = (LightWorld*) params.m_World;
 
+        if (world->m_Components.Full())
+        {
+            ShowFullBufferError("Light", "light.max_count", world->m_Components.Capacity());
+            return dmGameObject::CREATE_RESULT_UNKNOWN_ERROR;
+        }
+
+        LightComponent* light  = new LightComponent;
+        memset(light, 0, sizeof(LightComponent));
+
+        light->m_Instance      = params.m_Instance;
+        light->m_LightResource = (LightResource*) params.m_Resource;
+
+        world->m_Components.Push(light);
         *params.m_UserData = (uintptr_t) light;
+
         return dmGameObject::CREATE_RESULT_OK;
     }
 
@@ -83,13 +93,14 @@ namespace dmGameSystem
 
     dmGameObject::CreateResult CompLightDestroy(const dmGameObject::ComponentDestroyParams& params)
     {
-        Light* light = (Light*) *params.m_UserData;
+        LightComponent* light = (LightComponent*) *params.m_UserData;
         LightWorld* light_world = (LightWorld*) params.m_World;
-        for (uint32_t i = 0; i < light_world->m_Lights.Size(); ++i)
+
+        for (uint32_t i = 0; i < light_world->m_Components.Size(); ++i)
         {
-            if (light_world->m_Lights[i] == light)
+            if (light_world->m_Components[i] == light)
             {
-                light_world->m_Lights.EraseSwap(i);
+                light_world->m_Components.EraseSwap(i);
                 delete light;
                 return dmGameObject::CREATE_RESULT_OK;
             }
@@ -99,7 +110,7 @@ namespace dmGameSystem
     }
 
     dmGameObject::CreateResult CompLightAddToUpdate(const dmGameObject::ComponentAddToUpdateParams& params) {
-        Light* light = (Light*) *params.m_UserData;
+        LightComponent* light = (LightComponent*) *params.m_UserData;
         light->m_AddedToUpdate = true;
         return dmGameObject::CREATE_RESULT_OK;
     }
@@ -107,19 +118,18 @@ namespace dmGameSystem
     dmGameObject::UpdateResult CompLightLateUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
     {
         LightWorld* light_world = (LightWorld*) params.m_World;
-        const uint32_t data_size = sizeof(dmGameSystemDDF::SetLight) + 9;
-        char DM_ALIGNED(16) buf[data_size];
-        dmGameSystemDDF::SetLight* set_light = (dmGameSystemDDF::SetLight*)buf;
+        uint32_t num_components = light_world->m_Components.Size();
 
-        dmMessage::URL receiver;
-        dmMessage::ResetURL(&receiver);
-        if (dmMessage::RESULT_OK != dmMessage::GetSocket(dmRender::RENDER_SOCKET_NAME, &receiver.m_Socket))
+        for (uint32_t i = 0; i < num_components; ++i)
         {
-            dmLogError("Could not find the socket '%s'.", dmRender::RENDER_SOCKET_NAME);
-            return dmGameObject::UPDATE_RESULT_UNKNOWN_ERROR;
+            LightComponent* light = light_world->m_Components[i];
+            if (!light->m_AddedToUpdate)
+            {
+                continue;
+            }
         }
 
-        dmhash_t message_id = dmGameSystemDDF::SetLight::m_DDFDescriptor->m_NameHash;
+        /*
         for (uint32_t i = 0; i < light_world->m_Lights.Size(); ++i)
         {
             Light* light = light_world->m_Lights[i];
@@ -142,14 +152,8 @@ namespace dmGameSystem
             set_light->m_Light.m_DropOff = light_desc->m_DropOff;
             set_light->m_Position = position;
             set_light->m_Rotation = rotation;
-
-            dmMessage::Result result = dmMessage::Post(0x0, &receiver, message_id, 0, (uintptr_t)dmGameSystemDDF::SetLight::m_DDFDescriptor, buf, data_size, 0);
-            if (result != dmMessage::RESULT_OK)
-            {
-                dmLogError("Could not send 'set_light' message to '%s'.", dmRender::RENDER_SOCKET_NAME);
-                return dmGameObject::UPDATE_RESULT_UNKNOWN_ERROR;
-            }
         }
+        */
 
         return dmGameObject::UPDATE_RESULT_OK;
     }

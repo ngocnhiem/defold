@@ -348,6 +348,8 @@ namespace dmEngine
         m_SpriteContext.m_MaxSpriteCount = 0;
         m_ModelContext.m_RenderContext = 0x0;
         m_ModelContext.m_MaxModelCount = 0;
+        m_LightContext.m_RenderContext = 0x0;
+        m_LightContext.m_MaxLightCount = 0;
         m_AccumFrameTime = 0;
         m_PreviousFrameTime = dmTime::GetMonotonicTime();
         m_HttpCache = 0;
@@ -1401,6 +1403,9 @@ namespace dmEngine
         engine->m_ModelContext.m_MaxBoneMatrixTextureWidth  = (uint16_t) dmConfigFile::GetInt(engine->m_Config, "model.max_bone_matrix_texture_width", 1024);
         engine->m_ModelContext.m_MaxBoneMatrixTextureHeight = (uint16_t) dmConfigFile::GetInt(engine->m_Config, "model.max_bone_matrix_texture_height", 1024);
 
+        engine->m_LightContext.m_RenderContext = engine->m_RenderContext;
+        engine->m_LightContext.m_MaxLightCount = dmConfigFile::GetInt(engine->m_Config, "light.max_count", 32);
+
         engine->m_LabelContext.m_RenderContext      = engine->m_RenderContext;
         engine->m_LabelContext.m_MaxLabelCount      = dmConfigFile::GetInt(engine->m_Config, "label.max_count", 64);
         engine->m_LabelContext.m_Subpixels          = dmConfigFile::GetInt(engine->m_Config, "label.subpixels", 1);
@@ -1455,9 +1460,10 @@ namespace dmEngine
         if (fact_result != dmResource::RESULT_OK)
             goto bail;
 
-        go_result = dmGameSystem::RegisterComponentTypes(engine->m_Factory, engine->m_Register, engine->m_RenderContext, physics_context, &engine->m_ParticleFXContext, &engine->m_SpriteContext,
-                                                                                                &engine->m_CollectionProxyContext, &engine->m_FactoryContext, &engine->m_CollectionFactoryContext,
-                                                                                                &engine->m_ModelContext, &engine->m_LabelContext, &engine->m_TilemapContext);
+        go_result = dmGameSystem::RegisterComponentTypes(engine->m_Factory, engine->m_Register,
+            engine->m_RenderContext, physics_context, &engine->m_ParticleFXContext, &engine->m_SpriteContext,
+            &engine->m_CollectionProxyContext, &engine->m_FactoryContext, &engine->m_CollectionFactoryContext,
+            &engine->m_ModelContext, &engine->m_LabelContext, &engine->m_TilemapContext, &engine->m_LightContext);
         if (go_result != dmGameObject::RESULT_OK)
             goto bail;
 

@@ -250,6 +250,17 @@ namespace dmGameSystem
         uint16_t                    m_MaxBoneMatrixTextureHeight;
     };
 
+    struct LightContext
+    {
+        LightContext()
+        {
+            memset(this, 0, sizeof(*this));
+        }
+        dmRender::HRenderContext    m_RenderContext;
+        dmResource::HFactory        m_Factory;
+        uint32_t                    m_MaxLightCount;
+    };
+
     struct ScriptLibContext
     {
         ScriptLibContext();
@@ -318,7 +329,8 @@ namespace dmGameSystem
                                                   CollectionFactoryContext *collectionfactory_context,
                                                   ModelContext* model_context,
                                                   LabelContext* label_context,
-                                                  TilemapContext* tilemap_context);
+                                                  TilemapContext* tilemap_context,
+                                                  LightContext* light_context);
 
     void OnWindowFocus(bool focus);
     void OnWindowIconify(bool iconfiy);
