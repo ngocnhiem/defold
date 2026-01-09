@@ -254,7 +254,7 @@
         (ui/add-styles! header ["assets-pane-header"])
         (ui/add-style! assets-title "assets-pane-title")
         (ui/add-styles! new-file-button ["assets-pane-title-button"])
-        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_M_07_plus.png" 16)
+        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_A_2-Plus-Thin.png" 16)
                           (ui/add-style! "assets-pane-title-icon"))]
           (.setGraphic new-file-button icon-view))
         (ui/tooltip! new-file-button new-file-tooltip localization)
@@ -264,7 +264,7 @@
                                command-contexts (ui/contexts scene)]
                            (ui/invoke-handler command-contexts :file.new))))
         (ui/add-styles! search-button ["assets-pane-title-button"])
-        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_64-Open-File.png" 16)
+        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_A_1-Open-File.png" 16)
                           (ui/add-style! "assets-pane-title-icon"))]
           (.setGraphic search-button icon-view))
         (ui/tooltip! search-button open-tooltip localization)
