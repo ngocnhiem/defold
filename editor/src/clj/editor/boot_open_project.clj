@@ -13,7 +13,12 @@
 ;; specific language governing permissions and limitations under the License.
 
 (ns editor.boot-open-project
-  (:require [clojure.java.io :as io]
+  (:require [cljfx.api :as fx]
+            [cljfx.fx.button :as fx.button]
+            [cljfx.fx.h-box :as fx.h-box]
+            [cljfx.fx.region :as fx.region]
+            [cljfx.fx.tooltip :as fx.tooltip]
+            [clojure.java.io :as io]
             [dynamo.graph :as g]
             [editor.app-view :as app-view]
             [editor.asset-browser :as asset-browser]
@@ -32,6 +37,7 @@
             [editor.disk :as disk]
             [editor.editor-extensions :as extensions]
             [editor.engine-profiler :as engine-profiler]
+            [editor.fxui :as fxui]
             [editor.git :as git]
             [editor.hot-reload :as hot-reload]
             [editor.html-view :as html-view]
@@ -59,12 +65,14 @@
             [editor.workspace :as workspace]
             [service.log :as log]
             [service.smoke-log :as slog]
+            [util.coll :as coll]
             [util.http-server :as http-server])
   (:import [java.io File]
+           [javafx.event ActionEvent]
            [javafx.scene Node Scene]
-           [javafx.scene.control Button Label MenuBar SplitPane Tab TabPane TitledPane TreeView]
+           [javafx.scene.control MenuBar SplitPane Tab TabPane TitledPane TreeView]
            [javafx.scene.input DragEvent InputEvent KeyCombination KeyEvent MouseEvent]
-           [javafx.scene.layout HBox Priority Region StackPane]
+           [javafx.scene.layout StackPane]
            [javafx.stage Stage]))
 
 (set! *warn-on-reflection* true)
@@ -74,6 +82,54 @@
 (def ^:dynamic *view-graph*)
 
 (def the-root (atom nil))
+
+(defn- command-tooltip
+  [localization-state keymap command-key message-key]
+  (localization-state
+    (localization/message
+      "command.tooltip"
+      {"command" (localization/message message-key)
+       "shortcut" (keymap/display-text keymap command-key "none")})))
+
+(fxui/defc assets-pane-header
+  {:compose [{:fx/type fx/ext-watcher
+              :ref (:localization props)
+              :key :localization-state}]}
+  [{:keys [localization localization-state keymap]}]
+  {:fx/type fx.h-box/lifecycle
+   :style-class "assets-pane-header"
+   :alignment :center-left
+   :spacing 6.0
+   :children [{:fx/type fxui/ext-localize
+               :localization localization
+               :message (localization/message "pane.assets")
+               :desc {:fx/type fxui/label
+                      :style-class "assets-pane-title"
+                      :wrap-text false}}
+              {:fx/type fx.region/lifecycle
+               :h-box/hgrow :always}
+              {:fx/type fx.button/lifecycle
+               :style-class "assets-pane-title-button"
+               :focus-traversable false
+               :graphic (ui/image-icon {:path "icons/32/Icons_A_2-Plus-Thin.png"
+                                        :size 16.0
+                                        :style-class "assets-pane-title-icon"})
+               :tooltip {:fx/type fx.tooltip/lifecycle
+                         :text (command-tooltip localization-state keymap :file.new "command.file.new")}
+               :on-action (fn [^ActionEvent event]
+                            (let [scene (.getScene ^Node (.getSource event))]
+                              (ui/invoke-handler (ui/contexts scene) :file.new)))}
+              {:fx/type fx.button/lifecycle
+               :style-class "assets-pane-title-button"
+               :focus-traversable false
+               :graphic (ui/image-icon {:path "icons/32/Icons_A_1-Open-File.png"
+                                        :size 16.0
+                                        :style-class "assets-pane-title-icon"})
+               :tooltip {:fx/type fx.tooltip/lifecycle
+                         :text (command-tooltip localization-state keymap :file.open "command.file.open")}
+               :on-action (fn [^ActionEvent event]
+                            (let [scene (.getScene ^Node (.getSource event))]
+                              (ui/invoke-handler (ui/contexts scene) :file.open)))}]})
 
 (defn initialize-systems! [prefs]
   (code-view/initialize! prefs))
@@ -238,42 +294,13 @@
                       (io/make-parents)
                       (spit port-file-content))]
       (let [^TitledPane assets-pane (.lookup root "#assets-pane")
-            assets-title (Label.)
-            new-file-button (Button.)
-            search-button (Button.)
-            spacer (Region.)
-            header (HBox.)
-            open-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.open "none")
-            new-file-shortcut-text (keymap/display-text (g/node-value app-view :keymap) :file.new "none")
-            open-tooltip (localization/message "command.tooltip"
-                                               {"command" (localization/message "command.file.open")
-                                                "shortcut" open-shortcut-text})
-            new-file-tooltip (localization/message "command.tooltip"
-                                                  {"command" (localization/message "command.file.new")
-                                                   "shortcut" new-file-shortcut-text})]
-        (ui/add-styles! header ["assets-pane-header"])
-        (ui/add-style! assets-title "assets-pane-title")
-        (ui/add-styles! new-file-button ["assets-pane-title-button"])
-        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_A_2-Plus-Thin.png" 16)
-                          (ui/add-style! "assets-pane-title-icon"))]
-          (.setGraphic new-file-button icon-view))
-        (ui/tooltip! new-file-button new-file-tooltip localization)
-        (ui/on-action! new-file-button
-                       (fn [_]
-                         (let [scene (.getScene new-file-button)
-                               command-contexts (ui/contexts scene)]
-                           (ui/invoke-handler command-contexts :file.new))))
-        (ui/add-styles! search-button ["assets-pane-title-button"])
-        (let [icon-view (doto (icons/get-image-view "icons/32/Icons_A_1-Open-File.png" 16)
-                          (ui/add-style! "assets-pane-title-icon"))]
-          (.setGraphic search-button icon-view))
-        (ui/tooltip! search-button open-tooltip localization)
-        (ui/on-action! search-button (fn [_] (ui/execute-command (ui/contexts (.getScene search-button)) :file.open nil)))
-        (HBox/setHgrow spacer Priority/ALWAYS)
+            header-desc {:fx/type assets-pane-header
+                         :localization localization
+                         :keymap (g/node-value app-view :keymap)}]
         (.setText assets-pane "")
-        (.setGraphic assets-pane header)
-        (.addAll (.getChildren header) (ui/node-array [assets-title spacer new-file-button search-button]))
-        (localization/localize! assets-title localization (localization/message "pane.assets")))
+        (fxui/advance-ui-user-data-component! assets-pane ::assets-pane-header header-desc)
+        (when-let [component (ui/user-data assets-pane ::assets-pane-header)]
+          (.setGraphic assets-pane (fx/instance component))))
       (localization/localize! (.lookup root "#changed-files-titled-pane") localization (localization/message "pane.changed-files"))
       (localization/localize! (.lookup root "#outline-pane") localization (localization/message "pane.outline"))
       (localization/localize! (.lookup root "#properties-pane") localization (localization/message "pane.properties"))
@@ -330,7 +357,7 @@
       (ui/on-closing! stage (fn [_]
                               (let [dirty-save-data (project/dirty-save-data project)
                                     auto-save-on-quit? (prefs/get prefs [:workflow :save-on-app-focus-lost])]
-                                (if (and auto-save-on-quit? (seq dirty-save-data))
+                                (if (and auto-save-on-quit? (not (coll/empty? dirty-save-data)))
                                   (do
                                     ;; Auto-save is enabled: save changes and then close without prompting.
                                     (let [render-reload-progress! (app-view/make-render-task-progress :resource-sync)

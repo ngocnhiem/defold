@@ -47,8 +47,11 @@
     -fx-border-color: transparent;
     -fx-background-insets: 0;
     -fx-border-insets: 0;
-    -fx-background-radius: 3px;
-    -fx-border-radius: 3px;
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+    -fx-effect: null;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
     &:hover,
     &:armed {
         -fx-border-color: transparent;
