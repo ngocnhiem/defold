@@ -85,8 +85,8 @@ def shutdown(sht):
         if os.path.exists(server_log_path):
             os.unlink(server_log_path)
 
-        env_prefix = f'TEST_HTTP_SERVER_LOG={server_log_path} '
-        os.system(env_prefix + bash_prefix + './scripts/start_http_server.sh')
+        os.environ['TEST_HTTP_SERVER_LOG'] = server_log_path
+        os.system(bash_prefix + './scripts/start_http_server.sh')
         atexit.register(os.system, bash_prefix + './scripts/stop_http_server.sh')
 
         start = time.time()
