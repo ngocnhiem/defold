@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -260,7 +260,7 @@
                             :tile-source-attributes tile-source-attributes
                             :anim-data   (get anim-data id)
                             :start-tile  start-tile}
-                :passes    [pass/outline pass/overlay]}
+                :passes    [pass/outline pass/overlay pass/selection]}
    :updatable  updatable})
 
 (g/defnode TileAnimationNode
@@ -1007,14 +1007,8 @@
 (defn- make-tile->collision-group-node-map
   [{:keys [convex-hulls] :as tile-set} collision-group-nodes-tx-data]
   {:pre [(map? tile-set)]} ; Tile$TileSet in map format.
-  (let [collision-group->node-id
-        (into {}
-              (keep (fn [tx]
-                      (let [{:keys [_node-id id]} (:node tx)]
-                        (when id
-                          (pair id _node-id)))))
-              collision-group-nodes-tx-data)]
-
+  (let [collision-group-nodes (g/tx-data-added-nodes collision-group-nodes-tx-data)
+        collision-group->node-id (coll/pair-map-by :id g/node-id collision-group-nodes)]
     (into {}
           (map-indexed (fn [idx {:keys [collision-group]}]
                          (pair idx (collision-group->node-id collision-group))))

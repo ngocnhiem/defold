@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -27,6 +27,7 @@
             [editor.math :as math]
             [editor.os :as os]
             [editor.progress :as progress]
+            [editor.system :as system]
             [internal.util :as util]
             [service.log :as log]
             [service.smoke-log :as slog]
@@ -45,7 +46,8 @@
            [java.util Collection]
            [javafx.animation AnimationTimer KeyFrame KeyValue Timeline]
            [javafx.application Platform]
-           [javafx.beans InvalidationListener]
+           [javafx.beans InvalidationListener Observable]
+           [javafx.beans.binding Bindings]
            [javafx.beans.property ReadOnlyProperty]
            [javafx.beans.value ChangeListener ObservableValue]
            [javafx.collections FXCollections ListChangeListener ObservableList]
@@ -526,6 +528,12 @@
 
 (defn title! [^Stage window t]
   (.setTitle window t))
+
+(defn make-title
+  ([] (if-some [version (system/defold-version)]
+        (str "Defold " version)
+        "Defold"))
+  ([project-title] (str project-title " - " (make-title))))
 
 (defn tooltip! [^Control ctrl tip localization]
   (.setTooltip ctrl (when tip (localization/localize! (Tooltip.) localization tip))))
@@ -2495,3 +2503,45 @@
 
 (defn force-scene-layout! [^Scene scene]
   (force-layout! (.getRoot scene)))
+
+(defn node-timer!
+  "Installs a timer on a node
+
+  The supplied function will only be invoked if the node is a part of the
+  rendered tree (i.e. it and its parents are visible, the node is on a showing
+  window)
+
+  Args:
+    node    target Node
+    fps     timer fps
+    name    timer name, a string
+    f       0-arg function"
+  [^Node node fps name f]
+  (let [timer (->timer fps name (fn [_ _ _] (f)))
+        tree-visible-property (NodeHelper/treeVisibleProperty node)
+        tree-showing-property (-> node
+                                  (.sceneProperty)
+                                  (.flatMap Scene/.windowProperty)
+                                  (.flatMap Window/.showingProperty)
+                                  (.orElse false))
+        running-property (Bindings/createBooleanBinding
+                           #(and (.getValue tree-showing-property)
+                                 (.get tree-visible-property))
+                           (into-array Observable [tree-showing-property tree-visible-property]))
+        ^ChangeListener on-running-changed (fn [_ _ tree-visible]
+                                             (if tree-visible
+                                               (do (f) (timer-start! timer))
+                                               (timer-stop! timer)))
+        key (Object.)
+        node-properties (.getProperties node)]
+    (when (.get running-property)
+      (.changed on-running-changed running-property false true))
+    (.addListener running-property on-running-changed)
+    ;; Bindings are weakly-referenced, so we need to preserve a ref to it on a
+    ;; node so that the listener doesn't disappear suddenly in cases where we
+    ;; don't keep the dispose-fn referenced
+    (.put node-properties key running-property)
+    (fn dispose-node-timer! []
+      (.remove node-properties key)
+      (.removeListener running-property on-running-changed)
+      (timer-stop! timer))))

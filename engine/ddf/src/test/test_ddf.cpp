@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -42,6 +42,16 @@
 #include "test/test_ddf_proto.h"
 #include "test/test_ddf_proto.pb.h"
 
+
+// NOTE:
+// Ideally we should be able to import the ddf_struct.proto from test_ddf_proto.proto,
+// but doing so will generate build and linker errors due to including both our generated
+// header files as well as the protoc generated header files.
+//
+// To circumvent this, we include the ddfc generated header inside a different module called "test_ddf_struct.cpp"
+// and perform the ddf struct tests inside that module instead of here.
+#include "ddf/ddf_struct.pb.h"
+
 enum MyEnum
 {
     MYENUM,
@@ -54,7 +64,7 @@ static bool DDFStringSaveFunction(void* context, const void* buffer, uint32_t bu
     return true;
 }
 
-static dmDDF::Result DDFSaveToString(const void* message, const dmDDF::Descriptor* desc, std::string& str)
+dmDDF::Result DDFSaveToString(const void* message, const dmDDF::Descriptor* desc, std::string& str)
 {
     return SaveMessage(message, desc, &str, DDFStringSaveFunction);
 }
@@ -825,6 +835,7 @@ TEST(OneOfTests, Repeated)
 
     std::string save_str;
     e = DDFSaveToString(message, &DUMMY::TestDDF_OneOfMessageRepeat_DESCRIPTOR, save_str);
+    dmDDF::FreeMessage(message);
     ASSERT_EQ(dmDDF::RESULT_OK, e);
 
     // Note: We can't compare the serialized input with the saved string..
@@ -840,7 +851,7 @@ TEST(OneOfTests, Repeated)
     ASSERT_EQ(256,          saved_message->m_NestedOneOf[0].m_Values.m_ValB);
     ASSERT_EQ(large_number, saved_message->m_NestedOneOf[1].m_Values.m_ValA);
 
-    dmDDF::FreeMessage(message);
+    dmDDF::FreeMessage(saved_message);
 }
 
 TEST(OneOfTests, Save)
@@ -864,9 +875,11 @@ TEST(OneOfTests, Save)
 
     std::string save_str;
     e = DDFSaveToString(message, &DUMMY::TestDDF_OneOfMessageSave_DESCRIPTOR, save_str);
+
     ASSERT_EQ(dmDDF::RESULT_OK, e);
     ASSERT_EQ(msg_str, save_str);
     ASSERT_STREQ(oneof_string_val.c_str(), message->m_OneOfFieldString.m_StringVal);
+
 
     DUMMY::TestDDF::OneOfMessageSave* saved_message;
     e = dmDDF::LoadMessage((void*) save_str.c_str(), save_str.size(), &DUMMY::TestDDF_OneOfMessageSave_DESCRIPTOR, (void**)&saved_message);
@@ -876,6 +889,7 @@ TEST(OneOfTests, Save)
     ASSERT_EQ((int)message->m_OneOfField.m_BoolVal, (int)saved_message->m_OneOfField.m_BoolVal);
     ASSERT_STREQ(message->m_OneOfFieldString.m_StringVal, saved_message->m_OneOfFieldString.m_StringVal);
 
+    dmDDF::FreeMessage(saved_message);
     dmDDF::FreeMessage(message);
 }
 
@@ -929,6 +943,7 @@ TEST(OneOfTests, Recursive)
     DUMMY::TestDDF::TestMessageRecursive* message;
     dmDDF::Result e = dmDDF::LoadMessage((void*) msg_buf, msg_buf_size, &DUMMY::TestDDF_TestMessageRecursive_DESCRIPTOR, (void**)&message);
     ASSERT_EQ(dmDDF::RESULT_OK, e);
+    dmDDF::FreeMessage(message);
 }
 
 TEST(Recursive, TreeSimple)
@@ -1152,6 +1167,7 @@ TEST(JSON, Simple)
 
     std::string save_str;
     e = DDFSaveToString(message, &DUMMY::TestDDF_JSONObject_DESCRIPTOR, save_str);
+    dmDDF::FreeMessage(message);
     ASSERT_EQ(dmDDF::RESULT_OK, e);
 
     DUMMY::TestDDF::JSONObject* saved_message;
@@ -1170,7 +1186,7 @@ TEST(JSON, Simple)
     ASSERT_EQ(13, saved_message->m_Pairs[1].m_Value.m_Value.m_ObjectValue->m_Pairs[0].m_Value.m_Value.m_ArrayValue->m_Items[1].m_Value.m_NumberValue);
     ASSERT_EQ(27, saved_message->m_Pairs[1].m_Value.m_Value.m_ObjectValue->m_Pairs[0].m_Value.m_Value.m_ArrayValue->m_Items[2].m_Value.m_NumberValue);
 
-    dmDDF::FreeMessage(message);
+    dmDDF::FreeMessage(saved_message);
 }
 
 void ValidateComplexJSONMessage(DUMMY::TestDDF::JSONObject* message)
@@ -1376,15 +1392,197 @@ TEST(JSON, Complex)
     e = DDFSaveToString(message, &DUMMY::TestDDF_JSONObject_DESCRIPTOR, save_str);
     ASSERT_EQ(dmDDF::RESULT_OK, e);
 
+    dmDDF::FreeMessage(message);
+
     DUMMY::TestDDF::JSONObject* saved_message;
     e = dmDDF::LoadMessage((void*) save_str.c_str(), save_str.size(), &DUMMY::TestDDF_JSONObject_DESCRIPTOR, (void**)&saved_message);
     ASSERT_EQ(dmDDF::RESULT_OK, e);
 
     ValidateComplexJSONMessage(saved_message);
 
-    dmDDF::FreeMessage(message);
+    dmDDF::FreeMessage(saved_message);
 }
 
+TEST(Struct, Simple)
+{
+    dmStructDDF::Struct struct_desc;
+
+    // String value
+    {
+        dmStructDDF::Value value;
+        value.set_string_value("world");
+
+        (*struct_desc.mutable_fields())["hello"] = value;
+    }
+
+    // Number value
+    {
+        dmStructDDF::Value v;
+        v.set_number_value(1337.0f);
+
+        (*struct_desc.mutable_fields())["number"] = v;
+    }
+
+    // Boolean value
+    {
+        dmStructDDF::Value v;
+        v.set_bool_value(true);
+
+        (*struct_desc.mutable_fields())["boolean"] = v;
+    }
+
+    // Null value
+    {
+        dmStructDDF::Value v;
+        v.set_null_value(dmStructDDF::NULL_VALUE);
+
+        (*struct_desc.mutable_fields())["nothing"] = v;
+    }
+
+    std::string msg_str   = struct_desc.SerializeAsString();
+    const char* msg_buf   = msg_str.c_str();
+    uint32_t msg_buf_size = msg_str.size();
+
+    // Implementation must live in test_ddf_struct.cpp
+    TestStructSimple(msg_buf, msg_buf_size);
+}
+
+// { "user": { "id": 123, "name": "Mr.X" } }
+TEST(Struct, Nested)
+{
+    dmStructDDF::Struct struct_desc;
+
+    dmStructDDF::Value user_value;
+    dmStructDDF::Struct* user_struct = user_value.mutable_struct_value();
+
+    {
+        dmStructDDF::Value id;
+        id.set_number_value(123);
+        (*user_struct->mutable_fields())["id"] = id;
+    }
+
+    {
+        dmStructDDF::Value name;
+        name.set_string_value("Mr.X");
+        (*user_struct->mutable_fields())["name"] = name;
+    }
+
+    (*struct_desc.mutable_fields())["user"] = user_value;
+
+    std::string msg_str   = struct_desc.SerializeAsString();
+    const char* msg_buf   = msg_str.c_str();
+    uint32_t msg_buf_size = msg_str.size();
+
+    // Implementation must live in test_ddf_struct.cpp
+    TestStructNested(msg_buf, msg_buf_size);
+}
+
+// { "values": [1, "two", false] }
+TEST(Struct, List)
+{
+    dmStructDDF::Struct struct_desc;
+
+    dmStructDDF::Value list_value;
+    dmStructDDF::ListValue* list = list_value.mutable_list_value();
+
+    // 1
+    {
+        dmStructDDF::Value v;
+        v.set_number_value(1);
+        *list->add_values() = v;
+    }
+
+    // "two"
+    {
+        dmStructDDF::Value v;
+        v.set_string_value("two");
+        *list->add_values() = v;
+    }
+
+    // false
+    {
+        dmStructDDF::Value v;
+        v.set_bool_value(false);
+        *list->add_values() = v;
+    }
+
+    (*struct_desc.mutable_fields())["values"] = list_value;
+
+    std::string msg_str   = struct_desc.SerializeAsString();
+    const char* msg_buf   = msg_str.c_str();
+    uint32_t msg_buf_size = msg_str.size();
+
+    // Implementation must live in test_ddf_struct.cpp
+    TestStructList(msg_buf, msg_buf_size);
+}
+
+TEST(Struct, JSON)
+{
+    /*
+    {
+      "name": "engine",
+      "version": 3,
+      "features": ["rendering", "physics"],
+      "config": {
+        "debug": true
+      }
+    }
+    */
+
+    dmStructDDF::Struct struct_desc;
+
+    // name
+    {
+        dmStructDDF::Value v;
+        v.set_string_value("engine");
+        (*struct_desc.mutable_fields())["name"] = v;
+    }
+
+    // version
+    {
+        dmStructDDF::Value v;
+        v.set_number_value(3);
+        (*struct_desc.mutable_fields())["version"] = v;
+    }
+
+    // features (array)
+    {
+        dmStructDDF::Value v;
+        auto* list = v.mutable_list_value();
+
+        {
+            dmStructDDF::Value e;
+            e.set_string_value("rendering");
+            *list->add_values() = e;
+        }
+        {
+            dmStructDDF::Value e;
+            e.set_string_value("physics");
+            *list->add_values() = e;
+        }
+
+        (*struct_desc.mutable_fields())["features"] = v;
+    }
+
+    // config (nested object)
+    {
+        dmStructDDF::Value v;
+        auto* cfg = v.mutable_struct_value();
+
+        dmStructDDF::Value dbg;
+        dbg.set_bool_value(true);
+        (*cfg->mutable_fields())["debug"] = dbg;
+
+        (*struct_desc.mutable_fields())["config"] = v;
+    }
+
+    std::string msg_str   = struct_desc.SerializeAsString();
+    const char* msg_buf   = msg_str.c_str();
+    uint32_t msg_buf_size = msg_str.size();
+
+    // Implementation must live in test_ddf_struct.cpp
+    TestStructJSON(msg_buf, msg_buf_size);
+}
 
 int main(int argc, char **argv)
 {

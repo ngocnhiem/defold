@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -547,7 +547,7 @@
             (when (resource/loaded? resource)
               (app-view/open-resource app-view prefs localization workspace project resource))
             (select-resource! asset-browser resource))))))
-  (options [workspace selection user-data]
+  (options [workspace selection user-data evaluation-context]
     (when (not user-data)
       (localization/annotate-as-sorted
         localization/natural-sort-by-label
@@ -556,13 +556,13 @@
                 :command :file.new
                 :user-data {:any-file true}}]
               (keep (fn [[_ext resource-type]]
-                      (when (workspace/has-template? workspace resource-type)
+                      (when (workspace/has-template? workspace resource-type evaluation-context)
                         {:label (or (:label resource-type) (:ext resource-type))
                          :icon (:icon resource-type)
                          :style (resource/type-style-classes resource-type)
                          :command :file.new
                          :user-data {:resource-type resource-type}})))
-              (workspace/get-resource-type-map workspace))))))
+              (resource/resource-types-by-type-ext (:basis evaluation-context) workspace :editable))))))
 
 (defn- resolve-sub-folder [^File base-folder ^String new-folder-name]
   (.toFile (.resolve (.toPath base-folder) new-folder-name)))
@@ -704,17 +704,7 @@
         paths (->> resources
                    (mapv resource/proj-path)
                    (string/join "\n"))
-        ;; Note: It would seem we should use the TransferMode/COPY_OR_MOVE mode
-        ;; here in order to support making copies of non-readonly files, but
-        ;; that results in every drag operation becoming a copy on macOS due to
-        ;; https://bugs.openjdk.java.net/browse/JDK-8148025
-        mode (if (every? (fn [resource]
-                           (and (resource/editable? resource)
-                                (not (resource/read-only? resource))))
-                         resources)
-               TransferMode/MOVE
-               TransferMode/COPY)
-        db (.startDragAndDrop ^Node (.getSource e) (into-array TransferMode [mode]))
+        db (.startDragAndDrop ^Node (.getSource e) TransferMode/COPY_OR_MOVE)
         content (ClipboardContent.)]
     (when (= 1 (count resources))
       (.setDragView db (icons/get-image (workspace/resource-icon (first resources)) 16)
@@ -796,13 +786,17 @@
             tree-view (.getTreeView target)
             resource (-> target (.getTreeItem) (.getValue))
             ^Path tgt-dir-path (.toPath (fs/to-folder (File. (resource/abs-path resource))))
+            workspace (resource/workspace resource)
             move? (and (= (.getGestureSource e) tree-view)
-                       (= (.getTransferMode e) TransferMode/MOVE))
+                       (coll/every? (fn [^File f]
+                                      (let [res (workspace/file-resource workspace f)]
+                                        (and (resource/editable? res)
+                                             (not (resource/read-only? res)))))
+                                    (.getFiles db)))
             pairs (->> (.getFiles db)
                        (mapv (fn [^File f] [f (.toFile (.resolve tgt-dir-path (.getName f)))]))
                        (resolve-any-conflicts localization)
-                       (vec))
-            workspace (resource/workspace resource)]
+                       (vec))]
         (when (seq pairs)
           (let [moved (drop-files! workspace pairs move?)]
             (select-files! workspace tree-view (mapv second pairs))

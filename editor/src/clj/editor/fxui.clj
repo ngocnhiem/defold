@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -19,51 +19,59 @@
             [cljfx.fx.anchor-pane :as fx.anchor-pane]
             [cljfx.fx.button :as fx.button]
             [cljfx.fx.check-box :as fx.check-box]
+            [cljfx.fx.color-picker :as fx.color-picker]
             [cljfx.fx.column-constraints :as fx.column-constraints]
             [cljfx.fx.grid-pane :as fx.grid-pane]
             [cljfx.fx.h-box :as fx.h-box]
             [cljfx.fx.label :as fx.label]
             [cljfx.fx.list-cell :as fx.list-cell]
             [cljfx.fx.menu-button :as fx.menu-button]
+            [cljfx.fx.pane :as fx.pane]
             [cljfx.fx.password-field :as fx.password-field]
             [cljfx.fx.region :as fx.region]
             [cljfx.fx.scroll-pane :as fx.scroll-pane]
+            [cljfx.fx.stack-pane :as fx.stack-pane]
             [cljfx.fx.stage :as fx.stage]
             [cljfx.fx.svg-path :as fx.svg-path]
             [cljfx.fx.text-area :as fx.text-area]
             [cljfx.fx.text-field :as fx.text-field]
+            [cljfx.fx.toggle-button :as fx.toggle-button]
             [cljfx.fx.tooltip :as fx.tooltip]
             [cljfx.fx.v-box :as fx.v-box]
             [cljfx.lifecycle :as fx.lifecycle]
             [cljfx.mutator :as fx.mutator]
             [cljfx.prop :as fx.prop]
+            [clojure.string :as string]
             [dynamo.graph :as g]
+            [editor.color-dropper :as color-dropper]
             [editor.editor-extensions.ui-docs :as ui-docs]
             [editor.error-reporting :as error-reporting]
             [editor.future :as future]
             [editor.localization :as localization]
             [editor.os :as os]
+            [editor.prefs :as prefs]
             [editor.ui :as ui]
             [editor.util :as util]
             [util.coll :as coll]
             [util.fn :as fn])
   (:import [clojure.lang MultiFn]
-           [com.defold.control ListCell]
+           [com.defold.control ButtonWithCappedMinWidth ListCell]
            [java.util Collection]
-           [javafx.animation Animation SequentialTransition TranslateTransition]
+           [javafx.animation Animation KeyFrame KeyValue SequentialTransition Timeline TranslateTransition]
            [javafx.application Platform]
-           [javafx.beans Observable]
+           [javafx.beans InvalidationListener Observable]
            [javafx.beans.binding Bindings]
-           [javafx.beans.property ReadOnlyProperty]
-           [javafx.beans.value ChangeListener]
-           [javafx.collections ObservableList]
-           [javafx.event Event]
-           [javafx.geometry Bounds]
-           [javafx.scene Node]
-           [javafx.scene.control ListView ScrollPane TextInputControl]
+           [javafx.beans.value ChangeListener ObservableValue]
+           [javafx.collections MapChangeListener MapChangeListener$Change ObservableList ObservableMap]
+           [javafx.css PseudoClass]
+           [javafx.event Event EventHandler]
+           [javafx.geometry Bounds Insets]
+           [javafx.scene Node Parent]
+           [javafx.scene.control ChoiceBox ComboBoxBase Control ControlHelper ListView MenuButton ScrollPane TextInputControl Tooltip]
            [javafx.scene.control.skin ScrollPaneSkin]
-           [javafx.scene.input KeyCode KeyEvent]
-           [javafx.scene.layout Region]
+           [javafx.scene.input KeyCode KeyEvent MouseEvent]
+           [javafx.scene.layout Region StackPane]
+           [javafx.scene.paint Color]
            [javafx.scene.shape SVGPath]
            [javafx.stage PopupWindow Window]
            [javafx.util Callback Duration]))
@@ -297,37 +305,6 @@
                  (proxy-super updateItem item empty)
                  (vreset! props-vol (% props this item empty))))))))))
 
-(def on-text-input-selection-changed-prop
-  "Prop-config that will observe changes for selection in TextInputControl
-
-  Value for such prop in component description is expected to be an event
-  handler (either function or event map)"
-  (fx.prop/make
-    (reify fx.mutator/Mutator
-      (assign! [_ instance coerce value]
-        (let [[caret-listener anchor-listener] (coerce value)]
-          (doto ^TextInputControl instance
-            (-> .caretPositionProperty (.addListener ^ChangeListener caret-listener))
-            (-> .anchorProperty (.addListener ^ChangeListener anchor-listener)))))
-      (replace! [this instance coerce old-value new-value]
-        (when-not (= old-value new-value)
-          (fx.mutator/retract! this instance coerce old-value)
-          (fx.mutator/assign! this instance coerce new-value)))
-      (retract! [_ instance coerce value]
-        (let [[caret-listener anchor-listener] (coerce value)]
-          (doto ^TextInputControl instance
-            (-> .caretPositionProperty (.removeListener ^ChangeListener caret-listener))
-            (-> .anchorProperty (.removeListener ^ChangeListener anchor-listener))))))
-    (fx.lifecycle/wrap-coerce
-      fx.lifecycle/event-handler
-      (fn [f]
-        [(reify ChangeListener
-           (changed [_ o _ new-caret]
-             (f [(.getAnchor ^TextInputControl (.getBean ^ReadOnlyProperty o)) new-caret])))
-         (reify ChangeListener
-           (changed [_ o _ new-anchor]
-             (f [new-anchor (.getCaretPosition ^TextInputControl (.getBean ^ReadOnlyProperty o))])))]))))
-
 (defn wrap-dedupe-desc
   "Renderer middleware that skips advancing if new description is the same"
   [lifecycle]
@@ -345,6 +322,27 @@
             (update :child #(fx.lifecycle/advance lifecycle % desc opts)))))
     (delete [_ component opts]
       (fx.lifecycle/delete lifecycle (:child component) opts))))
+
+(def ext-dedupe-identical-desc
+  "Extension lifecycle that skips advancing if new desc is identical to old one
+
+  Props:
+    :desc    wrapped description that is expected to frequently be identical
+             during advance"
+  (reify fx.lifecycle/Lifecycle
+    (create [_ {:keys [desc]} opts]
+      (with-meta
+        {:desc desc
+         :child (fx.lifecycle/create fx.lifecycle/dynamic desc opts)}
+        child-instance-meta))
+    (advance [_ component {:keys [desc]} opts]
+      (if (identical? desc (:desc component))
+        component
+        (-> component
+            (assoc :desc desc)
+            (update :child #(fx.lifecycle/advance fx.lifecycle/dynamic % desc opts)))))
+    (delete [_ component opts]
+      (fx.lifecycle/delete fx.lifecycle/dynamic (:child component) opts))))
 
 (defn mount-renderer-and-await-result!
   "Mounts `renderer` and blocks current thread until `state-atom`'s value
@@ -498,28 +496,137 @@
       :right (assoc props :alignment :center-right)
       :bottom (assoc props :alignment :bottom-center))))
 
-(defn tooltip
-  "Generic `:tooltip` with sensible defaults."
-  [props]
+(defn tooltip [props]
   (-> props
       (assoc :fx/type fx.tooltip/lifecycle)
-      (util/provide-defaults
-        :wrap-text true
-        :max-width 600
-        :hide-delay [200 :ms]
-        :show-delay [200 :ms]
-        :show-duration [30 :s])))
+      (util/provide-defaults :wrap-text true :max-width 600)))
 
-(defn- resolve-tooltip [props]
-  (let [tooltip-text (:tooltip props)]
-    (cond-> props
-            (string? tooltip-text)
-            (assoc :tooltip
-                   {:fx/type tooltip
-                    :text tooltip-text}))))
+(defonce ^:private custom-tooltip-node-showing-key (Object.))
 
-(defn button
+(def prop-custom-tooltip-node-showing
+  (fx/make-prop
+    (fx.mutator/setter
+      (fn set-custom-tooltip-node-showing [^Node node value]
+        (.put (.getProperties node) custom-tooltip-node-showing-key value)))
+    fx.lifecycle/scalar))
+
+(defn- node-showing-property
+  ^ObservableValue [^Node node]
+  (condp instance? node
+    ComboBoxBase (.showingProperty ^ComboBoxBase node)
+    MenuButton (.showingProperty ^MenuButton node)
+    ChoiceBox (.showingProperty ^ChoiceBox node)
+    (Bindings/valueAt (.getProperties node) custom-tooltip-node-showing-key)))
+
+(defn- show-tooltip! [^Tooltip tooltip ^Node node]
+  (let [screen-bounds (.localToScreen node (.getBoundsInLocal node))]
+    (.show tooltip node (.getMinX screen-bounds) (+ 8.0 (.getMaxY screen-bounds)))))
+
+(def prop-immediate-tooltip
+  (fx/make-binding-prop
+    (fn bind-immediate-tooltip [^Node node ^Tooltip tooltip]
+      (let [showing-property (node-showing-property node)
+            show! (fn show! []
+                    (when (and (not (.isShowing tooltip))
+                               (not (.getValue showing-property)))
+                      (show-tooltip! tooltip node)))
+            ^EventHandler on-enter (fn [_] (show!))
+            ^EventHandler on-exit (fn [_] (.hide tooltip))
+            ^ChangeListener showing-property-listener (fn [_ _ showing]
+                                                        (if showing
+                                                          (.hide tooltip)
+                                                          (when (.isHover node) (show!))))]
+        (when (.isHover node) (show!))
+        (.addEventHandler node MouseEvent/MOUSE_ENTERED on-enter)
+        (.addEventHandler node MouseEvent/MOUSE_EXITED on-exit)
+        (.addListener showing-property showing-property-listener)
+        #(do
+           (.removeEventHandler node MouseEvent/MOUSE_ENTERED on-enter)
+           (.removeEventHandler node MouseEvent/MOUSE_EXITED on-exit)
+           (.removeListener showing-property showing-property-listener))))
+    fx.lifecycle/dynamic))
+
+(def ^:private prop-delayed-tooltip
+  (fx/make-binding-prop
+    (fn bind-delayed-tooltip [^Node node ^Tooltip tooltip]
+      (let [showing-property (node-showing-property node)
+            ^Timeline show-timeline (doto (Timeline.
+                                            ^KeyFrame/1 (into-array
+                                                          KeyFrame
+                                                          [(KeyFrame.
+                                                             (Duration/millis 200)
+                                                             ^KeyValue/1 (into-array KeyValue []))]))
+                                      (.setOnFinished
+                                        (fn [_]
+                                          (show-tooltip! tooltip node))))
+            show! (fn show! []
+                    (when (and (not (.isShowing tooltip))
+                               (not (.getValue showing-property)))
+                      (.playFromStart show-timeline)))
+            hide! (fn hide! []
+                    (.stop show-timeline)
+                    (.hide tooltip))
+            ^EventHandler on-enter (fn [_] (show!))
+            ^EventHandler on-exit (fn [_] (hide!))
+            ^ChangeListener showing-property-listener (fn [_ _ showing]
+                                                        (if showing
+                                                          (hide!)
+                                                          (when (.isHover node) (show!))))]
+        (when (.isHover node) (show!))
+        (.addEventHandler node MouseEvent/MOUSE_ENTERED on-enter)
+        (.addEventHandler node MouseEvent/MOUSE_EXITED on-exit)
+        (.addListener showing-property showing-property-listener)
+        #(do
+           (.stop show-timeline)
+           (.removeEventHandler node MouseEvent/MOUSE_ENTERED on-enter)
+           (.removeEventHandler node MouseEvent/MOUSE_EXITED on-exit)
+           (.removeListener showing-property showing-property-listener))))
+    fx.lifecycle/dynamic))
+
+(defn apply-tooltip [props v]
+  (cond
+    (:fx/type v)
+    (assoc props prop-delayed-tooltip v)
+
+    (string? v)
+    (assoc props prop-delayed-tooltip {:fx/type tooltip :text v})
+
+    (and (map? v)
+         (string? (:message v))
+         (case (:severity v) (:error :warning :info) true false))
+    (assoc props
+      (case (:severity v) :info prop-delayed-tooltip prop-immediate-tooltip)
+      {:fx/type tooltip :text (:message v)})
+
+    :else
+    (throw (ex-info (str "Unexpected tooltip value: " v) {:tooltip v}))))
+
+(defn- resolve-tooltip
+  "Replace :tooltip prop with prop-delayed-tooltip or prop-immediate-tooltip
+
+  Works on any Node, not just Controls
+
+  The tooltip may work in the following modes:
+    immediate    shown on hover and when the input becomes focused, used for
+                 important information (e.g. errors, warnings)
+    delayed      shown after a delay, used for hints. This prevents clutter and
+                 tooltip noize when moving the mouse around
+
+  Supports the following values:
+  - cljfx desc (used as is and delayed mode)
+  - string (tooltip text, used in delayed mode)
+  - map with the following keys (all required):
+      :severity    :error, :warning or :info
+      :message     string"
+  [props]
+  (if-let [v (:tooltip props)]
+    (-> props (dissoc :tooltip) (apply-tooltip v))
+    props))
+
+(defn ^:deprecated legacy-button
   "Generic `:button` with styling determined by `:variant`.
+
+  Deprecated: use [[button]]
 
   Additional keys:
   - `:variant` (optional, default `:secondary`) - a styling variant, either
@@ -539,7 +646,42 @@
       resolve-tooltip))
 
 (defn menu-button
+  "Generic menu button
+
+  Supports all :menu-button props, plus:
+    :alignment    additionally supports :top, :left, :right and :bottom
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string"
+  [props]
+  (-> props
+      (assoc :fx/type fx.menu-button/lifecycle)
+      (prepend-style-classes "menu-button")
+      resolve-alignment
+      resolve-tooltip))
+
+(defn toggle-button
+  "Toggle button
+
+  Supports all :toggle-button props, plus:
+    :alignment    additionally supports :top, :left, :right and :bottom
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string"
+  [props]
+  (-> props
+      (assoc :fx/type fx.toggle-button/lifecycle)
+      (prepend-style-classes "toggle-button")
+      (add-style-classes "ext-toggle-button")
+      resolve-alignment
+      resolve-tooltip))
+
+(defn ^:deprecated legacy-menu-button
   "Generic `:menu-button` with styling determined by `:variant`.
+
+  Deprecated: use [[menu-button]]
 
   Additional keys:
   - `:variant` (optional, default `:secondary`) - a styling variant, either
@@ -875,7 +1017,10 @@
   Supports all :label props, plus:
     :alignment    additionally supports :top, :left, :right and :bottom
     :color        either :text, :hint, :override, :warning or :error
-    :tooltip      additionally supports string values"
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string"
   [props]
   (-> props
       (assoc :fx/type fx.label/lifecycle)
@@ -890,18 +1035,21 @@
       resolve-label-color
       resolve-tooltip))
 
-(defn- resolve-input-color [props]
+(defn resolve-input-color [props]
   (let [color (:color props ::not-found)]
     (case color
       ::not-found props
-      (:warning :error) (-> props (dissoc :color) (update :pseudo-classes (fnil conj #{}) color)))))
+      (:warning :error) (-> props (dissoc :color) (update :pseudo-classes coll/conj-set color)))))
 
 (defn check-box
   "Check box
 
   Supports all :check-box props, plus:
     :alignment    additionally supports :top, :left, :right and :bottom
-    :tooltip      additionally supports string values
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string
     :color        either :warning or :error"
   [props]
   (-> props
@@ -922,7 +1070,10 @@
 
   Supports all :text-field props, plus:
     :alignment    additionally supports :top, :left, :right and :bottom
-    :tooltip      additionally supports string values
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string
     :color        either :warning or :error"
   [props]
   (-> props
@@ -937,7 +1088,10 @@
 
   Supports all :password-field props, plus:
     :alignment    additionally supports :top, :left, :right and :bottom
-    :tooltip      additionally supports string values
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string
     :color        either :warning or :error"
   [props]
   (-> props
@@ -948,6 +1102,14 @@
       resolve-tooltip))
 
 (defn text-area
+  "Text field
+
+  Supports all :text-area props, plus:
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string
+    :color        either :warning or :error"
   [props]
   (-> props
       (assoc :fx/type fx.text-area/lifecycle)
@@ -955,30 +1117,173 @@
       resolve-input-color
       resolve-tooltip))
 
-(defn- handle-value-field-key-pressed [edit text swap-state on-value-changed to-value commit-on-enter ^KeyEvent e]
-  (condp = (.getCode e)
-    KeyCode/ENTER
-    (when (and (or commit-on-enter (.isShortcutDown e))
-               (not= edit text))
-      (.consume e)
-      (if-some [value (to-value edit)]
-        (do (swap-state #(-> % (assoc :value value) (dissoc :edit)))
-            (when on-value-changed (on-value-changed value)))
-        (.play
-          (SequentialTransition.
-            (.getSource e)
-            (into-array Animation [(doto (TranslateTransition. (Duration. 30.0)) (.setByX 4.0))
-                                   (doto (TranslateTransition. (Duration. 30.0)) (.setByX -8.0))
-                                   (doto (TranslateTransition. (Duration. 30.0)) (.setByX 7.0))
-                                   (doto (TranslateTransition. (Duration. 30.0)) (.setByX -4.0))
-                                   (doto (TranslateTransition. (Duration. 30.0)) (.setByX 1.0))])))))
+(defn hover-overlay
+  "Overlay that should be used as :hover-overlay component of a value field
 
-    KeyCode/ESCAPE
-    (when-not (= edit text)
-      (.consume e)
-      (swap-state dissoc :edit))
+  Supports all :v-box props, plus:
+    :content      a single child description
+    :alignment    additionally supports :top, :left, :right and :bottom"
+  [props]
+  {:pre [(:content props)]}
+  (-> props
+      (add-style-classes "ext-hover-overlay")
+      (assoc :fx/type fx.v-box/lifecycle
+             :children [(:content props)])
+      (dissoc :content)
+      (util/provide-defaults :fill-width false)
+      resolve-alignment
+      resolve-padding))
 
-    nil))
+(def ^:private prop-hover-overlay
+  (fx/make-binding-prop
+    (fn bind-hover-overlay [^Control instance ^Region overlay]
+      (let [children (ControlHelper/getChildren instance)
+            instance-insets (.insetsProperty instance)
+            instance-focused (.focusedProperty instance)
+            container (doto (StackPane.)
+                        (.setViewOrder -1.0)
+                        (-> .getChildren (.add overlay)))
+            container-padding (Bindings/createObjectBinding
+                                #(let [^Insets insets (.get instance-insets)]
+                                   (Insets. (- (.getTop insets))
+                                            (- (.getRight insets))
+                                            (- (.getBottom insets))
+                                            (- (.getLeft insets))))
+                                (into-array Observable [instance-insets]))
+            container-visible (Bindings/createBooleanBinding
+                                #(and (not (.get instance-focused)))
+                                (into-array Observable [instance-focused]))]
+        (.add children container)
+        (.bind (.paddingProperty container) container-padding)
+        (.bind (.visibleProperty container) container-visible)
+        #(do (.remove children container)
+             (.unbind (.paddingProperty container))
+             (.unbind (.visibleProperty container)))))
+    fx.lifecycle/dynamic))
+
+(def ^:private prop-on-scrubbed
+  (fx/make-binding-prop
+    (fn bind-on-scrubbed [^Node node on-scrubbed]
+      (let [f-vol (volatile! nil)
+            prev-x-vol (volatile! nil)
+            prev-y-vol (volatile! nil)
+            ^EventHandler on-mouse-pressed (fn [^MouseEvent e]
+                                             (let [f (on-scrubbed)]
+                                               (when-not (fn? f)
+                                                 (throw (IllegalStateException. "The on-scrubbed callback must return a function")))
+                                               (vreset! f-vol f)
+                                               (vreset! prev-x-vol (.getX e))
+                                               (vreset! prev-y-vol (.getY e)))
+                                             (.consume e))
+            ^EventHandler on-mouse-dragged (fn [^MouseEvent e]
+                                             (when-let [f @f-vol]
+                                               (let [x (.getX e)
+                                                     y (.getY e)
+                                                     delta-x (- x @prev-x-vol)
+                                                     delta-y (- @prev-y-vol y)
+                                                     max-delta (if (< (abs delta-y) (abs delta-x)) delta-x delta-y)]
+                                                 (.consume e)
+                                                 (vreset! prev-x-vol x)
+                                                 (vreset! prev-y-vol y)
+                                                 (when (<= 1.0 (abs max-delta))
+                                                   (f (cond-> max-delta
+                                                              (.isShiftDown e) (* 10.0)
+                                                              (.isControlDown e) (* 0.1)))))))
+            ^EventHandler on-mouse-released (fn [^MouseEvent e]
+                                              (when @f-vol
+                                                (vreset! f-vol nil)
+                                                (.consume e)))]
+        (.addEventHandler node MouseEvent/MOUSE_PRESSED on-mouse-pressed)
+        (.addEventHandler node MouseEvent/MOUSE_DRAGGED on-mouse-dragged)
+        (.addEventHandler node MouseEvent/MOUSE_RELEASED on-mouse-released)
+        #(do
+           (.removeEventHandler node MouseEvent/MOUSE_PRESSED on-mouse-pressed)
+           (.removeEventHandler node MouseEvent/MOUSE_DRAGGED on-mouse-dragged)
+           (.removeEventHandler node MouseEvent/MOUSE_RELEASED on-mouse-released))))
+    fx.lifecycle/callback))
+
+(defn scrubber
+  "Scrubber component, i.e. draggable handle for numeric inputs
+
+  Accepts :stack-pane props, plus:
+    :on-scrubbed    a function that's used for scrubbing notifications; when
+                    scrubbing starts, gets called with 0 args and should return
+                    a scrubbing callback. A scrubbing callback then will be
+                    invoked 0 or more times with a double delta (either -10.0,
+                    -1.0, -0.1, 0.1, 1.0, or 10.0)"
+  [{:keys [on-scrubbed] :as props}]
+  (-> props
+      (add-style-classes "ext-scrubber")
+      (assoc
+        :fx/type fx.stack-pane/lifecycle
+        :on-mouse-pressed (fn [^MouseEvent e]
+                            (.consume e))
+        :children [{:fx/type ui/image-icon
+                    :path "icons/32/Icons_X_11_scaleupdown.png"
+                    :size 14.0}])
+      (cond-> on-scrubbed (-> (dissoc :on-scrubbed)
+                              (assoc prop-on-scrubbed on-scrubbed)))))
+
+(def ^:private line-height 26.0)
+
+(defn- create-button [] (ButtonWithCappedMinWidth. line-height))
+
+(def ^:private ext-with-button-props (fx/make-ext-with-props fx.button/props))
+
+(defn button
+  "Button component"
+  [props]
+  (let [has-text (not (string/blank? (:text props "")))
+        has-icon (some? (:graphic props))]
+    {:fx/type ext-with-button-props
+     :desc {:fx/type fx/ext-instance-factory :create create-button}
+     :props (-> props
+                (prepend-style-classes "ext-button")
+                (cond-> (or has-text has-icon) (prepend-style-classes
+                                                 (cond
+                                                   (and has-text has-icon) "ext-button-text-and-icon"
+                                                   has-text "ext-button-text"
+                                                   :else "ext-button-icon")))
+                (util/provide-defaults
+                  :alignment :center
+                  :focus-traversable false)
+                resolve-alignment
+                resolve-tooltip)}))
+
+(defn play-invalid-value-animation! [^Node node]
+  (let [properties (.getProperties node)]
+    (if-let [^SequentialTransition animation (.get properties ::invalid-value-animation)]
+      (do (.stop animation)
+          (.setTranslateX node 0.0)
+          (.playFromStart animation))
+      (let [animation (SequentialTransition.
+                        node
+                        (into-array Animation [(doto (TranslateTransition. (Duration. 30.0)) (.setByX 4.0))
+                                               (doto (TranslateTransition. (Duration. 30.0)) (.setByX -8.0))
+                                               (doto (TranslateTransition. (Duration. 30.0)) (.setByX 7.0))
+                                               (doto (TranslateTransition. (Duration. 30.0)) (.setByX -4.0))
+                                               (doto (TranslateTransition. (Duration. 30.0)) (.setByX 1.0))]))]
+        (.put properties ::invalid-value-animation animation)
+        (.play animation)))))
+
+(defn- handle-value-field-key-pressed [text swap-state on-value-changed on-invalid-value to-value commit-on-enter ^KeyEvent e]
+  (let [edit (.getText ^TextInputControl (.getSource e))]
+    (condp = (.getCode e)
+      KeyCode/ENTER
+      (when (and (or commit-on-enter (.isShortcutDown e))
+                 (not= edit text))
+        (.consume e)
+        (if-some [value (to-value edit)]
+          (do (swap-state #(-> % (assoc :value value) (dissoc :edit)))
+              (when on-value-changed (on-value-changed value)))
+          (on-invalid-value (.getSource e))))
+
+      KeyCode/ESCAPE
+      (when-not (= edit text)
+        (.consume e)
+        (swap-state dissoc :edit))
+
+      nil)))
 
 (defn- handle-value-field-focused-changed [edit text swap-state on-value-changed to-value focused]
   (when (and (not focused) (not= edit text))
@@ -987,31 +1292,66 @@
           (when on-value-changed (on-value-changed value)))
       (swap-state dissoc :edit))))
 
-(def ^:private ext-with-value-field-text-props
-  (fx/make-ext-with-props
-    {:text (fx.prop/make
-             (fx.mutator/setter
-               (fn [^TextInputControl text-input text]
-                 (when-not (= text (.getText text-input))
-                   (.setText text-input text)
-                   (.selectAll text-input))))
-             fx.lifecycle/scalar)}))
+(def ^:private prop-value-field-text
+  (fx.prop/make
+    (fx.mutator/setter
+      (fn [^TextInputControl text-input text]
+        (when-not (= text (.getText text-input))
+          (.setText text-input text)
+          (.selectRange text-input (count text) 0))))
+    fx.lifecycle/scalar))
 
-(defn- value-field-impl-final-step [{:keys [state swap-state text on-value-changed to-value component commit-on-enter]
-                                     :or {to-value identity}
-                                     :as props}]
+(def ^:private prop-select-all-text-on-click
+  (fx/make-binding-prop
+    (fn [^TextInputControl text-input enabled]
+      (when enabled
+        (let [select-on-release (volatile! false)
+              ^EventHandler on-pressed (fn [_]
+                                         (when-not (.isFocused text-input)
+                                           (.deselect text-input)
+                                           (vreset! select-on-release true)))
+              ;; sometimes its children remain pressed...
+              pressed-pseudo-class (PseudoClass/getPseudoClass "pressed")
+              ^EventHandler on-released (fn [_]
+                                          (run!
+                                            #(.pseudoClassStateChanged ^Node % pressed-pseudo-class false)
+                                            (eduction
+                                              (coll/tree-xf #(instance? Parent %) Parent/.getChildrenUnmodifiable)
+                                              [text-input]))
+                                          (when @select-on-release
+                                            (vreset! select-on-release false)
+                                            (when (and (.isFocused text-input)
+                                                       (string/blank? (.getSelectedText text-input)))
+                                              (fx/run-later (.selectAll text-input)))))]
+
+          ;; Filter is necessary because the listener will be called after the text field has received focus, i.e. too late
+          (.addEventFilter text-input MouseEvent/MOUSE_PRESSED on-pressed)
+          ;; Filter is necessary because the TextArea captures the event
+          (.addEventFilter text-input MouseEvent/MOUSE_RELEASED on-released)
+          #(do (.removeEventFilter text-input MouseEvent/MOUSE_PRESSED on-pressed)
+               (.removeEventFilter text-input MouseEvent/MOUSE_RELEASED on-released)))))
+    fx.lifecycle/scalar))
+
+(defn- value-field-impl-final-step
+  [{:keys [state swap-state text on-value-changed on-invalid-value to-value component commit-on-enter hover-overlay]
+    :or {to-value identity
+         on-invalid-value play-invalid-value-animation!}
+    :as props}]
   (let [edit (:edit state text)]
-    {:fx/type ext-with-value-field-text-props
-     :props {:text edit}
-     :desc (-> props
-               (assoc :fx/type component
-                      :on-text-changed (fn/partial swap-state assoc :edit)
-                      :on-key-pressed (fn/partial handle-value-field-key-pressed edit text swap-state on-value-changed to-value commit-on-enter)
-                      :on-focused-changed (fn/partial handle-value-field-focused-changed edit text swap-state on-value-changed to-value))
-               (dissoc :state :swap-state :on-value-changed :to-value :text :component :commit-on-enter))}))
+    (-> props
+        (assoc :fx/type component
+               :on-text-changed #(swap-state assoc :edit %)
+               :on-key-pressed #(handle-value-field-key-pressed text swap-state on-value-changed on-invalid-value to-value commit-on-enter %)
+               :on-focused-changed #(handle-value-field-focused-changed edit text swap-state on-value-changed to-value %)
+               prop-value-field-text edit
+               prop-select-all-text-on-click true)
+        (cond-> hover-overlay
+                (-> (dissoc :hover-overlay)
+                    (assoc prop-hover-overlay hover-overlay)))
+        (dissoc :state :swap-state :on-value-changed :on-invalid-value :to-value :text :component :commit-on-enter))))
 
 (defn- stringify-value [f v]
-  (if (identical? v ::not-found)
+  (if (nil? v)
     ""
     (str (f v))))
 
@@ -1026,7 +1366,7 @@
 
 (defn- make-value-field [component commit-on-enter props]
   {:fx/type fx/ext-state
-   :initial-state {:value (:value props ::not-found)}
+   :initial-state {:value (:value props)}
    :desc (assoc props :fx/type value-field-impl-stringify-step
                       :component component
                       :commit-on-enter commit-on-enter)})
@@ -1037,12 +1377,15 @@
   Supports all :text-field props, plus:
     :value               the edited value
     :on-value-changed    value change callback
+    :on-invalid-value    1-arg function that gets called when invalid value is
+                         submitted with TextInputControl argument, wiggles it by
+                         default
     :to-string           value->string converter, default str
     :to-value            string->value converter, default identity, returning
-                         nil implies value could not be converted"
+                         nil implies value could not be converted
+    :hover-overlay       node description shown on hover"
   [props]
   (make-value-field text-field true props))
-
 
 (defn password-value-field
   "Password field with value commit/reset semantics
@@ -1067,6 +1410,99 @@
                          nil implies value could not be converted"
   [props]
   (make-value-field text-area false props))
+
+(defn- color->web-string
+  ([color]
+   (color->web-string false color))
+  ([ignore-alpha ^Color color]
+   (let [nr (Math/round (* (float 255.0) (float (.getRed color))))
+         ng (Math/round (* (float 255.0) (float (.getGreen color))))
+         nb (Math/round (* (float 255.0) (float (.getBlue color))))
+         na (Math/round (* (float 255.0) (float (.getOpacity color))))]
+     (if ignore-alpha
+       (format "#%02x%02x%02x" nr ng nb)
+       (format "#%02x%02x%02x%02x" nr ng nb na)))))
+
+(defn- web-string->color [ignore-alpha ^String s]
+  (try
+    (let [c (Color/valueOf s)]
+      (if (and ignore-alpha (not= 1.0 (.getOpacity c)))
+        (Color. (.getRed c) (.getGreen c) (.getBlue c) 1.0)
+        c))
+    (catch IllegalArgumentException _)))
+
+(def ^:private on-color-dropper-mouse-pressed MouseEvent/.consume)
+
+(def ^:private saved-colors-prefs-path [:workflow :saved-colors])
+
+(defn- handle-color-picker-shown [^MouseEvent e]
+  (when-let [overlay (.lookup (.getRoot (.getScene ^Node (.getSource e))) "#overlay")]
+    (.setVisible overlay true)))
+
+(defn- handle-color-picker-hidden [^MouseEvent e]
+  (when-let [overlay (.lookup (.getRoot (.getScene ^Node (.getSource e))) "#overlay")]
+    (.setVisible overlay false)))
+
+(defn- on-color-picker-invalid-value [^Node text-field]
+  (play-invalid-value-animation! (.getParent text-field)))
+
+(defn color-picker
+  "Color picker component
+
+  Accepts :horizontal props, plus:
+    :value                 edited Color value
+    :on-value-changed      value change callback
+    :ignore-alpha          whether the view should ignore the alpha, default
+                           false
+    :color-dropper-view    node id of a color dropper component, enables color
+                           dropper if provided
+    :prefs                 if provided, loads/persists custom colors
+    :color                 either :warning or :error"
+  [{:keys [value on-value-changed ignore-alpha color-dropper-view prefs editable]
+    :or {editable true}
+    :as props}]
+  (-> props
+      (dissoc :value :on-value-changed :ignore-alpha :color-dropper-view :prefs :editable)
+      (assoc
+        :fx/type horizontal
+        :style-class "ext-color-picker"
+        :children [(cond->
+                     {:fx/type value-field
+                      :style-class "ext-color-picker-field"
+                      :h-box/hgrow :always
+                      :to-string (fn/partial color->web-string ignore-alpha)
+                      :to-value (fn/partial web-string->color ignore-alpha)
+                      :on-invalid-value on-color-picker-invalid-value
+                      :editable editable
+                      :value value
+                      :on-value-changed on-value-changed}
+                     (and color-dropper-view editable)
+                     (assoc
+                       :hover-overlay
+                       {:fx/type hover-overlay
+                        :alignment :right
+                        :padding 4
+                        :content
+                        (cond->
+                          {:fx/type fx.pane/lifecycle
+                           :style-class "color-dropper-icon"
+                           :children [{:fx/type ui/image-icon
+                                       :path "icons/32/Icons_M_03_colorpicker.png"
+                                       :size 16.0}]
+                           :on-mouse-pressed on-color-dropper-mouse-pressed}
+                          on-value-changed
+                          (assoc :on-mouse-clicked #(color-dropper/activate! color-dropper-view on-value-changed %)))}))
+                   (cond-> {:fx/type fx.color-picker/lifecycle
+                            :focus-traversable false
+                            :disable (not editable)
+                            :style-class "ext-color-picker-icon"
+                            :on-shown handle-color-picker-shown
+                            :on-hidden handle-color-picker-hidden}
+                           value (assoc :value value)
+                           on-value-changed (assoc :on-value-changed on-value-changed)
+                           prefs (assoc :custom-colors (prefs/get prefs saved-colors-prefs-path)
+                                        :on-custom-colors-changed #(prefs/set! prefs saved-colors-prefs-path (mapv color->web-string %))))])
+      resolve-input-color))
 
 (def ^:private ext-with-expanded-scroll-pane-content-props
   (fx/make-ext-with-props
@@ -1161,7 +1597,10 @@
   Supports all :label props, plus:
     :alignment    additionally supports :top, :left, :right and :bottom
     :color        either :text, :hint, :override, :warning or :error
-    :tooltip      additionally supports string values"
+    :tooltip      additionally supports string values and (preferably) maps with
+                  the following keys:
+                    :severity    :error, :warning, or :info
+                    :message     string"
   [props]
   (-> props
       (assoc :fx/type fx.label/lifecycle)
@@ -1224,3 +1663,43 @@
 
 (defn advance-ui-user-data-component! [javafx-node key desc]
   (advance-user-data-component! javafx-node ui/user-data ui/user-data! key desc))
+
+(def ext-error-boundary
+  "Extension lifecycle that captures all lifecycle errors
+
+  Props (all required):
+    :catch    cljfx desc that will be shown when the wrapped throws errors
+              during lifecycle, will receive 2 additional props:
+                :exception    Throwable instance
+                :caught       boolean, indicating whether the exception was
+                              caught just now
+    :desc     the wrapped desc"
+  (reify fx.lifecycle/Lifecycle
+    (create [_ this-desc opts]
+      (let [desc (:desc this-desc)]
+        (with-meta
+          (try
+            {:child (fx.lifecycle/create fx.lifecycle/dynamic desc opts)}
+            (catch Throwable e
+              {:child (fx.lifecycle/create fx.lifecycle/dynamic (assoc (:catch this-desc) :exception e :caught true) opts)
+               :exception e
+               :desc desc}))
+          child-instance-meta)))
+    (advance [this component this-desc opts]
+      (let [desc (:desc this-desc)]
+        (if-let [e (:exception component)]
+          (if (= desc (:desc component))
+            (update component :child #(fx.lifecycle/advance fx.lifecycle/dynamic % (assoc (:catch this-desc) :exception e :caught false) opts))
+            (do (fx.lifecycle/delete this component opts)
+                (fx.lifecycle/create this this-desc opts)))
+          (try
+            (update component :child #(fx.lifecycle/advance fx.lifecycle/dynamic % desc opts))
+            (catch Throwable e
+              (fx.lifecycle/delete this component opts)
+              (with-meta
+                {:child (fx.lifecycle/create fx.lifecycle/dynamic (assoc (:catch this-desc) :exception e :caught true) opts)
+                 :exception e
+                 :desc desc}
+                child-instance-meta))))))
+    (delete [_ component opts]
+      (fx.lifecycle/delete fx.lifecycle/dynamic (:child component) opts))))
