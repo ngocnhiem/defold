@@ -172,6 +172,9 @@ static void LogGLError(GLint err)
 
 - (void)layoutSubviews
 {
+    if (_glfwWin.iconified || [UIApplication sharedApplication].applicationState != UIApplicationStateActive)
+        return;
+
     [EAGLContext setCurrentContext:context];
     [self destroyFramebuffer];
     [self createFramebuffer];
