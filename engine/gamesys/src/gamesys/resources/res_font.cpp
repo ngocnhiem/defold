@@ -485,6 +485,7 @@ namespace dmGameSystem
         params->m_CacheCellMaxAscent = glyph_bank->m_CacheCellMaxAscent;
         params->m_CacheCellPadding   = glyph_bank->m_GlyphPadding;
         params->m_IsMonospaced       = glyph_bank->m_IsMonospaced;
+        params->m_Padding            = glyph_bank->m_Padding;
     }
 
     static void CacheMissGlyphCallback(void* _ctx, int result, const char* errmsg)
