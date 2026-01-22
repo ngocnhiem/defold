@@ -313,7 +313,7 @@ static int SetText(lua_State* L)
     dmScript::GetURL(L, &sender);
     dmScript::ResolveURL(L, 1, &receiver, &sender);
 
-    if (dmMessage::RESULT_OK != dmMessage::Post(&sender, &receiver, dmGameSystemDDF::SetText::m_DDFDescriptor->m_NameHash, (uintptr_t)instance, (uintptr_t)dmGameSystemDDF::SetText::m_DDFDescriptor, data, data_size, 0) )
+    if (dmMessage::RESULT_OK != dmMessage::Post(&sender, &receiver, dmGameSystemDDF::SetText::m_DDFDescriptor->m_NameHash, 0, (uintptr_t)dmGameSystemDDF::SetText::m_DDFDescriptor, data, data_size, 0) )
     {
         return DM_LUA_ERROR("Failed to send label string as message!");
     }
