@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -44,7 +44,6 @@ namespace dmGraphics
             dmLogInfo("vkEnumerateInstanceExtensionProperties (%d) failed: %d", __LINE__, result);
             return;
         }
-
     }
 
     static bool IsSupported(const dmArray<VkExtensionProperties>& extensions, const char* name)
@@ -62,7 +61,7 @@ namespace dmGraphics
     {
         if (!IsSupported(supported_extensions, extension))
         {
-            dmLogWarning("%s was not supported", extension);
+            dmLogDebug("%s was not supported", extension);
             return false;
         }
 
@@ -199,11 +198,6 @@ namespace dmGraphics
         vk_application_info.engineVersion      = VK_MAKE_VERSION(1, 0, 0);
         vk_application_info.apiVersion         = VK_API_VERSION_1_0;
 
-        // Required for interlock features
-    #ifdef DM_EXPERIMENTAL_GRAPHICS_FEATURES
-        vk_application_info.apiVersion = VK_API_VERSION_1_1;
-    #endif
-
         vk_required_extensions.SetCapacity(extensionNameCount + validationLayerExtensionCount);
 
         for (uint16_t i = 0; i < extensionNameCount; ++i)
@@ -215,22 +209,22 @@ namespace dmGraphics
         dmArray<VkExtensionProperties> extensions;
         GetExtensions(extensions);
 
-        // Static to keep life time while adding it to an array and passing it along
-        static const char* VK_KHR_get_physical_device_properties2_str = "VK_KHR_get_physical_device_properties2";
+        AddIfSupported(extensions, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, vk_required_extensions);
+        AddIfSupported(extensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, vk_required_extensions); // VK_EXT_fragment_shader_interlock
+
+    #ifdef __MACH__
+        static const char* VK_EXT_metal_objects_str = "VK_EXT_metal_objects";
+        AddIfSupported(extensions, VK_EXT_metal_objects_str, vk_required_extensions);
+    #else
         static const char* VK_KHR_portability_enumeration_str = "VK_KHR_portability_enumeration";
+        AddIfSupported(extensions, VK_KHR_portability_enumeration_str, vk_required_extensions);
+    #endif
 
         if (validationLayerCount > 0)
         {
             if (GetValidationSupport(validationLayers, validationLayerCount))
             {
                 enabled_layer_count = validationLayerCount;
-
-                AddIfSupported(extensions, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME, vk_required_extensions);
-            #ifdef __MACH__
-                AddIfSupported(extensions, VK_KHR_get_physical_device_properties2_str, vk_required_extensions);
-            #else
-                AddIfSupported(extensions, VK_KHR_portability_enumeration_str, vk_required_extensions);
-            #endif
 
                 for (uint16_t i=0; i < validationLayerExtensionCount; ++i)
                 {

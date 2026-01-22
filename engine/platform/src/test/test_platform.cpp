@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -42,7 +42,7 @@ protected:
         data->m_Height = height;
     }
 
-    virtual void SetUp()
+    void SetUp() override
     {
         m_Window = dmPlatform::NewWindow();
 
@@ -57,11 +57,12 @@ protected:
         params.m_Height = HEIGHT;
         params.m_Fullscreen = false;
         params.m_PrintDeviceInfo = false;
+        params.m_ContextAlphabits = 8;
 
         dmPlatform::OpenWindow(m_Window, params);
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         dmPlatform::DeleteWindow(m_Window);
     }
@@ -75,6 +76,7 @@ TEST_F(dmPlatformTest, DoubleOpenWindow)
     params.m_Height = HEIGHT;
     params.m_Fullscreen = false;
     params.m_PrintDeviceInfo = false;
+    params.m_ContextAlphabits = 8;
 
     ASSERT_EQ(dmPlatform::PLATFORM_RESULT_WINDOW_ALREADY_OPENED, dmPlatform::OpenWindow(m_Window, params));
 }
@@ -94,6 +96,7 @@ TEST_F(dmPlatformTest, CloseOpenWindow)
     params.m_Height = HEIGHT;
     params.m_Fullscreen = false;
     params.m_PrintDeviceInfo = true;
+    params.m_ContextAlphabits = 8;
     dmLogSetLevel(LOG_SEVERITY_INFO);
 
     ASSERT_EQ(dmPlatform::PLATFORM_RESULT_OK, dmPlatform::OpenWindow(m_Window, params));

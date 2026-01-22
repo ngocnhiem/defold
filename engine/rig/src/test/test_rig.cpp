@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -24,6 +24,7 @@
 #include <dmsdk/dlib/dstrings.h>
 
 #include <../rig.h>
+#include <../rig_private.h>
 
 using namespace dmVMath;
 
@@ -118,7 +119,27 @@ static void DeleteRigData(dmRigDDF::MeshSet* mesh_set, dmRigDDF::Skeleton* skele
 
     if (mesh_set != 0x0)
     {
-        delete [] mesh_set->m_BoneList.m_Data;
+        for (uint32_t model_index = 0; model_index < mesh_set->m_Models.m_Count; ++model_index)
+        {
+            dmRigDDF::Model& model = mesh_set->m_Models.m_Data[model_index];
+            for (uint32_t mesh_index = 0; mesh_index < model.m_Meshes.m_Count; ++mesh_index)
+            {
+                dmRigDDF::Mesh& mesh = model.m_Meshes.m_Data[mesh_index];
+                delete[] mesh.m_Positions.m_Data;
+                delete[] mesh.m_Normals.m_Data;
+                delete[] mesh.m_Texcoord0.m_Data;
+                delete[] mesh.m_Texcoord1.m_Data;
+                delete[] mesh.m_Tangents.m_Data;
+                delete[] mesh.m_Colors.m_Data;
+                delete[] mesh.m_BoneIndices.m_Data;
+                delete[] mesh.m_Weights.m_Data;
+            }
+
+            delete[] mesh_set->m_Models.m_Data[model_index].m_Meshes.m_Data;
+        }
+
+        delete[] mesh_set->m_Models.m_Data;
+        delete[] mesh_set->m_BoneList.m_Data;
         delete mesh_set;
     }
 }
@@ -176,20 +197,24 @@ static void CreateTestMesh(dmRigDDF::MeshSet* mesh_set, int model_index, int mes
     mesh.m_Normals[10]            = 1.0;
     mesh.m_Normals[11]            = 0.0;
 
-    mesh.m_Tangents.m_Count       = vert_count*3;
+    mesh.m_Tangents.m_Count       = vert_count*4;
     mesh.m_Tangents.m_Data        = new float[mesh.m_Tangents.m_Count];
     mesh.m_Tangents[0]            = 0.0;
     mesh.m_Tangents[1]            = 0.0;
     mesh.m_Tangents[2]            = 1.0;
-    mesh.m_Tangents[3]            = 0.0;
+    mesh.m_Tangents[3]            = 1.0;
     mesh.m_Tangents[4]            = 0.0;
-    mesh.m_Tangents[5]            = 1.0;
-    mesh.m_Tangents[6]            = 0.0;
-    mesh.m_Tangents[7]            = 0.0;
-    mesh.m_Tangents[8]            = 1.0;
+    mesh.m_Tangents[5]            = 0.0;
+    mesh.m_Tangents[6]            = 1.0;
+    mesh.m_Tangents[7]            = 1.0;
+    mesh.m_Tangents[8]            = 0.0;
     mesh.m_Tangents[9]            = 0.0;
-    mesh.m_Tangents[10]           = 0.0;
+    mesh.m_Tangents[10]           = 1.0;
     mesh.m_Tangents[11]           = 1.0;
+    mesh.m_Tangents[12]           = 0.0;
+    mesh.m_Tangents[13]           = 0.0;
+    mesh.m_Tangents[14]           = 1.0;
+    mesh.m_Tangents[15]           = 1.0;
 
     mesh.m_Colors.m_Count         = vert_count*4;
     mesh.m_Colors.m_Data          = new float[mesh.m_Colors.m_Count];
@@ -200,8 +225,6 @@ static void CreateTestMesh(dmRigDDF::MeshSet* mesh_set, int model_index, int mes
         mesh.m_Colors.m_Data[i*4+0] = 1.0f;
     }
 
-    mesh.m_Colors.m_Data       = new float[vert_count*4];
-    mesh.m_Colors.m_Count      = vert_count*4;
     mesh.m_Colors[0]           = color.getX();
     mesh.m_Colors[1]           = color.getY();
     mesh.m_Colors[2]           = color.getZ();
@@ -875,7 +898,7 @@ public:
     dmRig::HRigContext m_Context;
 
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         dmRig::NewContextParams params = {0};
         params.m_MaxRigInstanceCount = 2;
         if (dmRig::RESULT_OK != dmRig::NewContext(params, &m_Context)) {
@@ -883,7 +906,7 @@ protected:
         }
     }
 
-    virtual void TearDown() {
+    void TearDown() override {
         dmRig::DeleteContext(m_Context);
     }
 };
@@ -894,7 +917,7 @@ class RigContextCursorTest : public jc_test_params_class<T>
 public:
     dmRig::HRigContext m_Context;
 
-    virtual void SetUp() {
+    void SetUp() override {
         dmRig::NewContextParams params = {0};
         params.m_MaxRigInstanceCount = 2;
         if (dmRig::RESULT_OK != dmRig::NewContext(params, &m_Context)) {
@@ -902,7 +925,7 @@ public:
         }
     }
 
-    virtual void TearDown() {
+    void TearDown() override {
         dmRig::DeleteContext(m_Context);
     }
 };
@@ -919,7 +942,7 @@ public:
     dmRigDDF::AnimationSet* m_AnimationSet;
 
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         RigContextCursorTest<T>::SetUp();
 
         m_Instance = 0x0;
@@ -945,7 +968,7 @@ protected:
         }
     }
 
-    virtual void TearDown() {
+    void TearDown() override {
         if (dmRig::RESULT_OK != dmRig::InstanceDestroy(RigContextCursorTest<T>::m_Context, m_Instance)) {
             dmLogError("Could not delete rig instance!");
         }
@@ -1153,7 +1176,7 @@ public:
     dmRigDDF::AnimationSet* m_AnimationSet;
 
 protected:
-    virtual void SetUp() {
+    void SetUp() override {
         RigContextTest::SetUp();
 
         m_Instance = 0x0;
@@ -1181,7 +1204,7 @@ protected:
         }
     }
 
-    virtual void TearDown() {
+    void TearDown() override {
         if (dmRig::RESULT_OK != dmRig::InstanceDestroy(m_Context, m_Instance)) {
             dmLogError("Could not delete rig instance!");
         }
@@ -1873,6 +1896,50 @@ TEST_F(RigContextTest, DEF_3121)
 
     // Cleanup
     ASSERT_EQ(dmRig::RESULT_OK, dmRig::InstanceDestroy(m_Context, instance));
+    DeleteRigData(mesh_set, skeleton, animation_set);
+}
+
+TEST_F(RigContextTest, TestBindPoseCache)
+{
+    dmRig::HRigInstance instance = 0x0;
+
+    // Setup test data
+    dmRigDDF::Skeleton*     skeleton      = new dmRigDDF::Skeleton();
+    dmRigDDF::MeshSet*      mesh_set      = new dmRigDDF::MeshSet();
+    dmRigDDF::AnimationSet* animation_set = new dmRigDDF::AnimationSet();
+    dmArray<dmRig::RigBone> bind_pose;
+    dmHashTable64<uint32_t> bone_indices;
+    SetUpSimpleRig(bind_pose, bone_indices, skeleton, mesh_set, animation_set);
+
+    // Create rig instance
+    dmRig::InstanceCreateParams create_params = {0};
+    create_params.m_BindPose         = &bind_pose;
+    create_params.m_BoneIndices      = &bone_indices;
+    create_params.m_Skeleton         = skeleton;
+    create_params.m_MeshSet          = mesh_set;
+    create_params.m_ModelId          = dmHashString64("test");
+    create_params.m_DefaultAnimation = dmHashString64("valid");
+    create_params.m_AnimationSet     = animation_set;
+
+    ASSERT_EQ(dmRig::RESULT_OK, dmRig::InstanceCreate(m_Context, create_params, &instance));
+    const dmRig::PoseMatrixCache* cache = dmRig::GetPoseMatrixCache(m_Context);
+    dmRig::HCachePoseMatrixEntry pose_matrix_entry = dmRig::AcquirePoseMatrixCacheEntry(m_Context, instance);
+    ASSERT_EQ(bind_pose.Size(), cache->m_TotalPoseCount);
+
+    ASSERT_NE(dmRig::INVALID_POSE_MATRIX_CACHE_ENTRY, pose_matrix_entry);
+    ASSERT_EQ(dmRig::RESULT_OK, dmRig::Update(m_Context, 1.0f));
+
+    ASSERT_EQ(bind_pose.Size(), cache->m_PoseMatrices.Size());
+
+    // If we update the cache again without resetting, we write the same data
+    // into the cache again at the same acquired cache position
+    ASSERT_EQ(dmRig::RESULT_OK, dmRig::Update(m_Context, 1.0f));
+    ASSERT_EQ(bind_pose.Size(), cache->m_PoseMatrices.Size());
+
+    dmRig::ResetPoseMatrixCache(m_Context);
+    ASSERT_EQ(0, cache->m_PoseMatrices.Size());
+
+    dmRig::InstanceDestroy(m_Context, instance);
     DeleteRigData(mesh_set, skeleton, animation_set);
 }
 

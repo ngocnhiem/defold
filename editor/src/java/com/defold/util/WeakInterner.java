@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -86,6 +86,33 @@ public final class WeakInterner<T> {
         this.growthThreshold = (int) (capacity * loadFactor);
         this.staleEntriesQueue = new ReferenceQueue<>();
         this.removedSentinelEntry = new Entry<>(null, null, 0);
+    }
+
+    /**
+     * Returns an immutable list containing all the live values currently in the
+     * WeakInterner. This can be used during development to inspect its
+     * contents. It is not recommended to invoke this method for purposes other
+     * than debugging.
+     * @return An unmodifiable list containing all the live values.
+     */
+    public synchronized List<Object> getValues() {
+        // Obtain a cleaned hash table, ensuring anything in the stale entries
+        // queue has been processed before we start to iterate through entries.
+        final Entry<T>[] hashTable = getHashTable();
+        final ArrayList<Object> liveValues = new ArrayList<>(count);
+
+        for (Entry<T> entry : hashTable) {
+            if (entry != null && entry != removedSentinelEntry) {
+                final Object value = entry.get();
+
+                if (value != null) {
+                    liveValues.add(value);
+                }
+            }
+        }
+
+        liveValues.trimToSize();
+        return Collections.unmodifiableList(liveValues);
     }
 
     /**

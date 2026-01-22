@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -14,14 +14,12 @@
 
 package com.dynamo.bob.pipeline.graph;
 
-import java.util.Stack;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Collection;
 
@@ -67,6 +65,7 @@ public class ResourceGraph implements IResourceVisitor {
 
     public ResourceGraph(Project project) {
         this.project = project;
+        root.flagAsUsedInMainBundle();
     }
 
     @Override
@@ -77,7 +76,7 @@ public class ResourceGraph implements IResourceVisitor {
             // multiple places in the graph
             // in this case we reuse the node and don't visit it again
             ResourceNode parentNode = (parentResource != null) ? resourceToNodeLookup.get(parentResource) : root;
-            parentNode.addChild(currentNode);
+            addNodeToParent(parentNode, currentNode);
             return false;
         }
         return true;
@@ -98,7 +97,7 @@ public class ResourceGraph implements IResourceVisitor {
 
         // add resource node to graph
         ResourceNode parentNode = (parentResource != null) ? resourceToNodeLookup.get(parentResource) : root;
-        parentNode.addChild(currentNode);
+        addNodeToParent(parentNode, currentNode);
     }
 
     @Override
@@ -129,6 +128,13 @@ public class ResourceGraph implements IResourceVisitor {
         ResourceWalker.walk(project, rootResource, this);
     }
 
+    private void addNodeToParent(ResourceNode parentNode, ResourceNode childNode) {
+        if (parentNode.checkType(ResourceNode.Type.ExcludedCollectionProxy)) {
+            childNode.setType(ResourceNode.Type.ExcludedCollection);
+        }
+        parentNode.addChild(childNode);
+    }
+
     // used in tests
     public ResourceNode add(String resourcePath, ResourceNode parentNode) {
         IResource currentResource = project.getResource(resourcePath);
@@ -143,7 +149,7 @@ public class ResourceGraph implements IResourceVisitor {
                 currentNode.setType(ResourceNode.Type.CollectionProxy);
             }
         }
-        parentNode.addChild(currentNode);
+        addNodeToParent(parentNode, currentNode);
         return currentNode;
     }
     public ResourceNode add(ResourceNode resourceNode, ResourceNode parentNode) {
@@ -243,8 +249,13 @@ public class ResourceGraph implements IResourceVisitor {
         }
 
         if (shouldPublishLU) {
+            boolean isInMainBundle = node.isInMainBundle();
             generator.writeFieldName("isInMainBundle");
-            generator.writeBoolean(node.isInMainBundle());
+            generator.writeBoolean(isInMainBundle);
+
+            if (!isInMainBundle && node.getHexDigest() == null) {
+                throw new RuntimeException("Resource '" + node.getPath() + "' has no hex digest");
+            }
         }
 
         generator.writeFieldName("children");

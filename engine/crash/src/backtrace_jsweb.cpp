@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -62,21 +62,24 @@ void dmCrash::HandlerSetExtraInfoCallback(dmCrash::FCallstackExtraInfoCallback c
 extern "C" void JSWriteDump(char* json_stacktrace) {
     if (!g_CrashDumpEnabled)
         return;
-    dmCrash::g_AppState.m_PtrCount = 0;
-    dmCrash::g_AppState.m_Signum = 0xDEAD;
+
+    dmCrash::AppState* state = dmCrash::GetAppState();
+
+    state->m_PtrCount = 0;
+    state->m_Signum = 0xDEAD;
     int length = strlen(json_stacktrace);
     uint32_t len = dmMath::Min((dmCrash::AppState::EXTRA_MAX - 1), (uint32_t)length);
-    strncpy(dmCrash::g_AppState.m_Extra, json_stacktrace, len);
+    strncpy(state->m_Extra, json_stacktrace, len);
     if (g_CrashExtraInfoCallback)
     {
-        int extra_len = strlen(dmCrash::g_AppState.m_Extra);
-        g_CrashExtraInfoCallback(g_CrashExtraInfoCallbackCtx, dmCrash::g_AppState.m_Extra + extra_len, dmCrash::AppState::EXTRA_MAX - extra_len - 1);
+        int extra_len = strlen(state->m_Extra);
+        g_CrashExtraInfoCallback(g_CrashExtraInfoCallbackCtx, state->m_Extra + extra_len, dmCrash::AppState::EXTRA_MAX - extra_len - 1);
     }
-    dmCrash::WriteCrash(dmCrash::g_FilePath, &dmCrash::g_AppState);
+    dmCrash::WriteCrash(dmCrash::GetFilePath(), state);
 
     // It's more convenient to get message as one error for web, so we don't use dmCrash::LogCallstack()
     bool is_debug_mode = dLib::IsDebugMode();
     dLib::SetDebugMode(true);
-    dmLogError("CALL STACK:\n%s\nCALL STACK END", dmCrash::g_AppState.m_Extra);
+    dmLogError("CALL STACK:\n%s\nCALL STACK END", state->m_Extra);
     dLib::SetDebugMode(is_debug_mode);
 }

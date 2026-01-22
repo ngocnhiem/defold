@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -19,6 +19,7 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.dynamo.bob.CompileExceptionError;
 import com.dynamo.bob.textureset.TextureSetGenerator;
 import com.dynamo.bob.textureset.TextureSetGenerator.AnimDesc;
 import com.dynamo.bob.textureset.TextureSetGenerator.AnimIterator;
@@ -26,13 +27,12 @@ import com.dynamo.bob.textureset.TextureSetGenerator.TextureSetResult;
 import com.dynamo.bob.textureset.TextureSetLayout.Grid;
 import com.dynamo.bob.textureset.TextureSetLayout.Rect;
 import com.dynamo.bob.tile.TileSetUtil.ConvexHulls;
-import com.dynamo.bob.util.TextureUtil;
-import com.dynamo.gamesys.proto.TextureSetProto.SpriteGeometry;
 import com.dynamo.gamesys.proto.TextureSetProto.TextureSet;
 import com.dynamo.gamesys.proto.Tile;
 import com.dynamo.gamesys.proto.Tile.Animation;
 import com.dynamo.gamesys.proto.Tile.SpriteTrimmingMode;
 import com.dynamo.gamesys.proto.Tile.TileSet;
+import com.dynamo.gamesys.proto.AtlasProto.AtlasImage;
 
 public class TileSetGenerator {
 
@@ -107,7 +107,7 @@ public class TileSetGenerator {
         }
     }
 
-    public static TextureSetResult generate(TileSet tileSet, BufferedImage image, BufferedImage collisionImage) {
+    public static TextureSetResult generate(TileSet tileSet, BufferedImage image, BufferedImage collisionImage) throws CompileExceptionError {
         Rect imageRect = image != null ? new Rect(null, -1, image.getWidth(), image.getHeight()) : null;
         Rect collisionRect = collisionImage != null ? new Rect(null, -1, collisionImage.getWidth(), collisionImage.getHeight()) : null;
         TileSetUtil.Metrics metrics = TileSetUtil.calculateMetrics(imageRect, tileSet.getTileWidth(),
@@ -121,12 +121,19 @@ public class TileSetGenerator {
         SpriteTrimmingMode mode = tileSet.getSpriteTrimMode();
 
         List<BufferedImage> images = split(image, tileSet, metrics);
-        List<SpriteTrimmingMode> imageTrimModes = new ArrayList<>();
+        List<AtlasImage> atlasImages = new ArrayList<>();
         List<String> names = new ArrayList<String>();
         int tileIndex = 0;
         for (BufferedImage tmp : images) {
-            imageTrimModes.add(mode);
-            names.add(String.format("tile%d", tileIndex++));
+            String name =  String.format("tile%d", tileIndex++);
+
+            atlasImages.add(AtlasImage.newBuilder()
+                            .setPivotX(0.5f)
+                            .setPivotY(0.5f)
+                            .setImage(name)
+                            .setSpriteTrimMode(mode)
+                            .build());
+            names.add(name);
         }
 
         AnimIterator iterator = createAnimIterator(tileSet, images.size());
@@ -134,7 +141,7 @@ public class TileSetGenerator {
         // Since all the images already are positioned optimally in a grid,
         // we tell TextureSetGenerator to NOT do its own packing and use this grid directly.
         Grid grid_size = new Grid(metrics.tilesPerRow, metrics.tilesPerColumn);
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, names, iterator, 0,
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, names, iterator, 0,
                 tileSet.getInnerPadding(),
                 tileSet.getExtrudeBorders(), false, true, grid_size, 0, 0);
 

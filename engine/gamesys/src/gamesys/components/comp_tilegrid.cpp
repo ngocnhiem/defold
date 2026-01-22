@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -29,6 +29,7 @@
 #include <gameobject/gameobject.h>
 #include <gameobject/gameobject_ddf.h>
 #include <dmsdk/dlib/vmath.h>
+#include <dmsdk/dlib/intersection.h>
 
 #include "../gamesys_private.h"
 #include "../gamesys.h"
@@ -40,10 +41,10 @@
 #include <dmsdk/gamesys/render_constants.h>
 
 DM_PROPERTY_EXTERN(rmtp_Components);
-DM_PROPERTY_U32(rmtp_Tilemap, 0, FrameReset, "# components", &rmtp_Components);
-DM_PROPERTY_U32(rmtp_TilemapTileCount, 0, FrameReset, "# vertices", &rmtp_Tilemap);
-DM_PROPERTY_U32(rmtp_TilemapVertexCount, 0, FrameReset, "# vertices", &rmtp_Tilemap);
-DM_PROPERTY_U32(rmtp_TilemapVertexSize, 0, FrameReset, "size of vertices in bytes", &rmtp_Tilemap);
+DM_PROPERTY_U32(rmtp_Tilemap, 0, PROFILE_PROPERTY_FRAME_RESET, "# components", &rmtp_Components);
+DM_PROPERTY_U32(rmtp_TilemapTileCount, 0, PROFILE_PROPERTY_FRAME_RESET, "# vertices", &rmtp_Tilemap);
+DM_PROPERTY_U32(rmtp_TilemapVertexCount, 0, PROFILE_PROPERTY_FRAME_RESET, "# vertices", &rmtp_Tilemap);
+DM_PROPERTY_U32(rmtp_TilemapVertexSize, 0, PROFILE_PROPERTY_FRAME_RESET, "size of vertices in bytes", &rmtp_Tilemap);
 
 namespace dmGameSystem
 {
@@ -55,9 +56,9 @@ namespace dmGameSystem
     // where the the box spans TILEGRID_REGION_SIZE tiles in each direction
     struct TileGridRegion
     {
-        uint8_t m_Dirty:1;
-        uint8_t m_Occupied:1;
-        uint8_t :6;
+        uint8_t m_Dirty      : 1;
+        uint8_t m_Occupied   : 1;
+        uint8_t              : 6;
     };
 
     struct TileGridLayer
@@ -222,6 +223,14 @@ namespace dmGameSystem
         return cell;
     }
 
+    uint8_t GetTileTransformMask(const TileGridComponent* component, uint32_t layer, int32_t cell_x, int32_t cell_y)
+    {
+        TileGridResource* resource = component->m_Resource;
+        uint32_t cell_index = CalculateCellIndex(layer, cell_x, cell_y, resource->m_ColumnCount, resource->m_RowCount);
+        TileGridComponent::Flags* flags = &component->m_CellFlags[cell_index];
+        return flags->m_TransformMask;
+    }
+
     void SetLayerVisible(TileGridComponent* component, uint32_t layer_index, bool visible)
     {
         TileGridLayer* layer = &component->m_Layers[layer_index];
@@ -257,10 +266,11 @@ namespace dmGameSystem
     {
         HashState32 state;
         TileGridResource* resource = component->m_Resource;
+        dmRender::HMaterial material = GetMaterial(component);
 
         // NOTE: Use the same order as comp_sprite, since they both use the "tile" tag by default
         dmHashInit32(&state, false);
-        dmHashUpdateBuffer32(&state, GetMaterial(component), sizeof(dmRender::HMaterial));
+        dmHashUpdateBuffer32(&state, &material, sizeof(material));
         dmHashUpdateBuffer32(&state, GetTextureSet(component), sizeof(TextureSetResource));
         dmHashUpdateBuffer32(&state, &resource->m_TileGrid->m_BlendMode, sizeof(resource->m_TileGrid->m_BlendMode));
         if (component->m_RenderConstants) {
@@ -435,6 +445,11 @@ namespace dmGameSystem
         return dmGameObject::CREATE_RESULT_OK;
     }
 
+    void* CompTileGridGetComponent(const dmGameObject::ComponentGetParams& params)
+    {
+        return (void*)params.m_UserData;
+    }
+
     dmGameObject::CreateResult CompTileGridDestroy(const dmGameObject::ComponentDestroyParams& params)
     {
         TileGridComponent* tile_grid = (TileGridComponent*) *params.m_UserData;
@@ -482,7 +497,7 @@ namespace dmGameSystem
         return dmGameObject::CREATE_RESULT_OK;
     }
 
-    dmGameObject::UpdateResult CompTileGridUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
+    dmGameObject::UpdateResult CompTileGridLateUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
     {
         TileGridWorld* world = (TileGridWorld*)params.m_World;
         dmArray<TileGridComponent*>& components = world->m_Components;
@@ -490,25 +505,20 @@ namespace dmGameSystem
         for (uint32_t i = 0; i < n; ++i)
         {
             TileGridComponent* component = components[i];
-            if (!component->m_Enabled || !component->m_AddedToUpdate) {
+            if (!component->m_Enabled || !component->m_AddedToUpdate)
+            {
                 continue;
             }
 
             component->m_Occupied = UpdateRegions(component);
-            if (!component->m_Occupied) {
+            if (!component->m_Occupied)
+            {
                 continue;
             }
 
             Matrix4 local(component->m_Rotation, component->m_Translation);
             const Matrix4& go_world = dmGameObject::GetWorldMatrix(component->m_Instance);
-            if (dmGameObject::ScaleAlongZ(component->m_Instance))
-            {
-                component->m_World = go_world * local;
-            }
-            else
-            {
-                component->m_World = dmTransform::MulNoScaleZ(go_world, local);
-            }
+            component->m_World = go_world * local;
         }
         DM_PROPERTY_ADD_U32(rmtp_Tilemap, world->m_Components.Size());
 
@@ -629,6 +639,44 @@ namespace dmGameSystem
             }
         }
         return where;
+    }
+
+    static void RenderListFrustumCulling(dmRender::RenderListVisibilityParams const &params)
+    {
+        DM_PROFILE("TileGridFrustrumCulling");
+        TileGridWorld* tilegrid_world = (TileGridWorld*)params.m_UserData;
+        const dmIntersection::Frustum frustum = *params.m_Frustum;
+        uint32_t num_entries = params.m_NumEntries;
+        for (uint32_t i = 0; i < num_entries; ++i)
+        {
+            dmRender::RenderListEntry* entry = &params.m_Entries[i];
+            uint32_t index, layer, region_x, region_y;
+            //entry->m_UserData - encoded region info
+            DecodeGridAndLayer(entry->m_UserData, index, layer, region_x, region_y);
+            TileGridComponent* component = tilegrid_world->m_Components[index];
+
+            TileGridResource* resource = component->m_Resource;
+            TextureSetResource* texture_set = GetTextureSet(component);
+            int32_t tile_width = (int32_t)texture_set->m_TextureSet->m_TileWidth;
+            int32_t tile_height = (int32_t)texture_set->m_TextureSet->m_TileHeight;
+
+            int32_t column_count = (int32_t)resource->m_ColumnCount;
+            int32_t row_count = (int32_t)resource->m_RowCount;
+            int32_t min_x = resource->m_MinCellX + region_x * TILEGRID_REGION_SIZE;
+            int32_t min_y = resource->m_MinCellY + region_y * TILEGRID_REGION_SIZE;
+
+            int32_t region_max_x = min_x + TILEGRID_REGION_SIZE;
+            int32_t tilemap_max_x = resource->m_MinCellX + column_count;
+            int32_t region_max_y = min_y + TILEGRID_REGION_SIZE;
+            int32_t tilemap_max_y = resource->m_MinCellY + row_count;
+            int32_t max_x = dmMath::Min(region_max_x, tilemap_max_x);
+            int32_t max_y = dmMath::Min(region_max_y, tilemap_max_y);
+
+            dmVMath::Vector3 min_corner = dmVMath::Vector3((float)(min_x * tile_width), (float)(min_y * tile_height), 0.f);
+            dmVMath::Vector3 max_corner = dmVMath::Vector3((float)(max_x * tile_width), (float)(max_y * tile_height), 0.f);
+            bool intersect = dmIntersection::TestFrustumOBB(frustum, component->m_World, min_corner, max_corner);
+            entry->m_Visibility = intersect ? dmRender::VISIBILITY_FULL : dmRender::VISIBILITY_NONE;
+        }
     }
 
     static void RenderBatch(TileGridWorld* world, dmRender::HRenderContext render_context, dmRender::RenderListEntry *buf, uint32_t* begin, uint32_t* end)
@@ -779,7 +827,7 @@ namespace dmGameSystem
 
         dmRender::HRenderContext render_context = context->m_RenderContext;
         dmRender::RenderListEntry* render_list = dmRender::RenderListAlloc(render_context, num_render_entries);
-        dmRender::HRenderListDispatch dispatch = dmRender::RenderListMakeDispatch(render_context, &RenderListDispatch, world);
+        dmRender::HRenderListDispatch dispatch = dmRender::RenderListMakeDispatch(render_context, &RenderListDispatch, &RenderListFrustumCulling, world);
         dmRender::RenderListEntry* write_ptr = render_list;
 
         for (uint32_t i = 0; i < n; ++i)
@@ -933,7 +981,9 @@ namespace dmGameSystem
         }
         if (params.m_PropertyId == PROP_TILE_SOURCE)
         {
-            return SetResourceProperty(dmGameObject::GetFactory(params.m_Instance), params.m_Value, TEXTURE_SET_EXT_HASH, (void**)&component->m_TextureSet);
+            dmGameObject::PropertyResult res = SetResourceProperty(dmGameObject::GetFactory(params.m_Instance), params.m_Value, TEXTURE_SET_EXT_HASH, (void**)&component->m_TextureSet);
+            ReHash(component);
+            return res;
         }
         return SetMaterialConstant(GetMaterial(component), params.m_PropertyId, params.m_Value, params.m_Options.m_Index, CompTileGridSetConstantCallback, component);
     }

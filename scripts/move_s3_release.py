@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-# Copyright 2020-2024 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
 # this file except in compliance with the License.
-# 
+#
 # You may obtain a copy of the License, together with FAQs at
 # https://www.defold.com/license
-# 
+#
 # Unless required by applicable law or agreed to in writing, software distributed
 # under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 # CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -15,7 +15,7 @@
 
 # add build_tools folder to the import search path
 import sys, os
-from os.path import join, dirname, basename, relpath, expanduser, normpath, abspath
+from os.path import join, dirname, normpath, abspath
 sys.path.append(os.path.join(normpath(join(dirname(abspath(__file__)), '..')), "build_tools"))
 
 import optparse
@@ -24,8 +24,7 @@ import s3
 CDN_UPLOAD_URL="s3://d.defold.com/archive"
 
 if __name__ == '__main__':
-    boto_path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../packages/boto-2.28.0-py2.7.egg'))
-    sys.path.insert(0, boto_path)
+    s3.init_boto_data_path()
     usage = '''usage: %prog [options] command
 
 Commands:

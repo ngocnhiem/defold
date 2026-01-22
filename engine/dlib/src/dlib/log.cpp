@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -37,6 +37,9 @@
 #endif
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
 #endif
 
 namespace dmLog
@@ -303,21 +306,20 @@ static void DoLogPlatform(LogSeverity severity, const char* output, int output_l
 #endif
 
 #ifdef __EMSCRIPTEN__
+
         //Emscripten maps stderr to console.error and stdout to console.log.
         if (severity == LOG_SEVERITY_ERROR || severity == LOG_SEVERITY_FATAL){
-            fwrite(output, 1, output_len, stderr);
+            EM_ASM_({
+                Module.printErr(UTF8ToString($0));
+            }, output);
         } else {
-            fwrite(output, 1, output_len, stdout);
+            EM_ASM_({
+                Module.print(UTF8ToString($0));
+            }, output);
         }
 #elif !defined(ANDROID)
         fwrite(output, 1, output_len, stderr);
 #endif
-
-    if (dmLog::g_LogFile && dmLog::g_TotalBytesLogged < dmLog::MAX_LOG_FILE_SIZE) {
-        dmLog::g_TotalBytesLogged += output_len;
-        fwrite(output, 1, output_len, dmLog::g_LogFile);
-        fflush(dmLog::g_LogFile);
-    }
 }
 
 // Here we put logging that needs to be thread safe
@@ -332,7 +334,7 @@ static void DoLogSynchronized(LogSeverity severity, const char* domain, const ch
         g_Listeners[i]((LogSeverity)severity, domain, output);
     }
 
-    dmProfile::LogText("%s", output);
+    ProfileLogText("%s", output);
 }
 
 static void dmLogDispatch(dmMessage::Message *message, void* user_ptr)
@@ -622,9 +624,9 @@ void LogInternal(LogSeverity severity, const char* domain, const char* format, .
         return;
     }
 
-    // In release mode, if there are no custom listeners, we'll return here
+    // In release mode, if there are no custom listeners, and no log.txt file, we'll return here
     bool is_debug_mode = dLib::IsDebugMode();
-    if (!is_debug_mode && (dmAtomicGet32(&dmLog::g_ListenersCount) == 0))
+    if (!is_debug_mode && !dmLog::g_LogFile && (dmAtomicGet32(&dmLog::g_ListenersCount) == 0))
     {
         return;
     }
@@ -654,12 +656,17 @@ void LogInternal(LogSeverity severity, const char* domain, const char* format, .
     n += dmSnPrintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, "%s:%s: ", severity_str, domain);
     if (n < dmLog::MAX_STRING_SIZE)
     {
-        n += vsnprintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, format, lst);
+        int length = vsnprintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, format, lst);
+        if (length > 0)
+        {
+            n += length;
+        }
     }
 
     if (n < dmLog::MAX_STRING_SIZE)
     {
-        n += dmSnPrintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, "\n");
+        dmSnPrintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, "\n");
+        ++n; // Since dmSnPrintf returns -1 on truncation, don't add the return value to n, and instead increment n separately
     }
 
     if (n >= dmLog::MAX_STRING_SIZE)
@@ -677,6 +684,13 @@ void LogInternal(LogSeverity severity, const char* domain, const char* format, .
     if (is_debug_mode)
     {
         dmLog::DoLogPlatform(severity, str_buf, actual_n);
+    }
+
+    if (dmLog::g_LogFile && dmLog::g_TotalBytesLogged < dmLog::MAX_LOG_FILE_SIZE)
+    {
+        dmLog::g_TotalBytesLogged += actual_n;
+        fwrite(str_buf, 1, actual_n, dmLog::g_LogFile);
+        fflush(dmLog::g_LogFile);
     }
 
     if (!dmLog::IsServerInitialized()) // in case the server lock isn't even created

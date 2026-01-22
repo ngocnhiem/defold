@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -20,8 +20,9 @@
 
 namespace dmPlatform
 {
-    struct Window;
-    typedef Window* HWindow;
+    struct dmWindow;
+    typedef dmWindow* HWindow;
+
     typedef void (*WindowResizeCallback)(void* user_data, uint32_t width, uint32_t height);
     typedef void (*WindowFocusCallback)(void* user_data, uint32_t focus);
     typedef void (*WindowIconifyCallback)(void* user_data, uint32_t iconified);
@@ -40,10 +41,13 @@ namespace dmPlatform
 
     enum PlatformGraphicsApi
     {
-        PLATFORM_GRAPHICS_API_NULL   = 0,
-        PLATFORM_GRAPHICS_API_OPENGL = 1,
-        PLATFORM_GRAPHICS_API_VULKAN = 2,
-        PLATFORM_GRAPHICS_API_VENDOR = 3,
+        PLATFORM_GRAPHICS_API_NULL     = 0,
+        PLATFORM_GRAPHICS_API_OPENGL   = 1,
+        PLATFORM_GRAPHICS_API_OPENGLES = 2,
+        PLATFORM_GRAPHICS_API_VULKAN   = 3,
+        PLATFORM_GRAPHICS_API_VENDOR   = 4,
+        PLATFORM_GRAPHICS_API_WEBGPU   = 5,
+        PLATFORM_GRAPHICS_API_DIRECTX  = 6,
     };
 
     enum DeviceState
@@ -55,6 +59,16 @@ namespace dmPlatform
         DEVICE_STATE_KEYBOARD_NUMBER_PAD = 5,
         DEVICE_STATE_KEYBOARD_EMAIL      = 6,
         DEVICE_STATE_KEYBOARD_PASSWORD   = 7,
+        DEVICE_STATE_KEYBOARD_RESET      = 8,
+        DEVICE_STATE_JOYSTICK_PRESENT    = 9,
+        DEVICE_STATE_MAX // Used to create arrays of correct size (private repo)
+    };
+
+    enum GamepadEvent
+    {
+        GAMEPAD_EVENT_UNSUPPORTED  = 0,
+        GAMEPAD_EVENT_CONNECTED    = 1,
+        GAMEPAD_EVENT_DISCONNECTED = 2,
     };
 
     enum WindowState
@@ -82,6 +96,8 @@ namespace dmPlatform
         WINDOW_STATE_HIGH_DPI           = 21,
         WINDOW_STATE_AUX_CONTEXT        = 22,
     };
+
+    typedef void (*WindowGamepadEventCallback)(void* user_data, int gamepad_index, GamepadEvent evt);
 
     struct WindowParams
     {
@@ -127,6 +143,33 @@ namespace dmPlatform
         bool                    m_HighDPI;
         // Window background color, RGB 0x00BBGGRR
         uint32_t                m_BackgroundColor;
+        uint8_t                 m_ContextAlphabits;
+        // OpenGL specific settings
+        uint8_t                 m_OpenGLVersionHint        : 7; // I.e: 33, 40-46, 0 (use highest available)
+        uint8_t                 m_OpenGLUseCoreProfileHint : 1;
+    };
+
+    struct TouchData
+    {
+        int32_t m_TapCount;
+        int32_t m_Phase;
+        int32_t m_X;
+        int32_t m_Y;
+        int32_t m_DX;
+        int32_t m_DY;
+        int32_t m_Id;
+    };
+
+    struct SafeArea
+    {
+        int32_t   m_X;
+        int32_t   m_Y;
+        uint32_t  m_Width;
+        uint32_t  m_Height;
+        int32_t   m_InsetLeft;
+        int32_t   m_InsetTop;
+        int32_t   m_InsetRight;
+        int32_t   m_InsetBottom;
     };
 
     HWindow        NewWindow();
@@ -140,23 +183,39 @@ namespace dmPlatform
     uint32_t       GetWindowHeight(HWindow window);
     uint32_t       GetWindowStateParam(HWindow window, WindowState state);
     float          GetDisplayScaleFactor(HWindow window);
+    uintptr_t      GetProcAddress(HWindow window, const char* proc_name);
 
     int32_t        GetKey(HWindow window, int32_t code);
     int32_t        GetMouseButton(HWindow window, int32_t button);
     int32_t        GetMouseWheel(HWindow window);
     void           GetMousePosition(HWindow window, int32_t* x, int32_t* y);
+    uint32_t       GetTouchData(HWindow window, TouchData* touch_data, uint32_t touch_data_count);
+    bool           GetAcceleration(HWindow window, float* x, float* y, float* z);
+    bool           GetSafeArea(HWindow window, SafeArea* out);
+
+    const char*    GetJoystickDeviceName(HWindow window, uint32_t joystick_index);
+    uint32_t       GetJoystickAxes(HWindow window, uint32_t joystick_index, float* values, uint32_t values_capacity);
+    uint32_t       GetJoystickHats(HWindow window, uint32_t joystick_index, uint8_t* values, uint32_t values_capacity);
+    uint32_t       GetJoystickButtons(HWindow window, uint32_t joystick_index, uint8_t* values, uint32_t values_capacity);
 
     void           SetDeviceState(HWindow window, DeviceState state, bool op1);
     void           SetDeviceState(HWindow window, DeviceState state, bool op1, bool op2);
     bool           GetDeviceState(HWindow window, DeviceState state);
+    bool           GetDeviceState(HWindow window, DeviceState state, int32_t op1);
 
+    void           SetWindowTitle(HWindow window, const char* title);
     void           SetWindowSize(HWindow window, uint32_t width, uint32_t height);
+    void           SetWindowPosition(HWindow window, int32_t x, int32_t y);
     void           SetSwapInterval(HWindow window, uint32_t swap_interval);
     void           SetKeyboardCharCallback(HWindow window, WindowAddKeyboardCharCallback cb, void* user_data);
     void           SetKeyboardMarkedTextCallback(HWindow window, WindowSetMarkedTextCallback cb, void* user_data);
     void           SetKeyboardDeviceChangedCallback(HWindow window, WindowDeviceChangedCallback cb, void* user_data);
+    void           SetGamepadEventCallback(HWindow window, WindowGamepadEventCallback cb, void* user_data);
+
+    void           ShowWindow(HWindow window);
     void           IconifyWindow(HWindow window);
     void           PollEvents(HWindow window);
+    void           SwapBuffers(HWindow window);
 
     void*          AcquireAuxContext(HWindow window);
     void           UnacquireAuxContext(HWindow window, void* aux_context);

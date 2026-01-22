@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -23,7 +23,7 @@
  *
  * @document
  * @name ObjectPool
- * @path engine/dlib/src/dmsdk/dlib/object_pool.h
+ * @language C++
  */
 
 /*#
@@ -37,6 +37,7 @@
  *
  * @struct
  * @name dmObjectPool
+ * @tparam T
  */
 template <typename T>
 class dmObjectPool
@@ -59,7 +60,6 @@ public:
     /*#
      * Constructor
      * @name dmObjectPool
-     * @param capacity
      */
     dmObjectPool()
     {
@@ -80,6 +80,17 @@ public:
 
         m_ToLogical.SetCapacity(capacity);
         m_ToLogical.SetSize(capacity);
+    }
+
+    /*#
+     * Grow by an amount.
+     * @name OffsetCapacity
+     * @param grow [type: uint32_t] number of items to grow
+     */
+    void OffsetCapacity(uint32_t grow)
+    {
+        assert(grow > 0);
+        SetCapacity(Capacity() + grow);
     }
 
     /*#
@@ -165,6 +176,7 @@ public:
 
         // Put in free list
         e->m_Next = m_FirstFree;
+        e->m_Physical = 0xffffffff;
         m_FirstFree = e - m_Entries.Begin();
     }
 
@@ -190,6 +202,20 @@ public:
         Entry* e = &m_Entries[index];
         T& o = m_Objects[e->m_Physical];
         return o;
+    }
+
+    /*#
+     * Get object pointer from logical index
+     * @name GetPtr
+     * @param index [type: uint32_t] index of the object
+     * @return object [type: T*] a pointer to the object. Null if the logical index wasn't valid
+     */
+    T* GetPtr(uint32_t index)
+    {
+        Entry* e = &m_Entries[index];
+        if (e->m_Physical >= m_Objects.Size())
+            return 0;
+        return &m_Objects[e->m_Physical];
     }
 
     /*#

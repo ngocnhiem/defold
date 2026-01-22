@@ -10,7 +10,7 @@ def configure(conf):
     pass
 
 def build(bld):
-    uselib = ['TESTMAIN', 'DLIB', 'SOCKET', 'DDF', 'THREAD', 'EXTENSION', 'PROFILE_NULL', 'RESOURCE', 'SCRIPT', 'LUA']
+    uselib = ['TESTMAIN', 'DLIB', 'SOCKET', 'DDF', 'THREAD', 'EXTENSION', 'PROFILE_NULL', 'RESOURCE', 'SCRIPT', 'GRAPHICS_NULL', 'PLATFORM_NULL', 'LUA']
     exported_symbols = ['LiveUpdateExt', 'ResourceProviderFile']
 
     for thread_version in ['multi', 'single']:
@@ -26,10 +26,8 @@ def build(bld):
                 features = ['skip_test']
                 defines = ['DM_LU_NULL_IMPLEMENTATION'] # if we use null implementation, then we can't test internal function
 
-            if thread_version == 'multi':
-                defines.append('DM_HAVE_THREAD')
-            else:
-                defines.append('DM_USE_SINGLE_THREAD')
+            thread_count = '1' if thread_version == 'multi' else '0'
+            defines.append(f'DM_TEST_THREAD_COUNT={thread_count}')
 
             bld.program(features = 'cxx test'.split() + features,
                         includes = '../../../src',

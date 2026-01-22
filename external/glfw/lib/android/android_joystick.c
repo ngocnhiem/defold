@@ -3,10 +3,10 @@
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -17,6 +17,7 @@
 #include "android_jni.h"
 #include "android_log.h"
 
+#define DEVICE_ID_NONE (-1000)
 
 static int glfwAndroidJoystickPresent( int joy )
 {
@@ -68,7 +69,7 @@ static void glfwAndroidDisconnectJoystick(const int joystickIndex)
     if (_glfwJoy[joystickIndex].State != GLFW_ANDROID_GAMEPAD_DISCONNECTED)
     {
         _glfwJoy[joystickIndex].State = GLFW_ANDROID_GAMEPAD_DISCONNECTED;
-        _glfwJoy[joystickIndex].DeviceId = 0;
+        _glfwJoy[joystickIndex].DeviceId = DEVICE_ID_NONE;
         _glfwJoy[joystickIndex].NumAxes = 0;
         _glfwJoy[joystickIndex].NumButtons = 0;
         _glfwWin.gamepadCallback(joystickIndex, 0);
@@ -451,3 +452,19 @@ int _glfwPlatformGetJoystickDeviceId( int joy, char** device_id )
         return GL_TRUE;
     }
 }
+
+void _glfwTerminateJoysticks( void )
+{
+    LOGI("_glfwTerminateJoysticks");
+    int32_t joystickIndex = -1;
+    for( joystickIndex = 0; joystickIndex <= GLFW_JOYSTICK_LAST; joystickIndex++ )
+    {
+        _glfwJoy[joystickIndex].State = GLFW_ANDROID_GAMEPAD_DISCONNECTED;
+        _glfwJoy[joystickIndex].DeviceId = DEVICE_ID_NONE;
+        _glfwJoy[joystickIndex].NumAxes = 0;
+        _glfwJoy[joystickIndex].NumButtons = 0;
+    }
+
+}
+
+#undef DEVICE_ID_NONE

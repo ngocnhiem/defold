@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -15,9 +15,12 @@
 package com.dynamo.bob.pipeline;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.dynamo.bob.util.TextureUtil;
 import org.apache.commons.io.FilenameUtils;
 
 import com.dynamo.bob.fs.IResource;
@@ -35,6 +38,7 @@ import com.dynamo.graphics.proto.Graphics;
 import com.dynamo.lua.proto.Lua.LuaModule;
 import com.dynamo.render.proto.Font;
 import com.dynamo.render.proto.Material;
+import com.dynamo.render.proto.Compute;
 import com.dynamo.render.proto.Render.RenderPrototypeDesc;
 import com.dynamo.rig.proto.Rig;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -63,6 +67,12 @@ public class ParseUtil {
                 return LuaModule.parseFrom(content);
             }
         });
+        parseMap.put("render_scriptc", new IParser() {
+            @Override
+            public Message parse(byte[] content) throws InvalidProtocolBufferException {
+                return LuaModule.parseFrom(content);
+            }
+        });
         parseMap.put("goc", new IParser() {
             @Override
             public Message parse(byte[] content) throws InvalidProtocolBufferException {
@@ -81,10 +91,22 @@ public class ParseUtil {
                 return SoundDesc.parseFrom(content);
             }
         });
+        parseMap.put("oggc", new IParser() {
+            @Override
+            public Message parse(byte[] content) throws InvalidProtocolBufferException {
+                return null;
+            }
+        });
+        parseMap.put("opusc", new IParser() {
+            @Override
+            public Message parse(byte[] content) throws InvalidProtocolBufferException {
+                return null;
+            }
+        });
         parseMap.put("texturec", new IParser() {
             @Override
             public Message parse(byte[] content) throws InvalidProtocolBufferException {
-                return TextureImage.parseFrom(content);
+                return TextureUtil.textureResourceBytesToTextureImage(content);
             }
         });
         parseMap.put("texturesetc", new IParser() {
@@ -165,19 +187,7 @@ public class ParseUtil {
                 return ModelProto.Model.parseFrom(content);
             }
         });
-        parseMap.put("vpc", new IParser() {
-            @Override
-            public Message parse(byte[] content) throws InvalidProtocolBufferException {
-                return Graphics.ShaderDesc.parseFrom(content);
-            }
-        });
-        parseMap.put("fpc", new IParser() {
-            @Override
-            public Message parse(byte[] content) throws InvalidProtocolBufferException {
-                return Graphics.ShaderDesc.parseFrom(content);
-            }
-        });
-        parseMap.put("cpc", new IParser() {
+        parseMap.put("spc", new IParser() {
             @Override
             public Message parse(byte[] content) throws InvalidProtocolBufferException {
                 return Graphics.ShaderDesc.parseFrom(content);
@@ -217,6 +227,12 @@ public class ParseUtil {
             @Override
             public Message parse(byte[] content) throws InvalidProtocolBufferException {
                 return Material.MaterialDesc.parseFrom(content);
+            }
+        });
+        parseMap.put("computec", new IParser() {
+            @Override
+            public Message parse(byte[] content) throws InvalidProtocolBufferException {
+                return Compute.ComputeDesc.parseFrom(content);
             }
         });
         parseMap.put("renderc", new IParser() {

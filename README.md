@@ -28,9 +28,11 @@ Repository for the Defold engine, editor and command line tools.
 * **com.dynamo.cr** - Bob
 * **engine** - Engine
 * **editor** - Editor
-* **packages** - External packages
+* **external** - External libraries that can be rebuilt using our build system
+* **packages** - Prebuilt external packages
 * **scripts** - Build and utility scripts
 * **share** - Misc shared stuff used by other tools. Waf build-scripts, valgrind suppression files, etc.
+* **share/ext** - External libraries that are built using custom build steps
 
 ## Setup and Build
 
@@ -48,7 +50,7 @@ Follow the [instructions](editor/README.md) in the editor folder.
 
 ## Engine Overview
 
-An overview of the engine architecture and additional engine information can be [viewed here](README_ENGINE.md).
+An overview of the engine architecture and additional engine information can be [viewed here](./engine/docs/README.md).
 
 ### Platform Specifics
 

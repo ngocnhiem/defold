@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -21,15 +21,16 @@
             [editor.fs :as fs]
             [editor.game-object :as game-object]
             [editor.geom :as geom]
+            [editor.localization :as localization]
             [editor.properties :as properties]
             [editor.protobuf :as protobuf]
             [editor.resource :as resource]
             [editor.workspace :as workspace]
             [integration.test-util :as test-util]
             [internal.graph.types :as gt]
-            [support.test-support :refer [with-clean-system graph-dependencies]])
+            [support.test-support :refer [graph-dependencies with-clean-system]])
   (:import [com.dynamo.gameobject.proto GameObject$CollectionDesc GameObject$PrototypeDesc]
-           [com.dynamo.proto DdfMath$Vector3]))
+           [com.dynamo.proto DdfMath$Vector3One]))
 
 (deftest hierarchical-outline
   (testing "Hierarchical outline"
@@ -39,7 +40,7 @@
         ;; Two game objects under the collection
         (is (= 2 (count (:children outline))))
         ;; One component and game object under the game object
-        (is (= 2 (count (:children (second (:children outline)))))))))
+        (is (= 2 (count (:children (first (:children outline)))))))))
   (testing "Deleting hierarchy deletes children"
     (test-util/with-loaded-project
       (let [node-id   (test-util/resource-node project "/logic/hierarchy.collection")
@@ -83,7 +84,7 @@
                ; Select the collection node
                (app-view/select! app-view [node-id])
                ; Run the add handler
-               (test-util/handler-run :add [{:name :workbench :env {:workspace workspace :project project :app-view app-view :selection [node-id]}}] {})
+               (test-util/handler-run :edit.add-embedded-component [{:name :workbench :env {:workspace workspace :project project :app-view app-view :selection [node-id]}}] {})
                ; Three game objects under the collection
                (is (= 3 (count (:children (g/node-value node-id :node-outline)))))))))
 
@@ -94,7 +95,7 @@
                    outline   (g/node-value node-id :node-outline)
                    scene     (g/node-value node-id :scene)]
                ;; Verify outline labels
-               (is (= (list "Collection" "go") (map :label (tree-seq :children :children outline))))
+               (is (= (list (localization/message "outline.collection") "go") (map :label (tree-seq :children :children outline))))
                ;; Verify AABBs
                (is (= [geom/null-aabb geom/empty-bounding-box]
                       (map :aabb (tree-seq :children :children (g/node-value node-id :scene)))))))))
@@ -106,7 +107,7 @@
                    outline   (g/node-value node-id :node-outline)
                    scene     (g/node-value node-id :scene)]
                ;; Verify outline labels
-               (is (= (list "Collection" "my_instance" "unknown")
+               (is (= (list (localization/message "outline.collection") "my_instance" "unknown")
                       (map :label (tree-seq :children :children outline))))
                ;; Verify AABBs
                (is (= [geom/null-aabb geom/empty-bounding-box geom/empty-bounding-box]
@@ -148,7 +149,7 @@
           go-id     (test-util/resource-node project "/game_object/test.go")
           script-id (test-util/resource-node project "/script/props.script")
           select-fn (fn [node-ids] (app-view/select app-view node-ids))]
-      (collection/add-referenced-collection! parent-id (test-util/resource workspace "/collection/test.collection") "child" [0.0 0.0 0.0] [0.0 0.0 0.0 1.0] [1.0 1.0 1.0] [] select-fn)
+      (collection/add-referenced-collection! parent-id (test-util/resource workspace "/collection/test.collection") "child" nil nil select-fn)
       (collection/add-referenced-game-object! coll-id coll-id (test-util/resource workspace "/game_object/test.go") select-fn)
       (is (nil? (test-util/outline coll-id [0 0])))
       (let [inst (first (test-util/selection app-view))]
@@ -191,7 +192,7 @@
           coll-id   (test-util/resource-node project "/collection/test.collection")
           go-id     (test-util/resource-node project "/game_object/test.go")
           select-fn (fn [node-ids] (app-view/select app-view node-ids))]
-      (collection/add-referenced-collection! parent-id (test-util/resource workspace "/collection/test.collection") "child" [0.0 0.0 0.0] [0.0 0.0 0.0 1.0] [1.0 1.0 1.0] [] select-fn)
+      (collection/add-referenced-collection! parent-id (test-util/resource workspace "/collection/test.collection") "child" nil nil select-fn)
       (collection/add-referenced-game-object! coll-id coll-id (test-util/resource workspace "/game_object/test.go") select-fn)
       (game-object/add-referenced-component! go-id (test-util/resource workspace "/script/props.script") select-fn)
       (testing "component id should only be editable on the game object including the component"
@@ -234,7 +235,7 @@
       (testing "collection ref instance"
                (is (not (build-error? coll-id)))
                (let [res (workspace/resolve-workspace-resource workspace "/collection/test.collection")]
-                 (collection/add-referenced-collection! coll-id res "coll" [0.0 0.0 0.0] [0.0 0.0 0.0 1.0] [1.0 1.0 1.0] [] nil)
+                 (collection/add-referenced-collection! coll-id res "coll" nil nil nil)
                  (let [inst-id (:node-id (test-util/outline coll-id [0]))]
                    (is (nil? (test-util/prop-error inst-id :path)))
                    (test-util/with-prop [inst-id :path {:resource nil :overrides []}]
@@ -248,9 +249,9 @@
                      (is (g/error? (test-util/prop-error inst-id :id)))
                      (is (build-error? coll-id)))))))))
 
-(defn- vector3-pb
-  ^DdfMath$Vector3 [^double x ^double y ^double z]
-  (-> (DdfMath$Vector3/newBuilder)
+(defn- vector3-one-pb
+  ^DdfMath$Vector3One [^double x ^double y ^double z]
+  (-> (DdfMath$Vector3One/newBuilder)
       (.setX x)
       (.setY y)
       (.setZ z)
@@ -286,8 +287,14 @@
                     referenced-component-built-pb (.getComponents game-object-built-pb 1)]
                 (is (.hasScale embedded-component-built-pb))
                 (is (.hasScale referenced-component-built-pb))
-                (is (= (vector3-pb 1.0 1.0 1.0) (.getScale embedded-component-built-pb)))
-                (is (= (vector3-pb 1.0 1.0 1.0) (.getScale referenced-component-built-pb))))))
+                (let [scale (.getScale embedded-component-built-pb)]
+                  (is (= (float 1.0) (.getX scale)))
+                  (is (= (float 1.0) (.getY scale)))
+                  (is (= (float 1.0) (.getZ scale))))
+                (let [scale (.getScale referenced-component-built-pb)]
+                  (is (= (float 1.0) (.getX scale)))
+                  (is (= (float 1.0) (.getY scale)))
+                  (is (= (float 1.0) (.getZ scale)))))))
 
           (scale-components! [embedded-component referenced-component]
             (g/transact
@@ -302,8 +309,8 @@
                     referenced-component-saved-pb (.getComponents game-object-saved-pb 0)]
                 (is (.hasScale embedded-component-saved-pb))
                 (is (.hasScale referenced-component-saved-pb))
-                (is (= (vector3-pb 2.0 3.0 4.0) (.getScale embedded-component-saved-pb)))
-                (is (= (vector3-pb 5.0 6.0 7.0) (.getScale referenced-component-saved-pb))))))
+                (is (= (vector3-one-pb 2.0 3.0 4.0) (.getScale embedded-component-saved-pb)))
+                (is (= (vector3-one-pb 5.0 6.0 7.0) (.getScale referenced-component-saved-pb))))))
 
           (test-scaled-built-pb [game-object-built-pb]
             (testing "Scaled components include assigned scale in built binaries."
@@ -312,8 +319,8 @@
                     referenced-component-built-pb (.getComponents game-object-built-pb 1)]
                 (is (.hasScale embedded-component-built-pb))
                 (is (.hasScale referenced-component-built-pb))
-                (is (= (vector3-pb 2.0 3.0 4.0) (.getScale embedded-component-built-pb)))
-                (is (= (vector3-pb 5.0 6.0 7.0) (.getScale referenced-component-built-pb))))))
+                (is (= (vector3-one-pb 2.0 3.0 4.0) (.getScale embedded-component-built-pb)))
+                (is (= (vector3-one-pb 5.0 6.0 7.0) (.getScale referenced-component-built-pb))))))
 
           (game-object-saved-pb [game-object]
             (test-util/saved-pb game-object GameObject$PrototypeDesc))

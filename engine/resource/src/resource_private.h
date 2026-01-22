@@ -1,4 +1,4 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,6 +18,7 @@
 #include <ddf/ddf.h>
 #include "resource_archive.h"
 #include "resource.h"
+#include <dmsdk/resource/resource.h>
 
 // Internal API that preloader needs to use.
 
@@ -34,37 +35,87 @@
 #endif
 
 
+namespace dmJobThread
+{
+    typedef struct JobContext* HContext;
+}
+
+/**
+ * Resource descriptor
+ * @name ResourceDescriptor
+ * @member m_NameHash [type: uint64_t] Hash of resource name
+ * @member m_Resource [type: void*] Resource pointer. Must be unique and not NULL.
+ * @member m_PrevResource [type: void*] Resource pointer. Resource pointer to a previous version of the resource, iff it exists. Only used when recreating resources.
+ * @member m_ResourceSize [type: uint32_t] Resource size in memory. I.e. the payload of m_Resource
+ */
+struct ResourceDescriptor
+{
+    /// Hash of resource name
+    uint64_t m_NameHash;
+    /// Resource pointer. Must be unique and not NULL.
+    void*    m_Resource;
+    /// Resource pointer to a previous version of the resource, iff it exists. Only used when recreating resources.
+    void*    m_PrevResource;
+    /// Resource size in memory. I.e. the payload of m_Resource
+    uint32_t m_ResourceSize;
+
+    // private members
+    HResourceType   m_ResourceType;
+    uint32_t        m_ResourceSizeOnDisc;
+    uint32_t        m_ReferenceCount;
+    uint16_t        m_Version;
+};
+
+struct ResourceType
+{
+    ResourceType() // TODO: Will it be ok using C++ constructor, since this is a private header?
+    {
+        memset(this, 0, sizeof(*this));
+        m_PreloadSize = RESOURCE_INVALID_PRELOAD_SIZE;
+    }
+    dmhash_t            m_ExtensionHash;
+    const char*         m_Extension; // The suffix, without the '.'
+    void*               m_Context;
+    FResourcePreload    m_PreloadFunction;
+    FResourceCreate     m_CreateFunction;
+    FResourcePostCreate m_PostCreateFunction;
+    FResourceDestroy    m_DestroyFunction;
+    FResourceRecreate   m_RecreateFunction;
+    uint32_t            m_PreloadSize;
+    uint8_t             m_Index;
+};
+
+struct ResourceTypeContext
+{
+    HResourceFactory        m_Factory;
+    dmHashTable64<void*>*   m_Contexts;
+};
+
+struct ResourcePreloadHintInfo
+{
+    HResourcePreloader      m_Preloader;
+    int32_t                 m_Parent;
+};
+
 namespace dmResource
 {
-    const uint32_t MAX_RESOURCE_TYPES = 128;
-
-    struct SResourceType
-    {
-        SResourceType()
-        {
-            memset(this, 0, sizeof(*this));
-        }
-        dmhash_t            m_ExtensionHash;
-        const char*         m_Extension;
-        void*               m_Context;
-        FResourcePreload    m_PreloadFunction;
-        FResourceCreate     m_CreateFunction;
-        FResourcePostCreate m_PostCreateFunction;
-        FResourceDestroy    m_DestroyFunction;
-        FResourceRecreate   m_RecreateFunction;
-    };
-
-    struct SResourceDescriptor;
 
     Result CheckSuppliedResourcePath(const char* name);
+
+#if !defined(DM_HAS_THREADS)
+    // Only use for single threaded loading! (used in load_queue_sync.cpp)
+    LoadBufferType* GetGlobalLoadBuffer(HFactory factory);
+#endif
 
     // load with default internal buffer and its management, returns buffer ptr in 'buffer'
     Result LoadResource(HFactory factory, const char* path, const char* original_name, void** buffer, uint32_t* resource_size);
 
-    Result InsertResource(HFactory factory, const char* path, uint64_t canonical_path_hash, SResourceDescriptor* descriptor);
-    uint32_t GetCanonicalPathFromBase(const char* base_dir, const char* relative_dir, char* buf);
+    // load directly to a user supplied buffer, and chunk size
+    Result LoadResourceToBufferWithOffset(HFactory factory, const char* path, const char* original_name, uint32_t offset, uint32_t size, uint32_t* resource_size, uint32_t* buffer_size, LoadBufferType* buffer);
 
-    SResourceType* FindResourceType(SResourceFactory* factory, const char* extension);
+    Result InsertResource(HFactory factory, const char* path, uint64_t canonical_path_hash, HResourceDescriptor descriptor);
+
+    HResourceType FindResourceType(HFactory factory, const char* extension);
     uint32_t GetRefCount(HFactory factory, void* resource);
     uint32_t GetRefCount(HFactory factory, dmhash_t identifier);
 
@@ -77,6 +128,9 @@ namespace dmResource
     // Files mapped with this function should be unmapped with UnmapFile(...)
     Result MapFile(const char* filename, void*& map, uint32_t& size);
     Result UnmapFile(void*& map, uint32_t size);
+    // Assets mapped with this function should be unmapped with UnmapAsset(...)
+    Result MapAsset(const char* name, void*& out_asset, uint32_t& out_size, void*& out_map);
+    Result UnmapAsset(void*& asset, uint32_t size);
 
     /**
      * In the case of an app-store upgrade, we dont want the runtime to load any existing local liveupdate.manifest.
@@ -87,23 +141,6 @@ namespace dmResource
      */
     //Result BundleVersionValid(const Manifest* manifest, const char* bundle_ver_path);
 
-    struct PreloadHintInfo
-    {
-        HPreloader m_Preloader;
-        int32_t    m_Parent;
-    };
-
-    struct PreloadRequest;
-
-    struct TypeCreatorDesc
-    {
-        const char* m_Name;
-        FResourceTypeRegister m_RegisterFn;
-        FResourceTypeRegister m_DeregisterFn;
-        TypeCreatorDesc* m_Next;
-    };
-
-    const TypeCreatorDesc* GetFirstTypeCreatorDesc();
 }
 
 #endif

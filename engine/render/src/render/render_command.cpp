@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -177,9 +177,11 @@ namespace dmRender
                 case COMMAND_TYPE_DRAW:
                 {
                     FrustumOptions* frustum_options = (FrustumOptions*)c->m_Operands[2];
+                    dmRender::SortOrder sort_order = (dmRender::SortOrder)c->m_Operands[3];
                     dmRender::DrawRenderList(render_context, (dmRender::Predicate*)c->m_Operands[0],
                                                              (dmRender::HNamedConstantBuffer)c->m_Operands[1],
-                                                             frustum_options);
+                                                             frustum_options,
+                                                             sort_order);
                     delete frustum_options;
                     break;
                 }
@@ -205,6 +207,23 @@ namespace dmRender
                     render_context->m_Material = 0;
                     break;
                 }
+                case COMMAND_TYPE_SET_COMPUTE:
+                {
+                    render_context->m_ComputeProgram = (HComputeProgram) c->m_Operands[0];
+                    break;
+                }
+                case COMMAND_TYPE_DISPATCH_COMPUTE:
+                {
+                    dmRender::DispatchCompute(render_context,
+                        c->m_Operands[0], c->m_Operands[1], c->m_Operands[2], // group x,y,z
+                        (dmRender::HNamedConstantBuffer) c->m_Operands[3]);
+                    break;
+                }
+                case COMMAND_TYPE_SET_RENDER_CAMERA:
+                {
+                    render_context->m_CurrentRenderCamera           = (HRenderCamera) c->m_Operands[0];
+                    render_context->m_CurrentRenderCameraUseFrustum = c->m_Operands[1];
+                } break;
                 default:
                 {
                     dmLogError("No such render command (%d).", c->m_Type);

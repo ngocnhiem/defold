@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -14,21 +14,20 @@
 
 package com.dynamo.bob.pipeline;
 
-import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
 import java.io.File;
-import java.io.InputStream;
 import java.io.IOException;
-import java.nio.ByteOrder;
-import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import javax.vecmath.Point4i;
 import javax.vecmath.Quat4d;
@@ -44,12 +43,8 @@ import org.junit.Test;
 import com.dynamo.bob.util.MathUtil;
 import com.dynamo.bob.util.MurmurHash;
 
-import com.dynamo.proto.DdfMath.Point3;
-import com.dynamo.proto.DdfMath.Quat;
 import com.dynamo.proto.DdfMath.Vector3;
-import com.dynamo.proto.DdfMath.Transform;
 import com.dynamo.rig.proto.Rig;
-import com.dynamo.rig.proto.Rig.RigAnimation;
 
 public class ModelUtilTest {
 
@@ -133,7 +128,7 @@ public class ModelUtilTest {
      */
     private void assertBone(Rig.Bone bone, Vector3d expectedPosition, Quat4d expectedRotation) {
         assertV(expectedPosition, MathUtil.ddfToVecmath(bone.getLocal().getTranslation()));
-        assertV(expectedRotation, MathUtil.ddfToVecmath(bone.getLocal().getRotation()));
+        assertV(expectedRotation, MathUtil.ddfToVecmath(bone.getLocal().getRotation(), "bone %s".formatted(bone.getName())));
     }
 
     /*
@@ -214,21 +209,21 @@ public class ModelUtilTest {
         }
     }
 
-   ModelImporter.Scene loadScene(String path) {
+   Modelimporter.Scene loadScene(String path) {
         try {
             File cwd = new File(".");
-            return ModelUtil.loadScene(getClass().getResourceAsStream(path), path, new ModelImporter.Options(), new ModelImporter.FileDataResolver(cwd));
+            return ModelUtil.loadScene(getClass().getResourceAsStream(path), path, new Modelimporter.Options(), new ModelImporterJni.FileDataResolver(cwd));
         } catch (IOException e) {
             e.printStackTrace();
             return null;
         }
     }
 
-    private ModelImporter.Scene loadBuiltScene(String path,
+    private Modelimporter.Scene loadBuiltScene(String path,
                                          Rig.MeshSet.Builder meshSetBuilder,
                                          Rig.AnimationSet.Builder animSetBuilder,
                                          Rig.Skeleton.Builder skeletonBuilder) {
-        ModelImporter.Scene scene = loadScene(path);
+        Modelimporter.Scene scene = loadScene(path);
         if (scene != null)
         {
             ModelUtil.loadModels(scene, meshSetBuilder);
@@ -240,16 +235,16 @@ public class ModelUtilTest {
         return scene;
     }
 
-    private ModelImporter.Scene loadBuiltScene(String path,
+    private Modelimporter.Scene loadBuiltScene(String path,
                                          Rig.MeshSet.Builder meshSetBuilder) {
-        ModelImporter.Scene scene = loadScene(path);
+        Modelimporter.Scene scene = loadScene(path);
         ModelUtil.loadModels(scene, meshSetBuilder);
         return scene;
     }
 
-    private ModelImporter.Scene loadBuiltScene(String path,
+    private Modelimporter.Scene loadBuiltScene(String path,
                                          Rig.Skeleton.Builder skeletonBuilder) {
-        ModelImporter.Scene scene = loadScene(path);
+        Modelimporter.Scene scene = loadScene(path);
         ModelUtil.loadSkeleton(scene, skeletonBuilder);
         return scene;
     }
@@ -296,7 +291,7 @@ public class ModelUtilTest {
         Rig.MeshSet.Builder meshSetBuilder = Rig.MeshSet.newBuilder();
         Rig.AnimationSet.Builder animSetBuilder = Rig.AnimationSet.newBuilder();
         Rig.Skeleton.Builder skeletonBuilder = Rig.Skeleton.newBuilder();
-        ModelImporter.Scene scene = loadBuiltScene("bend2bones.gltf", meshSetBuilder, animSetBuilder, skeletonBuilder);
+        Modelimporter.Scene scene = loadBuiltScene("bend2bones.gltf", meshSetBuilder, animSetBuilder, skeletonBuilder);
 
         Rig.Mesh mesh = meshSetBuilder.getModels(0).getMeshes(0);
 
@@ -336,7 +331,7 @@ public class ModelUtilTest {
         String[] parentIds = {null,   "root", "Middle"};
 
         Rig.Skeleton.Builder skeletonBuilder = Rig.Skeleton.newBuilder();
-        ModelImporter.Scene scene = loadBuiltScene("bend2bones.gltf", skeletonBuilder);
+        Modelimporter.Scene scene = loadBuiltScene("bend2bones.gltf", skeletonBuilder);
 
         List<Rig.Bone> bones = skeletonBuilder.getBonesList();
         assertEquals(boneIds.length, bones.size());
@@ -488,7 +483,38 @@ public class ModelUtilTest {
         Rig.MeshSet.Builder meshSetBuilder = Rig.MeshSet.newBuilder();
         Rig.AnimationSet.Builder animSetBuilder = Rig.AnimationSet.newBuilder();
         Rig.Skeleton.Builder skeletonBuilder = Rig.Skeleton.newBuilder();
-        ModelImporter.Scene scene = loadBuiltScene("broken.gltf", meshSetBuilder, animSetBuilder, skeletonBuilder);
+        Modelimporter.Scene scene = loadBuiltScene("broken.gltf", meshSetBuilder, animSetBuilder, skeletonBuilder);
         assertTrue(scene == null);
+    }
+
+    @Test
+    public void testVehicleGltfHierarchy() throws Exception {
+        Rig.MeshSet.Builder meshSetBuilder = Rig.MeshSet.newBuilder();
+        Modelimporter.Scene scene = loadBuiltScene("vehicle.glb", meshSetBuilder);
+        
+        // Validate scene loaded successfully
+        assertNotNull("Vehicle scene should load", scene);
+        
+        // Get all models from the meshset
+        List<Rig.Model> models = meshSetBuilder.getModelsList();
+        
+        // Check for duplicate models by collecting IDs
+        Set<Long> modelIds = new HashSet<>();
+        
+        for (Rig.Model model : models) {
+            long id = model.getId();
+            String name = "Model_" + id; // Since we hash the node name
+            
+            assertFalse("Model ID " + id + " should be unique (no duplicates)", 
+                       modelIds.contains(id));
+            modelIds.add(id);
+            
+            // Validate model has meshes
+            assertTrue("Model should have at least one mesh", 
+                      model.getMeshesCount() > 0);
+        }
+        
+        // Validate we have a reasonable number of models (not duplicated)
+        assertTrue("Should have at least 1 model", models.size() >= 1);
     }
 }

@@ -1,12 +1,12 @@
-# Copyright 2020-2024 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
 # this file except in compliance with the License.
-# 
+#
 # You may obtain a copy of the License, together with FAQs at
 # https://www.defold.com/license
-# 
+#
 # Unless required by applicable law or agreed to in writing, software distributed
 # under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 # CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -144,6 +144,7 @@ def transform_gameobject(task, msg):
         c.component = c.component.replace('.tilesource', '.t.texturesetc')
         c.component = c.component.replace('.tilemap', '.tilemapc')
         c.component = c.component.replace('.tilegrid', '.tilemapc')
+
         transform_properties(c.properties, c.property_decls)
     return msg
 
@@ -218,52 +219,21 @@ def model_file(self, node):
     out_rigscene = node.change_ext(rig_ext)
     task.set_outputs([out_model, out_rigscene])
 
-
-waflib.Task.task_factory('vertexshader', '${JAVA} -classpath ${CLASSPATH} com.dynamo.bob.pipeline.VertexProgramBuilder ${SRC} ${TGT} --platform ${PLATFORM}',
+waflib.Task.task_factory('shaderbuilder', '${JAVA} -classpath ${CLASSPATH} com.dynamo.bob.pipeline.ShaderProgramBuilder ${SRC} ${TGT} ${PLATFORM} ${CONTENT_ROOT}',
                       color='PINK',
                       after='proto_gen_py',
                       before='c cxx',
                       shell=False)
 
-@extension('.vp')
+@extension('.vp', '.fp', '.cp')
 def vertexprogram_file(self, node):
     classpath = [self.env['DYNAMO_HOME'] + '/share/java/bob-light.jar'] + self.env['PLATFORM_SHADER_COMPILER_PLUGIN_JAR']
-    shader = self.create_task('vertexshader')
+    shader = self.create_task('shaderbuilder')
     shader.env['CLASSPATH'] = os.pathsep.join(classpath)
+    shader.env['CONTENT_ROOT'] = "."
     shader.set_inputs(node)
-    obj_ext = '.vpc'
-    out = node.change_ext(obj_ext)
-    shader.set_outputs(out)
-
-waflib.Task.task_factory('fragmentshader', '${JAVA} -classpath ${CLASSPATH} com.dynamo.bob.pipeline.FragmentProgramBuilder ${SRC} ${TGT} --platform ${PLATFORM}',
-                      color='PINK',
-                      after='proto_gen_py',
-                      before='c cxx',
-                      shell=False)
-
-@extension('.fp')
-def fragmentprogram_file(self, node):
-    classpath = [self.env['DYNAMO_HOME'] + '/share/java/bob-light.jar'] + self.env['PLATFORM_SHADER_COMPILER_PLUGIN_JAR']
-    shader = self.create_task('fragmentshader')
-    shader.env['CLASSPATH'] = os.pathsep.join(classpath)
-    shader.set_inputs(node)
-    obj_ext = '.fpc'
-    out = node.change_ext(obj_ext)
-    shader.set_outputs(out)
-
-waflib.Task.task_factory('computeshader', '${JAVA} -classpath ${CLASSPATH} com.dynamo.bob.pipeline.ComputeProgramBuilder ${SRC} ${TGT} --platform ${PLATFORM}',
-                      color='PINK',
-                      after='proto_gen_py',
-                      before='c cxx',
-                      shell=False)
-
-@extension('.cp')
-def fragmentprogram_file(self, node):
-    classpath = [self.env['DYNAMO_HOME'] + '/share/java/bob-light.jar'] + self.env['PLATFORM_SHADER_COMPILER_PLUGIN_JAR']
-    shader = self.create_task('computeshader')
-    shader.env['CLASSPATH'] = os.pathsep.join(classpath)
-    shader.set_inputs(node)
-    obj_ext = '.cpc'
+    _, ext = os.path.splitext(node.abspath())
+    obj_ext = ext + ".spc"
     out = node.change_ext(obj_ext)
     shader.set_outputs(out)
 
@@ -303,10 +273,15 @@ def transform_gui(task, msg):
     msg.script = msg.script.replace('.gui_script', '.gui_scriptc')
     font_names = set()
     texture_names = set()
+    material_names = set()
+
     msg.material = msg.material.replace(".material", ".materialc")
     for f in msg.fonts:
         font_names.add(f.name)
         f.font = f.font.replace('.font', '.fontc')
+    for f in msg.materials:
+        material_names.add(f.name)
+        f.material = f.material.replace('.material', '.materialc')
     for t in msg.textures:
         texture_names.add(t.name)
         t.texture = transform_tilesource_name(transform_texture_name(task, t.texture))
@@ -316,6 +291,9 @@ def transform_gui(task, msg):
                 atlas_part = n.texture[:n.texture.index("/")]
                 if not atlas_part in texture_names:
                     raise Exception('Texture "%s" not declared in gui-file' % (n.texture))
+        if n.material:
+            if not n.material in material_names:
+                raise Exception('Material "%s" not declared in gui-file' % (n.material))
         if n.font:
             if not n.font in font_names:
                 raise Exception('Font "%s" not declared in gui-file' % (n.font))
@@ -366,10 +344,6 @@ def transform_sprite(task, msg):
         st.texture = transform_tilesource_name(st.texture)
     return msg
 
-def transform_compute_program(task, msg):
-    msg.program = msg.program.replace('.cp', '.cpc')
-    return msg
-
 def transform_tilegrid(task, msg):
     msg.tile_set = transform_tilesource_name(msg.tile_set)
     msg.material = msg.material.replace('.material', '.materialc')
@@ -389,6 +363,12 @@ def transform_rig_scene(task, msg):
 
 def transform_label(task, msg):
     msg.font = msg.font.replace('.font', '.fontc')
+    msg.material = msg.material.replace('.material', '.materialc')
+    return msg
+
+def transform_mesh(task, msg):
+    msg.vertices = msg.vertices.replace('.buffer', '.bufferc')
+    msg.vertices = msg.vertices.replace('.prebuilt_bufferc', '.prebuilt_bufferc')
     msg.material = msg.material.replace('.material', '.materialc')
     return msg
 
@@ -471,8 +451,11 @@ task = waflib.Task.task_factory('gameobject',
                                 after='proto_gen_py',
                                 before='c cxx')
 
+GENERATOR_ID = 0
+
 @extension('.go')
 def gofile(self, node):
+    global GENERATOR_ID
     try:
         import gameobject_ddf_pb2
         import google.protobuf.text_format
@@ -485,10 +468,12 @@ def gofile(self, node):
 
         embed_output_nodes = []
         for i, c in enumerate(msg.embedded_components):
-            name = '%s_generated_%d.%s' % (node.name.split('.')[0], i, c.type)
-            embed_node = node.parent.make_node(name) # node.parent.exclusive_build_node(name)
-            embed_output_nodes.append(embed_node)
+            GENERATOR_ID = GENERATOR_ID + 1
 
+            name = '%s_generated_%d.%s' % (node.name.split('.')[0], GENERATOR_ID, c.type)
+
+            embed_node = node.parent.get_bld().make_node(name)
+            embed_output_nodes.append(embed_node)
             sub_task = self.create_task(c.type)
             sub_task.set_inputs(embed_node)
             out = embed_node.change_ext('.' + c.type + 'c')
@@ -524,10 +509,11 @@ proto_compile_task('sprite', 'sprite_ddf_pb2', 'SpriteDesc', '.sprite', '.sprite
 proto_compile_task('tilegrid', 'tile_ddf_pb2', 'TileGrid', '.tilegrid', '.tilemapc', transform_tilegrid)
 proto_compile_task('tilemap', 'tile_ddf_pb2', 'TileGrid', '.tilemap', '.tilemapc', transform_tilegrid)
 proto_compile_task('sound', 'sound_ddf_pb2', 'SoundDesc', '.sound', '.soundc', transform_sound)
+proto_compile_task('mesh', 'mesh_ddf_pb2', 'MeshDesc', '.mesh', '.meshc', transform_mesh)
 proto_compile_task('display_profiles', 'render.render_ddf_pb2', 'render_ddf_pb2.DisplayProfiles', '.display_profiles', '.display_profilesc')
-proto_compile_task('compute_program', 'render.compute_program_ddf_pb2', 'compute_program_ddf_pb2.ComputeProgramDesc', '.compute_program', '.compute_programc', transform_compute_program)
 
 new_copy_task('project', '.project', '.projectc')
+new_copy_task('glsl', '.glsl', '.glslc')
 
 # Copy prebuilt spine scenes
 new_copy_task('copy prebuilt animationsetc', '.prebuilt_animationsetc', '.animationsetc')
@@ -536,6 +522,7 @@ new_copy_task('copy prebuilt rigscenec', '.prebuilt_rigscenec', '.rigscenec')
 new_copy_task('copy prebuilt skeletonc', '.prebuilt_skeletonc', '.skeletonc')
 new_copy_task('copy prebuilt texturec', '.prebuilt_texturec', '.texturec')
 new_copy_task('copy prebuilt texturesetc', '.prebuilt_texturesetc', '.texturesetc')
+new_copy_task('copy prebuilt modelc', '.prebuilt_modelc', '.modelc')
 
 # Copy prebuilt mesh and buffer resources
 new_copy_task('copy prebuilt meshc', '.prebuilt_meshc', '.meshc')
@@ -653,13 +640,13 @@ def compile_mesh(task):
         print ('%s:%s' % (task.inputs[0].srcpath(), str(e)), file=sys.stderr)
         return 1
 
-waflib.Task.task_factory('mesh',
+waflib.Task.task_factory('model_file',
                          func    = compile_mesh,
                          color   = 'PINK')
 
 @extension('.dae')
 def dae_file(self, node):
-    mesh = self.create_task('mesh')
+    mesh = self.create_task('model_file')
     mesh.set_inputs(node)
     ext_skeleton      = '.skeletonc'
     ext_mesh_set      = '.meshsetc'
@@ -671,7 +658,7 @@ def dae_file(self, node):
 
 @extension('.gltf')
 def gltf_file(self, node):
-    mesh = self.create_task('mesh')
+    mesh = self.create_task('model_file')
     mesh.set_inputs(node)
     ext_skeleton      = '.skeletonc'
     ext_mesh_set      = '.meshsetc'
@@ -733,18 +720,30 @@ def tileset_file(self, node):
     out = node.change_ext(obj_ext)
     tileset.set_outputs(out)
 
-waflib.Task.task_factory('material', '${JAVA} -classpath ${CLASSPATH} com.dynamo.bob.pipeline.MaterialBuilder ${SRC} ${TGT}',
+
+waflib.Task.task_factory('compute', '${JAVA} -classpath ${CLASSPATH} com.dynamo.bob.pipeline.ComputeBuilder ${SRC} ${SPC} ${TGT}',
                       color='PINK',
                       after='proto_gen_py',
                       before='c cxx',
                       shell=False)
 
-@extension('.material')
-def material_file(self, node):
+@extension('.compute')
+def compute_file(self, node):
+    import google.protobuf.text_format
+    import render.compute_ddf_pb2
+    import dlib
+
+    msg = render.compute_ddf_pb2.ComputeDesc()
+    with open(node.srcpath(), 'rb') as in_f:
+        google.protobuf.text_format.Merge(in_f.read(), msg)
+
+    shader_name = msg.compute_program + ".spc"
     classpath = [self.env['DYNAMO_HOME'] + '/share/java/bob-light.jar']
-    material = self.create_task('material')
-    material.env['CLASSPATH'] = os.pathsep.join(classpath)
-    material.set_inputs(node)
-    obj_ext = '.materialc'
+    compute = self.create_task('compute')
+    compute.env['CLASSPATH'] = os.pathsep.join(classpath)
+    compute.env['SPC'] = shader_name
+
+    compute.set_inputs(node)
+    obj_ext = '.computec'
     out = node.change_ext(obj_ext)
-    material.set_outputs(out)
+    compute.set_outputs(out)

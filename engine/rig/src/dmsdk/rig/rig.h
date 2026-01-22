@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -23,13 +23,16 @@
 #include <dmsdk/dlib/hashtable.h>
 #include <dmsdk/dlib/transform.h>
 #include <dmsdk/dlib/vmath.h>
+#include <dmsdk/graphics/graphics.h>
 
 #include <ddf/ddf.h>
 #include <rig/rig_ddf.h>
 
 namespace dmGraphics
 {
-    struct VertexAttribute;
+    struct VertexAttributeInfos;
+    struct VertexAttributeInfo;
+    struct WriteAttributeParams;
 }
 
 namespace dmRig
@@ -106,7 +109,7 @@ namespace dmRig
     {
         float pos[3];
         float normal[3];
-        float tangent[3];
+        float tangent[4];
         float color[4];
         float uv0[2];
         float uv1[2];
@@ -161,13 +164,6 @@ namespace dmRig
         bool                          m_ForceAnimatePose;
     };
 
-    struct AttributeInfo
-    {
-        const dmGraphics::VertexAttribute* m_Attribute;
-        const uint8_t*                     m_ValuePtr;
-        uint32_t                           m_ValueByteSize;
-    };
-
     Result NewContext(const NewContextParams& params, HRigContext* context);
     void DeleteContext(HRigContext context);
     Result Update(HRigContext context, float dt);
@@ -179,10 +175,23 @@ namespace dmRig
     Result CancelAnimation(HRigInstance instance);
     dmhash_t GetAnimation(HRigInstance instance);
 
+    void SetMeshWriteAttributeParams(dmGraphics::WriteAttributeParams* params,
+        const dmGraphics::VertexAttributeInfos* attribute_infos,
+        dmGraphics::VertexStepFunction step_function,
+        const float** world_matrix,
+        const float** normal_matrix,
+        const float** positions_world_space,
+        const float** positions_local_space,
+        const float** normals,
+        const float** tangents,
+        const float** colors,
+        const float** uv_channels,
+        uint32_t uv_channels_count);
+
     // Returns the new position in the array
-    uint8_t* GenerateVertexDataFromAttributes(dmRig::HRigContext context, dmRig::HRigInstance instance, dmRigDDF::Mesh* mesh, const dmVMath::Matrix4& world_matrix, const AttributeInfo* attributes, uint32_t attributes_count, uint32_t vertex_stride, uint8_t* vertex_data_out);
+    uint8_t*        GenerateVertexDataFromAttributes(dmRig::HRigContext context, dmRig::HRigInstance instance, dmRigDDF::Mesh* mesh, const dmVMath::Matrix4& world_matrix, const dmVMath::Matrix4& normal_matrix, const dmGraphics::VertexAttributeInfos* attribute_infos, uint32_t vertex_stride, uint8_t* vertex_data_out);
     RigModelVertex* GenerateVertexData(HRigContext context, dmRig::HRigInstance instance, dmRigDDF::Mesh* mesh, const dmVMath::Matrix4& world_matrix, RigModelVertex* vertex_data_out);
-    uint32_t GetVertexCount(HRigInstance instance);
+    uint32_t        GetVertexCount(HRigInstance instance);
 
     Result SetModel(HRigInstance instance, dmhash_t model_id);
     dmhash_t GetModel(HRigInstance instance);

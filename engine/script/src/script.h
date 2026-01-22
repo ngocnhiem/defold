@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include <dmsdk/script/script.h>
+#include <dmsdk/graphics/graphics.h>
 
 #include <dlib/vmath.h>
 #include <dlib/hash.h>
@@ -56,6 +57,7 @@ namespace dmScript
     extern const char META_TABLE_GET_USER_DATA[];
     extern const char META_TABLE_IS_VALID[];
     extern const char META_GET_INSTANCE_DATA_TABLE_REF[];
+    extern const char META_GET_UNIQUE_SCRIPT_ID[];
 
     /**
      * Implementor should return a Ref to the instance context table.
@@ -81,14 +83,19 @@ namespace dmScript
      */
     static const char* DEPRECATION_FUNCTION_FMT = "Function '%s.%s' is deprecated. Please use '%s.%s' instead.";
 
+    struct ContextParams
+    {
+        dmConfigFile::HConfig m_ConfigFile;
+        dmResource::HFactory  m_Factory;
+        dmGraphics::HContext  m_GraphicsContext;
+    };
+
     /**
      * Create and return a new context.
-     * @param config_file optional config file handle
-     * @param factory resource factory
-     * @param enable_extensions true if extensions should be initialized for this context
+     * @param params context creation params
      * @return context
      */
-    HContext NewContext(dmConfigFile::HConfig config_file, dmResource::HFactory factory, bool enable_extensions);
+    HContext NewContext(const ContextParams& params);
 
     /**
      * Delete an existing context.
@@ -109,7 +116,7 @@ namespace dmScript
      * @param L lua state
      * @param name_hash the hash of the name returned by SetGlobal
      */
-    void GetGlobal(lua_State*L, uint32_t name_hash);
+    void GetGlobal(lua_State* L, uint32_t name_hash);
 
     /**
      * Use a ScriptExtension to hook into various callbacks of the script lifetime
@@ -143,10 +150,9 @@ namespace dmScript
      * Implementations of this callback are expected to resolve the path given the user data.
      * @param resolve_user_data user data passed to the callback
      * @param path
-     * @param path_size
      * @return hashed resolved path
      */
-    typedef dmhash_t (*ResolvePathCallback)(uintptr_t resolve_user_data, const char* path, uint32_t path_size);
+    typedef dmhash_t (*ResolvePathCallback)(uintptr_t resolve_user_data, const char* path);
 
     /**
      * Callback used to retrieve url
@@ -257,8 +263,18 @@ namespace dmScript
      * @param L Lua state
      * @param descriptor Field descriptor
      * @param data DDF data
+     * @param pointers_are_offets True if pointers are offsets
      */
-    void PushDDF(lua_State*L, const dmDDF::Descriptor* descriptor, const char* data);
+    void PushDDFNoDecoder(lua_State* L, const dmDDF::Descriptor* descriptor, const char* data, bool pointers_are_offsets);
+
+    /**
+     * Push DDF message to Lua stack. Invokes any registered decoder
+     * @note the pointers_are_offsets is set as false
+     * @param L Lua state
+     * @param descriptor Field descriptor
+     * @param data DDF data
+     */
+    void PushDDF(lua_State* L, const dmDDF::Descriptor* descriptor, const char* data);
 
     void RegisterDDFDecoder(void* descriptor, MessageDecoder decoder);
 
@@ -276,6 +292,15 @@ namespace dmScript
      * @return true if value at #index is a FloatVector
      */
     bool IsVector(lua_State *L, int index);
+
+    /*# get the value at index as a dmVMath::FloatVector*
+     * Get the value at index as a dmVMath::FloatVector*
+     * @name dmScript::ToVector
+     * @param L [type:lua_State*] Lua state
+     * @param index [type:int] Index of the value
+     * @return v [type:dmVMath::FloatVector*] The pointer to the value, or 0 if not correct type
+     */
+    dmVMath::FloatVector* ToVector(lua_State *L, int index);
 
     /**
      * Push a FloatVector value onto the supplied lua state, will increase the stack by 1.
@@ -482,6 +507,17 @@ namespace dmScript
     void GetScriptWorldContextValue(HScriptWorld script_world);
 
     /**
+     * Generate a new unique script ID.
+     *
+     * This function is responsible for producing a unique 32-bit identifier
+     * that can be used to uniquely identify a script instance during its lifetime.
+     * The returned ID is guaranteed to never be INVALID_SCRIPT_ID.
+     *
+     * @return a unique non-zero uint32_t script identifier
+     */
+    uint32_t GenerateUniqueScriptId();
+
+    /**
      * Retrieve the Lua traceback from the current context
      * @param lua context
      * @param infostring determines what fields are valid in the entry (passed to lua_getinfo())
@@ -560,6 +596,7 @@ namespace dmScript
 
     /**
      * Register a user type along with methods and meta methods.
+     * It registers the type in the global context
      * @param L lua state
      * @param name user type name
      * @param methods array of methods
@@ -567,6 +604,16 @@ namespace dmScript
      * @return type_key the hash key registered for this user type
      */
     uint32_t RegisterUserType(lua_State* L, const char* name, const luaL_reg methods[], const luaL_reg meta[]);
+
+    /**
+     * Register an object oriented style user type along with methods.
+     * It doesn't register the type in the global context
+     * @param L lua state
+     * @param name user type name
+     * @param meta array of meta methods and object functions
+     * @return type_key the hash key registered for this user type
+     */
+    uint32_t RegisterUserTypeLocal(lua_State* L, const char* name, const luaL_reg meta[]);
 
     /**
      * Gets the type key of a user datas meta table.
@@ -663,6 +710,12 @@ namespace dmScript
      * @return Pointer to buffer
      */
     const char* GetProfilerString(lua_State* L, int optional_callback_index, const char* source_file_name, const char* function_name, const char* optional_message_name, char* buffer, uint32_t buffer_size);
+
+    /**
+     * Prints the current stack (uses dmLogInfo)
+     * @param L lua state
+     */
+    void PrintStack(lua_State* L);
 
 } // dmScript
 

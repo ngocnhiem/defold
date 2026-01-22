@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -30,13 +30,14 @@ public:
     dmRender::RenderContextParams m_Params;
     bool                          m_MultiBufferingRequired;
 
-    virtual void SetUp()
+    void SetUp() override
     {
         dmGraphics::InstallAdapter();
 
         dmPlatform::WindowParams win_params = {};
         win_params.m_Width = 20;
         win_params.m_Height = 10;
+        win_params.m_ContextAlphabits = 8;
 
         m_Window = dmPlatform::NewWindow();
         dmPlatform::OpenWindow(m_Window, win_params);
@@ -44,16 +45,21 @@ public:
         dmGraphics::ContextParams graphics_context_params;
         graphics_context_params.m_Window = m_Window;
 
-        m_GraphicsContext        = dmGraphics::NewContext(graphics_context_params);
-        m_Params.m_ScriptContext = dmScript::NewContext(0, 0, true);
+        m_GraphicsContext = dmGraphics::NewContext(graphics_context_params);
+
+        dmScript::ContextParams script_context_params = {};
+        script_context_params.m_GraphicsContext = m_GraphicsContext;
+        m_Params.m_ScriptContext = dmScript::NewContext(script_context_params);
         m_Params.m_MaxCharacters = 256;
+        m_Params.m_MaxBatches    = 128;
         m_RenderContext          = dmRender::NewRenderContext(m_GraphicsContext, m_Params);
 
         m_MultiBufferingRequired = m_RenderContext->m_MultiBufferingRequired;
     }
-    virtual void TearDown()
+    void TearDown() override
     {
         dmRender::DeleteRenderContext(m_RenderContext, 0);
+        dmGraphics::CloseWindow(m_GraphicsContext);
         dmGraphics::DeleteContext(m_GraphicsContext);
         dmPlatform::CloseWindow(m_Window);
         dmPlatform::DeleteWindow(m_Window);
@@ -181,8 +187,11 @@ TEST_F(dmRenderBufferTest, TestBufferedRenderBufferAddAndTrim)
     m_RenderContext->m_MultiBufferingRequired = m_MultiBufferingRequired;
 }
 
+extern "C" void dmExportedSymbols();
+
 int main(int argc, char **argv)
 {
+    dmExportedSymbols();
     TestMainPlatformInit();
     dmHashEnableReverseHash(true);
     jc_test_init(&argc, argv);

@@ -3,10 +3,10 @@
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -84,6 +84,22 @@ char**              g_Argv = 0;
 
     window = [[UIWindow alloc] initWithFrame:bounds];
     window.rootViewController = [[[ViewController alloc] init] autorelease];
+    
+    // Retrieve the launch screen storyboard name from Info.plist
+    NSString *launchScreenName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"UILaunchStoryboardName"];
+    if (launchScreenName) {
+        // Load the LaunchScreen storyboard
+        UIStoryboard *storyboard = [UIStoryboard storyboardWithName:launchScreenName bundle:nil];
+        UIViewController *launchScreenVC = [storyboard instantiateInitialViewController];
+        UIView *launchScreenView = launchScreenVC.view;
+    
+        // Add the launch screen view as a placeholder
+        launchScreenView.frame = self.window.bounds;
+        launchScreenView.tag = 999;
+        [window addSubview:launchScreenView];
+        [window bringSubviewToFront:launchScreenView];
+    }
+    
     [window makeKeyAndVisible];
 
     g_ApplicationWindow = window;
@@ -182,6 +198,17 @@ static void ShutdownEngine(bool call_exit)
     {
         ShutdownEngine(true);
     }
+
+    // Cleanup the placeholder launch screen view once the engine is initialized
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *viewToRemove = [g_ApplicationWindow viewWithTag:999];
+            if (viewToRemove) {
+                [viewToRemove removeFromSuperview];
+            }
+        });
+    });
 }
 
 @end

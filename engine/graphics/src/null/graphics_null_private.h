@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -17,6 +17,9 @@
 
 #include <dmsdk/dlib/vmath.h>
 #include <dlib/opaque_handle_container.h>
+
+#include "../graphics_private.h"
+
 
 namespace dmGraphics
 {
@@ -47,6 +50,8 @@ namespace dmGraphics
         int32_t*          m_LastBoundUnit; // testing
         volatile uint16_t m_DataState; // data state per mip-map (mipX = bitX). 0=ok, 1=pending
         uint8_t           m_MipMapCount;
+        uint8_t           m_UsageHintFlags;
+        uint8_t           m_PageCount; // page count of texture array
     };
 
     struct VertexStreamBuffer
@@ -97,26 +102,46 @@ namespace dmGraphics
         FrameBuffer     m_FrameBuffer;
     };
 
+    struct NullShaderModule
+    {
+        char*                m_Data;
+        ShaderDesc::Language m_Language;
+    };
+
+    struct NullProgram
+    {
+        Program              m_BaseProgram;
+        NullShaderModule*    m_VP;
+        NullShaderModule*    m_FP;
+        NullShaderModule*    m_Compute;
+        uint8_t*             m_UniformData;
+        uint32_t             m_UniformDataSize;
+        ShaderDesc::Language m_Language;
+    };
+
+    static const uint32_t UNIFORM_BUFFERS_ALIGNMENT = 4;
+
     struct NullContext
     {
         NullContext(const ContextParams& params);
 
         dmJobThread::HContext              m_JobThread;
+        dmMutex::HMutex                    m_AssetContainerMutex;
+
         dmPlatform::HWindow                m_Window;
         SetTextureAsyncState               m_SetTextureAsyncState;
         dmOpaqueHandleContainer<uintptr_t> m_AssetHandleContainer;
-        VertexStreamBuffer                 m_VertexStreams[MAX_VERTEX_STREAM_COUNT];
-        dmVMath::Vector4                   m_ProgramRegisters[MAX_REGISTER_COUNT];
+        VertexStreamBuffer                 m_VertexStreams[MAX_VERTEX_BUFFERS][MAX_VERTEX_STREAM_COUNT];
+        HVertexDeclaration                 m_VertexDeclarations[MAX_VERTEX_BUFFERS];
         TextureSampler                     m_Samplers[MAX_TEXTURE_COUNT];
         HTexture                           m_Textures[MAX_TEXTURE_COUNT];
-        HVertexBuffer                      m_VertexBuffer;
+        HVertexBuffer                      m_VertexBuffers[MAX_VERTEX_BUFFERS];
         FrameBuffer                        m_MainFrameBuffer;
         FrameBuffer*                       m_CurrentFrameBuffer;
         void*                              m_Program;
         PipelineState                      m_PipelineState;
         TextureFilter                      m_DefaultTextureMinFilter;
         TextureFilter                      m_DefaultTextureMagFilter;
-        ShaderDesc::Language               m_ShaderClassLanguage[2];
 
         uint32_t                           m_Width;
         uint32_t                           m_Height;
@@ -128,7 +153,7 @@ namespace dmGraphics
         uint32_t                           m_UseAsyncTextureLoad    : 1;
         uint32_t                           m_RequestWindowClose     : 1;
         uint32_t                           m_PrintDeviceInfo        : 1;
-        uint32_t                           m_ContextFeatures        : 3;
+        uint32_t                           m_ContextFeatures        : 8;
     };
 }
 

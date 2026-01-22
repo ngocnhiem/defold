@@ -1,4 +1,4 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -35,6 +35,7 @@ namespace dmLiveUpdate
  * @document
  * @name LiveUpdate
  * @namespace liveupdate
+ * @language Lua
  */
 
 /*# return a reference to the Manifest that is currently loaded
@@ -137,7 +138,7 @@ namespace dmLiveUpdate
  *
  * ```lua
  * local function store_manifest_cb(self, status)
- *   if status == liveupdate.LIVEUPATE_OK then
+ *   if status == liveupdate.LIVEUPDATE_OK then
  *     pprint("Successfully stored manifest. This manifest will be loaded instead of the bundled manifest the next time the engine starts.")
  *   else
  *     pprint("Failed to store manifest")
@@ -285,7 +286,7 @@ namespace dmLiveUpdate
  *
  * @note deprecated
  * @name liveupdate.is_using_liveupdate_data
- * @return bool [type:bool] true if a liveupdate archive (any format) has been loaded
+ * @return bool [type:boolean] true if a liveupdate archive (any format) has been loaded
  * @note: Old downloaded files are automatically discarded upon startup, if their signatures mismatch with the bundled manifest.
  */
 
@@ -296,7 +297,7 @@ namespace dmLiveUpdate
  * This can be used to determine if a new mount is needed or not
  *
  * @name liveupdate.get_mounts
- * @return mounts [type:array] Array of mounts
+ * @return mounts [type:table] Array of mounts
  * @note: Any mount with priority < 0 is considered a base archive and it cannot be removed. All other mounts are considered "live update" content
  * @examples
  *
@@ -339,7 +340,7 @@ namespace dmLiveUpdate
  * @name liveupdate.add_mount
  * @param name [type:string] Unique name of the mount
  * @param uri [type:string] The uri of the mount, including the scheme. Currently supported schemes are 'zip' and 'archive'.
- * @param priority [type:integer] Priority of mount. Larger priority takes prescedence
+ * @param priority [type:number] Priority of mount. Larger priority takes prescedence
  * @param callback [type:function] Callback after the asynchronous request completed
  *
  * @return result [type:number] The result of the request
@@ -349,9 +350,9 @@ namespace dmLiveUpdate
  * Add multiple mounts. Higher priority takes precedence.
  *
  * ```lua
- * liveupdate.add_mount("common", "zip:/path/to/common_stuff.zip", 10) -- base pack
- * liveupdate.add_mount("levelpack_1", "zip:/path/to/levels_1_to_20.zip", 20) -- level pack
- * liveupdate.add_mount("season_pack_1", "zip:/path/to/easter_pack_1.zip", 30) -- season pack, overriding content in the other packs
+ * liveupdate.add_mount("common", "zip:/path/to/common_stuff.zip", 10, function (result) end) -- base pack
+ * liveupdate.add_mount("levelpack_1", "zip:/path/to/levels_1_to_20.zip", 20, function (result) end) -- level pack
+ * liveupdate.add_mount("season_pack_1", "zip:/path/to/easter_pack_1.zip", 30, function (result) end) -- season pack, overriding content in the other packs
  * ```
  */
 
@@ -381,91 +382,91 @@ namespace dmLiveUpdate
  /*# LIVEUPDATE_OK
  *
  * @name liveupdate.LIVEUPDATE_OK
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_INVALID_HEADER
  * The handled resource is invalid.
  *
  * @name liveupdate.LIVEUPDATE_INVALID_HEADER
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_MEM_ERROR
  * Memory wasn't allocated
  *
  * @name liveupdate.LIVEUPDATE_MEM_ERROR
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_INVALID_RESOURCE
  * The header of the resource is invalid.
  *
  * @name liveupdate.LIVEUPDATE_INVALID_RESOURCE
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_VERSION_MISMATCH
  * Mismatch between manifest expected version and actual version.
  *
  * @name liveupdate.LIVEUPDATE_VERSION_MISMATCH
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_ENGINE_VERSION_MISMATCH
  * Mismatch between running engine version and engine versions supported by manifest.
  *
  * @name liveupdate.LIVEUPDATE_ENGINE_VERSION_MISMATCH
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_SIGNATURE_MISMATCH
  * Mismatch between manifest expected signature and actual signature.
  *
  * @name liveupdate.LIVEUPDATE_SIGNATURE_MISMATCH
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_SCHEME_MISMATCH
  * Mismatch between scheme used to load resources. Resources are loaded with a different scheme than from manifest, for example over HTTP or directly from file. This is typically the case when running the game directly from the editor instead of from a bundle.
  *
  * @name liveupdate.LIVEUPDATE_SCHEME_MISMATCH
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_BUNDLED_RESOURCE_MISMATCH
  * Mismatch between between expected bundled resources and actual bundled resources. The manifest expects a resource to be in the bundle, but it was not found in the bundle. This is typically the case when a non-excluded resource was modified between publishing the bundle and publishing the manifest.
  *
  * @name liveupdate.LIVEUPDATE_BUNDLED_RESOURCE_MISMATCH
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_FORMAT_ERROR
  * Failed to parse manifest data buffer. The manifest was probably produced by a different engine version.
  *
  * @name liveupdate.LIVEUPDATE_FORMAT_ERROR
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_IO_ERROR
  * I/O operation failed
  *
  * @name liveupdate.LIVEUPDATE_IO_ERROR
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_INVAL
  * Argument was invalid
  *
  * @name liveupdate.LIVEUPDATE_INVAL
- * @variable
+ * @constant
  */
 
  /*# LIVEUPDATE_UNKNOWN
  * Unspecified error
  *
  * @name liveupdate.LIVEUPDATE_UNKNOWN
- * @variable
+ * @constant
  */
 
 

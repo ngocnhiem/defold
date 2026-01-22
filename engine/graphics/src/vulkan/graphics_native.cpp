@@ -1,45 +1,37 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-#include <glfw/glfw.h>
-#include  <glfw/glfw_native.h>
-
 #include <dlib/log.h>
+
 #include "../vulkan/graphics_vulkan_defines.h"
 #include "../vulkan/graphics_vulkan_private.h"
+
+#include <platform/platform_window_vulkan.h>
 
 namespace dmGraphics
 {
     static const char*   g_extension_names[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,
-
     #if defined(VK_USE_PLATFORM_WIN32_KHR)
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-
-        #ifdef DM_EXPERIMENTAL_GRAPHICS_FEATURES
-            VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-        #endif
+        VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
         VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
     #elif defined(VK_USE_PLATFORM_XCB_KHR)
         VK_KHR_XCB_SURFACE_EXTENSION_NAME,
-    #elif defined(VK_USE_PLATFORM_MACOS_MVK)
-        VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
     #elif defined(VK_USE_PLATFORM_IOS_MVK)
         VK_MVK_IOS_SURFACE_EXTENSION_NAME,
-    #elif defined(VK_USE_PLATFORM_METAL_EXT)
-        VK_EXT_METAL_SURFACE_EXTENSION_NAME,
     #endif
     };
 
@@ -51,7 +43,16 @@ namespace dmGraphics
 
     const char** GetExtensionNames(uint16_t* num_extensions)
     {
-        *num_extensions = sizeof(g_extension_names) / sizeof(g_extension_names[0]);
+        uint32_t required_platform_extensions_count = 0;
+        const char** required_platform_extensions   = dmPlatform::VulkanGetRequiredInstanceExtensions(&required_platform_extensions_count);
+
+        if (required_platform_extensions_count > 0)
+        {
+            *num_extensions = required_platform_extensions_count;
+            return required_platform_extensions;
+        }
+
+        *num_extensions = DM_ARRAY_SIZE(g_extension_names);
         return g_extension_names;
     }
 
@@ -81,11 +82,6 @@ namespace dmGraphics
             return false;
         }
 #endif
-
-        if (glfwInit() == 0)
-        {
-            dmLogError("Could not initialize glfw.");
-        }
         return true;
     }
 
@@ -134,8 +130,6 @@ namespace dmGraphics
 
             SynchronizeDevice(vk_device);
 
-            dmPlatform::CloseWindow(context->m_Window);
-
             VulkanDestroyResources(context);
 
             vkDestroySurfaceKHR(context->m_Instance, context->m_WindowSurface, 0);
@@ -150,33 +144,6 @@ namespace dmGraphics
             DestroyTexture(vk_device, &context->m_SwapChain->m_ResolveTexture->m_Handle);
             delete context->m_SwapChain;
         }
-    }
-
-    uint32_t VulkanGetDisplayDpi(HContext context)
-    {
-        return 0;
-    }
-
-    dmPlatform::HWindow VulkanGetWindow(HContext context)
-    {
-        return ((VulkanContext*) context)->m_Window;
-    }
-
-    uint32_t VulkanGetWidth(HContext context)
-    {
-        return ((VulkanContext*) context)->m_Width;
-    }
-
-    uint32_t VulkanGetHeight(HContext context)
-    {
-        return ((VulkanContext*) context)->m_Height;
-    }
-
-    void VulkanGetNativeWindowSize(HContext _context, uint32_t* width, uint32_t* height)
-    {
-        VulkanContext* context = (VulkanContext*) _context;
-        *width                 = dmPlatform::GetWindowWidth(context->m_Window);
-        *height                = dmPlatform::GetWindowHeight(context->m_Window);
     }
 
     void VulkanSetWindowSize(HContext _context, uint32_t width, uint32_t height)
@@ -204,12 +171,5 @@ namespace dmGraphics
         {
             VulkanSetWindowSize(_context, width, height);
         }
-    }
-
-    void NativeSwapBuffers(HContext context)
-    {
-    #if defined(ANDROID) || defined(DM_PLATFORM_IOS)
-        glfwSwapBuffers();
-    #endif
     }
 }

@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -14,6 +14,7 @@
 
 #include <string.h>
 #include <dlib/log.h>
+#include <dlib/static_assert.h>
 #include "image.h"
 
 //#define STBI_NO_JPEG
@@ -67,7 +68,7 @@ namespace dmImage
     {
         Image* image = new Image();
 
-        if (Load(buffer, buffer_size, premult, image) != RESULT_OK)
+        if (Load(buffer, buffer_size, premult, false, image) != RESULT_OK)
         {
             delete image;
             return 0;
@@ -82,11 +83,16 @@ namespace dmImage
         delete image;
     }
 
-    Result Load(const void* buffer, uint32_t buffer_size, bool premult, Image* image)
+    Result Load(const void* buffer, uint32_t buffer_size, bool premult, bool flip_vertically, Image* image)
     {
         int x, y, comp;
 
+        stbi_set_flip_vertically_on_load(flip_vertically);
+
         unsigned char* ret = stbi_load_from_memory((const stbi_uc*) buffer, (int) buffer_size, &x, &y, &comp, 0);
+
+        // Reset to default state
+        stbi_set_flip_vertically_on_load(0);
 
         if (ret) {
             Image i;
@@ -153,20 +159,42 @@ namespace dmImage
         return image->m_Buffer;
     }
 
-    uint32_t BytesPerPixel(Type type)
+    static bool IsAstc(const void* mem, uint32_t memsize)
     {
-        switch (type)
-        {
-        case dmImage::TYPE_RGB:
-            return 3;
-        case dmImage::TYPE_RGBA:
-            return 4;
-        case dmImage::TYPE_LUMINANCE:
-            return 1;
-        case dmImage::TYPE_LUMINANCE_ALPHA:
-            return 2;
-        }
-        return 0;
+        DM_STATIC_ASSERT(sizeof(struct AstcHeader) == 16, Invalid_Struct_Size);
+
+        if (memsize < 16)
+            return false;
+
+        AstcHeader* header = (AstcHeader*)mem;
+        return header->m_Magic[0] == 0x13
+            && header->m_Magic[1] == 0xAB
+            && header->m_Magic[2] == 0xA1
+            && header->m_Magic[3] == 0x5C;
+    }
+
+    bool GetAstcBlockSize(const void* mem, uint32_t memsize, uint32_t* width, uint32_t* height, uint32_t* depth)
+    {
+        if (!IsAstc(mem, memsize))
+            return false;
+
+        AstcHeader* header = (AstcHeader*)mem;
+        *width  = header->m_BlockSizes[0];
+        *height = header->m_BlockSizes[1];
+        *depth  = header->m_BlockSizes[2];
+        return true;
+    }
+
+    bool GetAstcDimensions(const void* mem, uint32_t memsize, uint32_t* width, uint32_t* height, uint32_t* depth)
+    {
+        if (!IsAstc(mem, memsize))
+            return false;
+
+        AstcHeader* header = (AstcHeader*)mem;
+        *width  = header->m_DimensionX[0] + (header->m_DimensionX[1] << 8) + (header->m_DimensionX[2] << 16);
+        *height = header->m_DimensionY[0] + (header->m_DimensionY[1] << 8) + (header->m_DimensionY[2] << 16);
+        *depth  = header->m_DimensionZ[0] + (header->m_DimensionZ[1] << 8) + (header->m_DimensionZ[2] << 16);
+        return true;
     }
 }
 

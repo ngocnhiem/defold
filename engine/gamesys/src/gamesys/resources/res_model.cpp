@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -55,7 +55,7 @@ namespace dmGameSystem
         {
             for (int i = 0; i < m_MeshSet->m_Materials.m_Count; ++i)
             {
-                if (strcmp(s, m_MeshSet->m_Materials.m_Data[i]) == 0)
+                if (strcmp(s, m_MeshSet->m_Materials.m_Data[i].m_Name) == 0)
                     return i;
             }
             return -1;
@@ -97,45 +97,85 @@ namespace dmGameSystem
         std::sort(resource->m_Meshes.Begin(), resource->m_Meshes.End(), MeshSortPred());
     }
 
+    static inline uint32_t GetRigModelVertexFormatSize(RigModelVertexFormat format)
+    {
+        switch (format)
+        {
+        case RIG_MODEL_VERTEX_FORMAT_STATIC:
+            return sizeof(dmRig::RigModelVertex);
+        case RIG_MODEL_VERTEX_FORMAT_SKINNED:
+            return sizeof(dmRig::RigModelSkinnedVertex);
+        }
+        return 0;
+    }
+
+    static inline RigModelVertexFormat GetRigModelVertexFormat(const dmRigDDF::Mesh* mesh)
+    {
+        const float* weights = mesh->m_Weights.m_Count ? mesh->m_Weights.m_Data : 0;
+        const uint32_t* indices = mesh->m_BoneIndices.m_Count ? mesh->m_BoneIndices.m_Data : 0;
+        if (weights && indices)
+            return RIG_MODEL_VERTEX_FORMAT_SKINNED;
+        return RIG_MODEL_VERTEX_FORMAT_STATIC;
+    }
+
     // TODO: Now that we don't split meshes at runtime, we should move this code to the build pipeline /MAWE
-    static dmRig::RigModelVertex* CreateVertexData(const dmRigDDF::Mesh* mesh, dmRig::RigModelVertex* out_write_ptr)
+    static uint8_t* CreateVertexData(const dmRigDDF::Mesh* mesh, uint8_t* out_write_ptr, RigModelVertexFormat format)
     {
         uint32_t vertex_count = mesh->m_Positions.m_Count / 3;
-
         const float* positions = mesh->m_Positions.m_Count ? mesh->m_Positions.m_Data : 0;
         const float* normals = mesh->m_Normals.m_Count ? mesh->m_Normals.m_Data : 0;
         const float* tangents = mesh->m_Tangents.m_Count ? mesh->m_Tangents.m_Data : 0;
         const float* colors = mesh->m_Colors.m_Count ? mesh->m_Colors.m_Data : 0;
         const float* uv0 = mesh->m_Texcoord0.m_Count ? mesh->m_Texcoord0.m_Data : 0;
         const float* uv1 = mesh->m_Texcoord1.m_Count ? mesh->m_Texcoord1.m_Data : 0;
+        const float* weights = mesh->m_Weights.m_Count ? mesh->m_Weights.m_Data : 0;
+        const uint32_t* indices = mesh->m_BoneIndices.m_Count ? mesh->m_BoneIndices.m_Data : 0;
+
+        uint32_t vertex_size = GetRigModelVertexFormatSize(format);
 
         for (uint32_t i = 0; i < vertex_count; ++i)
         {
+            dmRig::RigModelVertex* vertex = (dmRig::RigModelVertex*) out_write_ptr;
+
             for (int c = 0; c < 3; ++c)
             {
-                out_write_ptr->pos[c] = *positions++;
-                out_write_ptr->normal[c] = normals ? *normals++ : 0.0f;
-                out_write_ptr->tangent[c] = tangents ? *tangents++ : 0.0f;
+                vertex->pos[c] = *positions++;
+                vertex->normal[c] = normals ? *normals++ : 0.0f;
             }
 
             for (int c = 0; c < 4; ++c)
             {
-                out_write_ptr->color[c] = colors ? *colors++ : 1.0f;
+                vertex->color[c] = colors ? *colors++ : 1.0f;
+                vertex->tangent[c] = tangents ? *tangents++ : 0.0f;
             }
 
             for (int c = 0; c < 2; ++c)
             {
-                out_write_ptr->uv0[c] = uv0 ? *uv0++ : 0.0f;
-                out_write_ptr->uv1[c] = uv1 ? *uv1++ : 0.0f;
+                vertex->uv0[c] = uv0 ? *uv0++ : 0.0f;
+                vertex->uv1[c] = uv1 ? *uv1++ : 0.0f;
             }
 
-            out_write_ptr++;
+            if (format == RIG_MODEL_VERTEX_FORMAT_SKINNED)
+            {
+                dmRig::RigModelSkinnedVertex* vertex_skinned = (dmRig::RigModelSkinnedVertex*) out_write_ptr;
+                for (int c = 0; c < 4; ++c)
+                {
+                    vertex_skinned->m_BoneWeights[c] = weights ? *weights++ : 0.0f;
+                }
+
+                for (int c = 0; c < 4; ++c)
+                {
+                    vertex_skinned->m_BoneIndices[c] = indices ? (float) *indices++ : 0.0f;
+                }
+            }
+
+            out_write_ptr += vertex_size;
         }
 
         return out_write_ptr;
     }
 
-    static ModelResourceBuffers* CreateBuffers(dmGraphics::HContext context, const dmRigDDF::Mesh* ddf_mesh, dmArray<dmRig::RigModelVertex>& scratch_buffer)
+    static ModelResourceBuffers* CreateBuffers(dmGraphics::HContext context, const ModelResource* resource, const dmRigDDF::Mesh* ddf_mesh, dmArray<uint8_t>& scratch_buffer)
     {
         ModelResourceBuffers* buffers = new ModelResourceBuffers;
         memset(buffers, 0, sizeof(ModelResourceBuffers));
@@ -160,14 +200,19 @@ namespace dmGameSystem
             }
         }
 
-        if (scratch_buffer.Capacity() < num_vertices)
-            scratch_buffer.SetCapacity(num_vertices);
-        scratch_buffer.SetSize(num_vertices);
+        RigModelVertexFormat format = GetRigModelVertexFormat(ddf_mesh);
+        uint32_t vertex_size = GetRigModelVertexFormatSize(format);
+        uint32_t data_size = num_vertices * vertex_size;
 
-        CreateVertexData(ddf_mesh, scratch_buffer.Begin());
+        if (scratch_buffer.Capacity() < data_size)
+            scratch_buffer.SetCapacity(data_size);
+        scratch_buffer.SetSize(data_size);
 
-        buffers->m_VertexBuffer = dmGraphics::NewVertexBuffer(context, num_vertices * sizeof(dmRig::RigModelVertex), scratch_buffer.Begin(), dmGraphics::BUFFER_USAGE_STATIC_DRAW);
+        CreateVertexData(ddf_mesh, scratch_buffer.Begin(), format);
+
+        buffers->m_VertexBuffer = dmGraphics::NewVertexBuffer(context, data_size, scratch_buffer.Begin(), dmGraphics::BUFFER_USAGE_STATIC_DRAW);
         buffers->m_VertexCount = num_vertices;
+        buffers->m_RigModelVertexFormat = format;
 
         buffers->m_IndexBuffer = 0;
         buffers->m_IndexCount = 0;
@@ -184,11 +229,11 @@ namespace dmGameSystem
 
     static void CreateBuffers(dmGraphics::HContext context, ModelResource* resource)
     {
-        dmArray<dmRig::RigModelVertex> scratch_buffer;
+        dmArray<uint8_t> scratch_buffer;
         for (uint32_t i = 0; i < resource->m_Meshes.Size(); ++i)
         {
             MeshInfo& info = resource->m_Meshes[i];
-            info.m_Buffers = CreateBuffers(context, info.m_Mesh, scratch_buffer);
+            info.m_Buffers = CreateBuffers(context, resource, info.m_Mesh, scratch_buffer);
         }
     }
 
@@ -283,7 +328,7 @@ namespace dmGameSystem
                 if (ResourcePathToRenderResourceType(texture->m_Texture) == dmRender::RENDER_RESOURCE_TYPE_RENDER_TARGET)
                 {
                     texture_info->m_RenderTarget = (RenderTargetResource*) resource;
-                    texture_info->m_Texture      = texture_info->m_RenderTarget->m_TextureResource;
+                    texture_info->m_Texture      = texture_info->m_RenderTarget->m_ColorAttachmentResources[0];
                 }
                 else
                 {
@@ -318,9 +363,12 @@ namespace dmGameSystem
 
         if(resource->m_RigScene->m_AnimationSetRes || resource->m_RigScene->m_SkeletonRes)
         {
-            if (!AreAllMaterialsWorldSpace(resource))
+            if (!AreAllMaterialsWorldSpace(resource) && !dmGraphics::IsTextureFormatSupported(context, BIND_POSE_CACHE_TEXTURE_FORMAT))
             {
-                dmLogError("Failed to create Model component. Material vertex space option VERTEX_SPACE_LOCAL does not support skinning.");
+                dmLogError(
+                    "Failed to create Model component. One or more materials has vertex space option VERTEX_SPACE_LOCAL,"
+                    "which requires a float texture for storing animation data but the format (%s) isn't supported.",
+                    dmGraphics::GetTextureFormatLiteral(BIND_POSE_CACHE_TEXTURE_FORMAT));
                 return dmResource::RESULT_NOT_SUPPORTED;
             }
         }
@@ -374,10 +422,10 @@ namespace dmGameSystem
         resource->m_Materials.SetSize(0);
     }
 
-    dmResource::Result ResModelPreload(const dmResource::ResourcePreloadParams& params)
+    dmResource::Result ResModelPreload(const dmResource::ResourcePreloadParams* params)
     {
         dmModelDDF::Model* ddf;
-        dmDDF::Result e = dmDDF::LoadMessage(params.m_Buffer, params.m_BufferSize, &dmModelDDF_Model_DESCRIPTOR, (void**) &ddf);
+        dmDDF::Result e = dmDDF::LoadMessage(params->m_Buffer, params->m_BufferSize, &dmModelDDF_Model_DESCRIPTOR, (void**) &ddf);
         if (e != dmDDF::RESULT_OK)
         {
             return dmResource::RESULT_DDF_ERROR;
@@ -385,57 +433,57 @@ namespace dmGameSystem
 
         for (uint32_t i = 0; i < ddf->m_Materials.m_Count; ++i)
         {
-            dmResource::PreloadHint(params.m_HintInfo, ddf->m_Materials[i].m_Material);
+            dmResource::PreloadHint(params->m_HintInfo, ddf->m_Materials[i].m_Material);
 
             for (uint32_t j = 0; j < ddf->m_Materials[i].m_Textures.m_Count && j < dmRender::RenderObject::MAX_TEXTURE_COUNT; ++j)
             {
-                dmResource::PreloadHint(params.m_HintInfo, ddf->m_Materials[i].m_Textures[j].m_Texture);
+                dmResource::PreloadHint(params->m_HintInfo, ddf->m_Materials[i].m_Textures[j].m_Texture);
             }
         }
 
-        dmResource::PreloadHint(params.m_HintInfo, ddf->m_RigScene);
+        dmResource::PreloadHint(params->m_HintInfo, ddf->m_RigScene);
 
-        *params.m_PreloadData = ddf;
+        *params->m_PreloadData = ddf;
         return dmResource::RESULT_OK;
     }
 
-    dmResource::Result ResModelCreate(const dmResource::ResourceCreateParams& params)
+    dmResource::Result ResModelCreate(const dmResource::ResourceCreateParams* params)
     {
         ModelResource* model_resource = new ModelResource();
         memset(model_resource, 0, sizeof(ModelResource));
-        model_resource->m_Model = (dmModelDDF::Model*) params.m_PreloadData;
-        dmResource::Result r = AcquireResources((dmGraphics::HContext) params.m_Context, params.m_Factory, model_resource, params.m_Filename);
+        model_resource->m_Model = (dmModelDDF::Model*) params->m_PreloadData;
+        dmResource::Result r = AcquireResources((dmGraphics::HContext) params->m_Context, params->m_Factory, model_resource, params->m_Filename);
         if (r == dmResource::RESULT_OK)
         {
-            params.m_Resource->m_Resource = (void*) model_resource;
+            dmResource::SetResource(params->m_Resource, model_resource);
         }
         else
         {
-            ReleaseResources(params.m_Factory, model_resource);
+            ReleaseResources(params->m_Factory, model_resource);
             delete model_resource;
         }
         return r;
     }
 
-    dmResource::Result ResModelDestroy(const dmResource::ResourceDestroyParams& params)
+    dmResource::Result ResModelDestroy(const dmResource::ResourceDestroyParams* params)
     {
-        ModelResource* model_resource = (ModelResource*)params.m_Resource->m_Resource;
-        ReleaseResources(params.m_Factory, model_resource);
+        ModelResource* model_resource = (ModelResource*)dmResource::GetResource(params->m_Resource);
+        ReleaseResources(params->m_Factory, model_resource);
         delete model_resource;
         return dmResource::RESULT_OK;
     }
 
-    dmResource::Result ResModelRecreate(const dmResource::ResourceRecreateParams& params)
+    dmResource::Result ResModelRecreate(const dmResource::ResourceRecreateParams* params)
     {
         dmModelDDF::Model* ddf;
-        dmDDF::Result e = dmDDF::LoadMessage(params.m_Buffer, params.m_BufferSize, &dmModelDDF_Model_DESCRIPTOR, (void**) &ddf);
+        dmDDF::Result e = dmDDF::LoadMessage(params->m_Buffer, params->m_BufferSize, &dmModelDDF_Model_DESCRIPTOR, (void**) &ddf);
         if (e != dmDDF::RESULT_OK)
         {
             return dmResource::RESULT_DDF_ERROR;
         }
-        ModelResource* model_resource = (ModelResource*)params.m_Resource->m_Resource;
-        ReleaseResources(params.m_Factory, model_resource);
+        ModelResource* model_resource = (ModelResource*)dmResource::GetResource(params->m_Resource);
+        ReleaseResources(params->m_Factory, model_resource);
         model_resource->m_Model = ddf;
-        return AcquireResources((dmGraphics::HContext) params.m_Context, params.m_Factory, model_resource, params.m_Filename);
+        return AcquireResources((dmGraphics::HContext) params->m_Context, params->m_Factory, model_resource, params->m_Filename);
     }
 }

@@ -1,26 +1,35 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-#ifndef RESOURCE_H
-#define RESOURCE_H
+#ifndef DM_RESOURCE_H
+#define DM_RESOURCE_H
 
 #include <stdint.h>
-#include <dmsdk/resource/resource.h>
 #include <dlib/array.h>
 #include <dlib/hash.h>
 #include <dlib/hashtable.h>
+#include <dlib/http_cache.h>
+#include <dlib/job_thread.h>
 #include <dlib/mutex.h>
+
+struct ResourceDescriptor;
+
+#include <dmsdk/resource/resource.h>
+
+static const uint32_t RESOURCE_INVALID_PRELOAD_SIZE = 0xFFFFFFFF;
+
+typedef struct ResourcePreloader* HResourcePreloader;
 
 namespace dmResourceArchive
 {
@@ -63,17 +72,12 @@ namespace dmResource
     #define RESOURCE_FACTORY_FLAGS_RELOAD_SUPPORT (1 << 0)
 
     /**
-     * Enable HTTP cache
-     */
-    #define RESOURCE_FACTORY_FLAGS_HTTP_CACHE     (1 << 2)
-
-    /**
      * Enable Live update
      */
-    #define RESOURCE_FACTORY_FLAGS_LIVE_UPDATE    (1 << 3)
+    #define RESOURCE_FACTORY_FLAGS_LIVE_UPDATE_MOUNTS_ON_START    (1 << 3)
 
-    typedef uintptr_t ResourceType;
     typedef dmArray<char> LoadBufferType;
+    typedef HResourcePreloader HPreloader;
 
     Result RegisterTypes(HFactory factory, dmHashTable64<void*>* contexts);
     Result DeregisterTypes(HFactory factory, dmHashTable64<void*>* contexts);
@@ -123,16 +127,17 @@ namespace dmResource
     struct NewFactoryParams
     {
         /// Maximum number of resource in factory. Default is 1024
-        uint32_t m_MaxResources;
+        uint32_t                m_MaxResources;
 
         /// Factory flags. Default is RESOURCE_FACTORY_FLAGS_EMPTY
-        uint32_t m_Flags;
+        uint32_t                m_Flags;
 
-        EmbeddedResource m_ArchiveIndex;
-        EmbeddedResource m_ArchiveData;
-        EmbeddedResource m_ArchiveManifest;
+        EmbeddedResource        m_ArchiveIndex;
+        EmbeddedResource        m_ArchiveData;
+        EmbeddedResource        m_ArchiveManifest;
+        dmHttpCache::HCache     m_HttpCache;
 
-        uint32_t m_Reserved[5];
+        dmJobThread::HContext   m_JobThreadContext;
 
         NewFactoryParams()
         {
@@ -164,38 +169,22 @@ namespace dmResource
      * Find a resource by a canonical path hash.
      * @param factory Factory handle
      * @param path_hash Resource path hash
-     * @return SResourceDescriptor* pointer to the resource descriptor
+     * @return ResourceDescriptor* pointer to the resource descriptor
      */
-    SResourceDescriptor* FindByHash(HFactory factory, uint64_t canonical_path_hash);
+    ResourceDescriptor* FindByHash(HFactory factory, uint64_t canonical_path_hash);
 
     /**
      * Creates and inserts a resource into the factory
      * @param factory Factory handle
-     * @param name Name of the resource
+     * @param type The resource type. May be null, and then the path suffix will be used as a lookup.
+     * @param path Path of the resource
      * @param data Resource data
-     * @param data_size Resource data size
+     * @param data_size Partial resource data size
+     * @param file_size Full resource size
      * @param resource Will contain a pointer to the resource after this function has completed
      * @return RESULT_OK on success
      */
-    Result CreateResource(HFactory factory, const char* name, void* data, uint32_t data_size, void** resource);
-
-    /**
-     * Get a resource extension from a path, i.e resource.ext will return .ext. Note the included dot in the output.
-     * @param path The path to the resource
-     * @return Pointer to extension string if success (same as buffer), 0 otherwise
-     */
-    const char* GetExtFromPath(const char* path);
-
-    /**
-     * Get raw resource data. Unregistered resources can be loaded with this function.
-     * The returned resource data must be deallocated with free()
-     * @param factory Factory handle
-     * @param name Resource name
-     * @param resource Resource data
-     * @param resource_size Resource size
-     * @return RESULT_OK on success
-     */
-    Result GetRaw(HFactory factory, const char* name, void** resource, uint32_t* resource_size);
+    Result CreateResourcePartial(HFactory factory, HResourceType type, const char* path, void* data, uint32_t data_size, uint32_t file_size, void** resource);
 
     /**
      * Updates a preexisting resource with new data
@@ -223,7 +212,7 @@ namespace dmResource
      * @param out_descriptor The resource descriptor as an output argument. It will not be written to if null, otherwise it will always be written to.
      * @see Get
      */
-    Result ReloadResource(HFactory factory, const char* name, SResourceDescriptor** out_descriptor);
+    Result ReloadResource(HFactory factory, const char* name, ResourceDescriptor** out_descriptor);
 
     /**
      * Get type for resource
@@ -232,16 +221,7 @@ namespace dmResource
      * @param type Returned type
      * @return RESULT_OK on success
      */
-    Result GetType(HFactory factory, void* resource, ResourceType* type);
-
-    /**
-     * Get type from extension
-     * @param factory Factory handle
-     * @param extension File extension
-     * @param type Returned type
-     * @return RESULT_OK on success
-     */
-    Result GetTypeFromExtension(HFactory factory, const char* extension, ResourceType* type);
+    Result GetType(HFactory factory, void* resource, HResourceType* type);
 
     /**
      * Get extension from type
@@ -250,16 +230,7 @@ namespace dmResource
      * @param extension Returned extension
      * @return RESULT_OK on success
      */
-    Result GetExtensionFromType(HFactory factory, ResourceType type, const char** extension);
-
-    /**
-     * Get resource descriptor from resource (name)
-     * @param factory Factory handle
-     * @param name Resource name
-     * @param descriptor Returned resource descriptor
-     * @return RESULT_OK on success
-     */
-    Result GetDescriptor(HFactory factory, const char* name, SResourceDescriptor* descriptor);
+    Result GetExtensionFromType(HFactory factory, HResourceType type, const char** extension);
 
     /**
      * Get resource descriptor from resource (hash) with supplied extensions
@@ -270,14 +241,7 @@ namespace dmResource
      * @param descriptor pointer to write result to in case of RESULT_OK
      * @return RESULT_OK on success
      */
-    Result GetDescriptorWithExt(HFactory factory, uint64_t hashed_name, const uint64_t* exts, uint32_t ext_count, SResourceDescriptor* descriptor);
-
-    /**
-     * Increase resource reference count
-     * @param factory Factory handle
-     * @param resource Resource
-     */
-    void IncRef(HFactory factory, void* resource);
+    Result GetDescriptorWithExt(HFactory factory, uint64_t hashed_name, const uint64_t* exts, uint32_t ext_count, HResourceDescriptor* descriptor);
 
     /**
      * Get the resource version. The resource version is a sequential serial number
@@ -340,9 +304,10 @@ namespace dmResource
 
     struct SGetDependenciesParams
     {
-        dmhash_t m_UrlHash; // The requested url
-        bool m_OnlyMissing; // Only report assets that aren't available in the mounts
-        bool m_Recursive;   // Traverse down for each resource that has dependencies
+        dmhash_t m_UrlHash;         // The requested url
+        bool m_OnlyMissing;         // Only report assets that aren't available in the mounts
+        bool m_Recursive;           // Traverse down for each resource that has dependencies
+        bool m_IncludeRequestedUrl; // If requested url should be included into result
     };
 
     struct SGetDependenciesResult
@@ -359,7 +324,7 @@ namespace dmResource
      * @note Only reports dependencies from mounts that have a .dmanifest available
      * @param factory [type: dmResource::HFactory] Factory handle
      * @param url_hash [type: dmhash_t] url hash
-     * @return result [type: dmResource::Result] The mounts context
+     * @return result [type: dmResource::Result] resource result
     */
     typedef void (*FGetDependency)(void* context, const SGetDependenciesResult* result);
     dmResource::Result GetDependencies(const dmResource::HFactory factory, const SGetDependenciesParams* params, FGetDependency callback, void* callback_context);
@@ -406,10 +371,24 @@ namespace dmResource
      */
     const char* ResultToString(Result result);
 
+    // *****************************************************************************
+    // Preloader api
+
     // load with default internal buffer and its management, returns buffer ptr in 'buffer'
-    Result LoadResource(HFactory factory, const char* path, const char* original_name, void** buffer, uint32_t* resource_size);
+    Result LoadResource(HFactory factory, const char* path, const char* original_name, void** buffer, uint32_t* buffer_size, uint32_t* resource_size);
     // load with own buffer
-    Result LoadResourceFromBuffer(HFactory factory, const char* path, const char* original_name, uint32_t* resource_size, LoadBufferType* buffer);
+    Result LoadResourceToBuffer(HFactory factory, const char* path, const char* original_name, uint32_t preload_size, uint32_t* resource_size, uint32_t* buffer_size, LoadBufferType* buffer);
+
+    // *****************************************************************************
+    // Streaming api
+
+    // In the callback, use ResourceDescriptorGetData to retrieve the data
+    typedef int (*FPreloadDataCallback)(HFactory factory, void* cbk_ctx, HResourceDescriptor resource, uint32_t offset, uint32_t nread, uint8_t* buffer);
+
+    Result PreloadData(HFactory factory, const char* path, uint32_t offset, uint32_t size, FPreloadDataCallback cbk, void* cbk_ctx);
+
+    // Get the assigned Job thread
+    dmJobThread::HContext GetJobThread(const dmResource::HFactory factory);
 }
 
-#endif // RESOURCE_H
+#endif // DM_RESOURCE_H

@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -14,17 +14,13 @@
 
 package com.dynamo.bob.util;
 
-import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
-import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -38,12 +34,60 @@ import java.util.zip.ZipFile;
 
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
-
-import com.dynamo.bob.LibraryException;
+import com.dynamo.bob.archive.EngineVersion;
 
 public class LibraryUtil {
+
+    private static int parseLeadingInt(String s) {
+        int n = 0;
+        int len = s.length();
+        int i = 0;
+        boolean found = false;
+        while (i < len) {
+            char c = s.charAt(i);
+            if (c >= '0' && c <= '9') {
+                found = true;
+                n = n * 10 + (c - '0');
+                i++;
+            } else {
+                break;
+            }
+        }
+        return found ? n : 0;
+    }
+
+    /**
+     * Compare two version strings like "1.2.3" (numeric components).
+     * Returns negative if v1 < v2, zero if equal, positive if v1 > v2.
+     * Non-numeric suffixes (e.g. "-beta") are ignored.
+     */
+    private static int compareVersions(String v1, String v2) {
+        if (v1 == null) v1 = "";
+        if (v2 == null) v2 = "";
+        String[] a = v1.split("\\.");
+        String[] b = v2.split("\\.");
+        int len = Math.max(a.length, b.length);
+        for (int i = 0; i < len; ++i) {
+            String sa = i < a.length ? a[i] : "0";
+            String sb = i < b.length ? b[i] : "0";
+            // Extract leading integer from each segment (ignore non-digit suffixes)
+            int ia = parseLeadingInt(sa);
+            int ib = parseLeadingInt(sb);
+            if (ia != ib) return ia - ib;
+        }
+        return 0;
+    }
+
+    /**
+     * Returns true if the current EngineVersion is older than the specified minVersion.
+     * Ignores non-numeric suffixes in each version segment.
+     * Used in the editor.
+     */
+    public static boolean isCurrentEngineOlderThan(String minVersion) {
+        if (minVersion == null || minVersion.isEmpty()) return false;
+        return compareVersions(EngineVersion.version, minVersion) < 0;
+    }
 
     /** Convert the supplied URL into a short string representation
      *
@@ -138,6 +182,7 @@ public class LibraryUtil {
         return baseDir;
     }
 
+
     /**
      * Fetch the include dirs from the game.project file embedded in the specified archive.
      * The game.project is assumed to contain a comma separated list under the key library.include_dirs.
@@ -158,6 +203,13 @@ public class LibraryUtil {
                 BobProjectProperties properties = new BobProjectProperties();
                 properties.load(is);
                 String dirs = properties.getStringValue("library", "include_dirs", "");
+                // Validate minimum required Defold/Bob version if specified
+                String minVersion = properties.getStringValue("library", "defold_min_version", "");
+                if (isCurrentEngineOlderThan(minVersion)) {
+                    throw new IOException(String.format(
+                        "Library '%s' requires Defold %s or newer (bob.jar is %s). Update Defold or check older extension versions for compatibility.",
+                        dirs, minVersion, EngineVersion.version));
+                }
                 for (String dir : dirs.split("[,\\s]")) {
                     if (!dir.isEmpty()) {
                         includeDirs.add(dir);

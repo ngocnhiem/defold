@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -27,14 +27,16 @@
 
 namespace dmPlatform
 {
-    struct Window;
-    typedef Window* HWindow;
+    struct dmWindow;
+    typedef dmWindow* HWindow;
 };
 
 namespace dmHID
 {
     /// Constant that defines invalid context handles
     const HContext INVALID_CONTEXT = 0;
+    const uint8_t MAX_GAMEPAD_NAME_LENGTH = 128;
+    const uint8_t MAX_GAMEPAD_NAME_COUNT  = 2;
 
     enum KeyboardType
     {
@@ -144,8 +146,9 @@ namespace dmHID
      * Updates a hid context by polling input from the connected hid devices.
      *
      * @param context the context to poll from
+     * @return true if it has any input events
      */
-    void Update(HContext context);
+    bool Update(HContext context);
 
     /**
      * Retrieves the number of buttons on a given gamepad.
@@ -173,7 +176,7 @@ namespace dmHID
      * @param buffer a pointer to memory where the name should be stored
      * @param buffer_length the size of the buffer parameter
      */
-    void GetGamepadDeviceName(HContext context, HGamepad gamepad, char* buffer, uint32_t buffer_length);
+    void GetGamepadDeviceName(HContext context, HGamepad gamepad, char device_name[MAX_GAMEPAD_NAME_LENGTH]);
 
     /**
      * Check if a keyboard is connected.

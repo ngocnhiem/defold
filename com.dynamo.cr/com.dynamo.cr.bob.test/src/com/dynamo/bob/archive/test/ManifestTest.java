@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -30,8 +30,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
-import java.util.ArrayList;
-import java.util.List;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -164,6 +162,7 @@ public class ManifestTest {
             ResourceNode level1_collectionproxyc = graph.add("/main/level1.collectionproxyc", main_goc);
             ResourceNode level1_collectionc = graph.add("/main/level1.collectionc", level1_collectionproxyc);
             level1_collectionproxyc.setType(ResourceNode.Type.ExcludedCollectionProxy);
+            level1_collectionc.setType(ResourceNode.Type.ExcludedCollection);
             ResourceNode level1_goc = graph.add("/main/level1.goc", level1_collectionc);
             ResourceNode level1_scriptc = graph.add("/main/level1.scriptc", level1_goc);
 
@@ -488,9 +487,10 @@ public class ManifestTest {
                 assertEquals(0, current.getDependantsCount());
             }
 
-            if (current.getUrl().equals("/main/level1.collectionproxyc")) {
+            // Now we have dependencies in excluded collection proxies
+            if (current.getUrl().equals("/main/level1.collectionc")) {
                 printDeps(data, current);
-                assertEquals(4, current.getDependantsCount());
+                assertEquals(3, current.getDependantsCount());
             }
         }
     }

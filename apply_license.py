@@ -37,7 +37,14 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.''') % YEAR
 
 def license(comment):
-    return "\n".join([comment + line for line in LICENSE.split("\n")])
+    license = ""
+    for line in LICENSE.split("\n"):
+        if len(line.strip()) == 0:
+            license = license + comment.strip() + "\n"
+        else:
+            license = license + comment + line + "\n"
+    return license.strip()
+    # return "\n".join([comment + line for line in LICENSE.split("\n")])
 
 # map extensions to strings with the commented license
 ext_to_license = {
@@ -62,6 +69,7 @@ excluded_files = [
     "engine/ddf/src/ddfc.py",
     "engine/engine/contents/builtins/edn.lua",
     "engine/engine/contents/builtins/mobdebug.lua",
+    "engine/font/src/stb_truetype.h",
     "editor/bundle-resources/_defold/debugger/start.lua",
     "com.dynamo.cr/com.dynamo.cr.bob.test/src/com/dynamo/bob/pipeline/test_props.lua",
     "com.dynamo.cr/com.dynamo.cr.bob.test/src/com/dynamo/bob/pipeline/test_props_url.lua",
@@ -76,6 +84,7 @@ excluded_files = [
     "editor/resources/templates/template.gui_script",
     "editor/resources/templates/template.render_script",
     "editor/resources/templates/template.lua",
+    "editor/test/resources/transpile_teal_project/main/main.script",
     "engine/resource/src/test/empty.script",
     "engine/resource/src/test/archive_data/file5.script",
     "engine/resource/src/test/archive_data/liveupdate.file6.script",
@@ -179,13 +188,14 @@ def process_file(filepath):
             f.truncate()
 
 
-for root, dirs, files in os.walk(".", topdown=True):
-    # exclude dirs to avoid traversing them at all
-    # with topdown set to True we can make in place modifications of dirs to
-    # have os.walk() skip directories
-    dirs[:] = [ d for d in dirs if not skip_path(os.path.join(root, d)) and not check_ignored(os.path.join(root, d)) ]
+if __name__ == "__main__":
+    for root, dirs, files in os.walk(".", topdown=True):
+        # exclude dirs to avoid traversing them at all
+        # with topdown set to True we can make in place modifications of dirs to
+        # have os.walk() skip directories
+        dirs[:] = [ d for d in dirs if not skip_path(os.path.join(root, d)) and not check_ignored(os.path.join(root, d)) ]
 
-    for file in files:
-        process_file(os.path.join(root, file))
+        for file in files:
+            process_file(os.path.join(root, file))
 
-print("NOTE! Manually update ddfc.py, editor/bundle-resources/Info.plist, editor/resources/splash.fxml and editor/resources/about.fxml!")
+    print("NOTE! Manually update ddfc.py, editor/bundle-resources/Info.plist, editor/resources/splash.fxml and editor/resources/about.fxml!")

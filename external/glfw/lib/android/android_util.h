@@ -3,10 +3,10 @@
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -22,7 +22,7 @@
 #define CMD_INPUT_MARKED_TEXT (1)
 
 #define MAX_APP_COMMANDS (16)
-#define MAX_APP_INPUT_EVENTS (64)
+#define APP_INPUT_EVENTS_SIZE_INCREASE_STEP (32)
 
 struct Command
 {

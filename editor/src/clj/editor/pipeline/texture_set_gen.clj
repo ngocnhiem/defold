@@ -1,31 +1,30 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
 ;; specific language governing permissions and limitations under the License.
 
 (ns editor.pipeline.texture-set-gen
-  (:require [clojure.string :as string]
-            [dynamo.graph :as g]
+  (:require [dynamo.graph :as g]
             [editor.image-util :as image-util]
             [editor.protobuf :as protobuf]
             [editor.resource :as resource]
             [editor.resource-io :as resource-io]
             [util.coll :refer [pair]])
-  (:import [com.dynamo.bob.textureset TextureSetGenerator TextureSetGenerator$AnimDesc TextureSetGenerator$AnimIterator TextureSetGenerator$LayoutResult TextureSetGenerator$TextureSetResult TextureSetLayout$Grid TextureSetLayout$Rect TextureSetLayout$Layout]
+  (:import [com.dynamo.bob.pipeline AtlasUtil]
+           [com.dynamo.bob.textureset TextureSetGenerator TextureSetGenerator$AnimDesc TextureSetGenerator$AnimIterator TextureSetGenerator$LayoutResult TextureSetGenerator$TextureSetResult TextureSetLayout$Grid TextureSetLayout$Layout TextureSetLayout$Rect]
            [com.dynamo.bob.tile ConvexHull TileSetUtil TileSetUtil$Metrics]
            [com.dynamo.bob.util TextureUtil]
-           [com.dynamo.bob.pipeline AtlasUtil]
            [com.dynamo.gamesys.proto TextureSetProto$TextureSet$Builder]
-           [com.dynamo.gamesys.proto Tile$ConvexHull Tile$Playback Tile$SpriteTrimmingMode TextureSetProto$SpriteGeometry]
+           [com.dynamo.gamesys.proto TextureSetProto$SpriteGeometry Tile$Animation Tile$ConvexHull Tile$Playback Tile$SpriteTrimmingMode]
            [editor.types Image]
            [java.awt.image BufferedImage]))
 
@@ -38,14 +37,15 @@
 
 (defn- Rect->map
   [^TextureSetLayout$Rect rect]
-  {:path (.id rect)
-   :index (.index rect)
-   :x (.x rect)
-   :y (.y rect)
-   :page (.page rect)
-   :width (.width rect)
-   :height (.height rect)
-   :rotated (.rotated rect)})
+  {:path (.getId rect)
+   :index (.getIndex rect)
+   :x (.getX rect)
+   :y (.getY rect)
+   :page (.getPage rect)
+   :width (.getWidth rect)
+   :height (.getHeight rect)
+   :pivot (.getPivot rect)
+   :rotated (.getRotated rect)})
 
 (defn- Metrics->map
   [^TileSetUtil$Metrics metrics]
@@ -67,7 +67,7 @@
   (let [layouts (.. tex-set-result layoutResult layouts)
         ^TextureSetLayout$Layout layout-first (.get layouts 0)
         all-rects (get-all-rects layouts)]
-    {:texture-set (protobuf/pb->map (.build (.builder tex-set-result)))
+    {:texture-set (protobuf/pb->map-with-defaults (.build (.builder tex-set-result)))
      :uv-transforms (vec (.uvTransforms tex-set-result))
      :layout (.layoutResult tex-set-result)
      :size [(.getWidth layout-first) (.getHeight layout-first)]
@@ -80,6 +80,16 @@
     (mapv (fn [^TextureSetLayout$Layout layout]
             (TextureSetGenerator/layoutImages layout inner-padding extrude-borders id->image))
           (.-layouts layout-result))))
+
+(def sprite-trim-mode-edit-type
+  ;; Excludes runtime-only values from the selectable options.
+  (let [selectable-value? (complement #{:sprite-trim-polygons})]
+    {:type :choicebox
+     :options (into []
+                    (keep (fn [[value opts]]
+                            (when (selectable-value? value)
+                              (pair value (:display-name opts)))))
+                    (protobuf/enum-values Tile$SpriteTrimmingMode))}))
 
 (defn- sprite-trim-mode->enum
   [sprite-trim-mode]
@@ -110,12 +120,14 @@
         (.buildPartial))))
 
 (defn- make-rect-sprite-geometry
-  ^TextureSetProto$SpriteGeometry [^long width ^long height]
+  ^TextureSetProto$SpriteGeometry [^long width ^long height ^double pivot-x ^double pivot-y]
   (-> (TextureSetProto$SpriteGeometry/newBuilder rect-sprite-geometry-template)
       (.setWidth width)
       (.setHeight height)
       (.setCenterX 0)
       (.setCenterY 0)
+      (.setPivotX pivot-x)
+      (.setPivotY pivot-y)
       (.setRotated false)
       (.setTrimMode Tile$SpriteTrimmingMode/SPRITE_TRIM_MODE_OFF)
       (.build)))
@@ -124,19 +136,27 @@
   ^TextureSetProto$SpriteGeometry [^Image image]
   (let [error-node-id (:error-node-id (meta image))
         resource (.path image)
-        sprite-trim-mode (.sprite-trim-mode image)]
+        sprite-trim-mode (.sprite-trim-mode image)
+        ; The SpriteGeometry defined (0,0) as being the center of the image
+        pivot-x (- (.pivot-x image) 0.5)
+        pivot-y (- (.pivot-y image) 0.5)
+        ; Flip Y, as the SpriteGeometry uses positive Y as up for vertices
+        pivot-y (- pivot-y)]
     (assert (g/node-id? error-node-id))
     (assert (resource/resource? resource))
     (case sprite-trim-mode
-      :sprite-trim-mode-off (make-rect-sprite-geometry (.width image) (.height image))
+      :sprite-trim-mode-off (make-rect-sprite-geometry (.width image) (.height image) pivot-x pivot-y)
       (let [buffered-image (resource-io/with-error-translation resource error-node-id :image
                              (image-util/read-image resource))]
         (g/precluding-errors buffered-image
-          (TextureSetGenerator/buildConvexHull buffered-image (sprite-trim-mode->enum sprite-trim-mode)))))))
+          (TextureSetGenerator/buildConvexHull buffered-image pivot-x pivot-y (sprite-trim-mode->enum sprite-trim-mode)))))))
 
 (defn atlas->texture-set-data
   [animations images margin inner-padding extrude-borders max-page-size]
-  (let [sprite-geometries (mapv make-image-sprite-geometry images)]
+  ;; NOTE: Images order matters when generating the layouts, especially if they are of the same size.
+  ;; Since the SHA1 for the packed-page-images-generator is insensitive to order, things could get out of sync
+  (let [images (sort-by #(-> % :path resource/proj-path) images)
+        sprite-geometries (mapv make-image-sprite-geometry images)]
     (g/precluding-errors sprite-geometries
       (let [img-to-index (into {}
                                (map-indexed #(pair %2 (Integer/valueOf ^int %1)))
@@ -203,11 +223,21 @@
                             (int width)
                             (int height))))
 
-(defn- tile-anim->AnimDesc [anim]
-  (when anim
-    (TextureSetGenerator$AnimDesc. (:id anim) (protobuf/val->pb-enum Tile$Playback (:playback anim)) (:fps anim)
-                                   (not= 0 (:flip-horizontal anim)) (not= 0 (:flip-vertical anim)))))
+(def ^:private default-tile-animation-playback (protobuf/default Tile$Animation :playback))
+(def ^:private default-tile-animation-fps (protobuf/default Tile$Animation :fps))
+(def ^:private default-tile-animation-flip-horizontal (protobuf/default Tile$Animation :flip-horizontal))
+(def ^:private default-tile-animation-flip-vertical (protobuf/default Tile$Animation :flip-vertical))
 
+(defn- tile-animation->AnimDesc
+  ^TextureSetGenerator$AnimDesc [tile-animation]
+  ;; Tile$Animation in map format.
+  (when tile-animation
+    (TextureSetGenerator$AnimDesc.
+      (:id tile-animation) ; Required protobuf field.
+      (protobuf/val->pb-enum Tile$Playback (:playback tile-animation default-tile-animation-playback))
+      (:fps tile-animation default-tile-animation-fps)
+      (not= 0 (:flip-horizontal tile-animation default-tile-animation-flip-horizontal))
+      (not= 0 (:flip-vertical tile-animation default-tile-animation-flip-vertical)))))
 
 (defn calculate-convex-hulls
   [^BufferedImage collision {:keys [width height margin spacing] :as _tile-properties}]
@@ -247,7 +277,7 @@
             (run! #(.addCollisionHullPoints builder %) points))
           convex-hulls)))
 
-(defn tile-source->texture-set-data [tile-source-attributes ^BufferedImage buffered-image convex-hulls collision-groups animations]
+(defn tile-source->texture-set-data [layout-result tile-source-attributes ^BufferedImage buffered-image convex-hulls collision-groups animations]
   (let [image-rects (split-rects tile-source-attributes)
         anims-atom (atom animations)
         anim-indices-atom (atom [])
@@ -258,7 +288,7 @@
                                                         (vec (map int (range (dec (:start-tile anim)) (:end-tile anim))))
                                                         []))
                             (swap! anims-atom rest)
-                            (tile-anim->AnimDesc anim)))
+                            (tile-animation->AnimDesc anim)))
                         (nextFrameIndex [_this]
                           (let [index (first @anim-indices-atom)]
                             (swap! anim-indices-atom rest)
@@ -268,22 +298,17 @@
                         (rewind [_this]
                           (reset! anims-atom animations)
                           (reset! anim-indices-atom [])))
-        grid (TextureSetLayout$Grid. (:tiles-per-row tile-source-attributes) (:tiles-per-column tile-source-attributes))
         sprite-trim-mode (sprite-trim-mode->enum (:sprite-trim-mode tile-source-attributes))
         sprite-geometries (map (fn [^TextureSetLayout$Rect image-rect]
-                                 (let [sub-image (.getSubimage buffered-image (.x image-rect) (.y image-rect) (.width image-rect) (.height image-rect))]
-                                   (TextureSetGenerator/buildConvexHull sub-image sprite-trim-mode)))
+                                 (let [sub-image (.getSubimage buffered-image (.getX image-rect) (.getY image-rect) (.getWidth image-rect) (.getHeight image-rect))]
+                                   (TextureSetGenerator/buildConvexHull sub-image 0.0 0.0 sprite-trim-mode)))
                                image-rects)
         use-geometries (if (not= :sprite-trim-mode-off (:sprite-trim-mode tile-source-attributes)) 1 0)
-        result (TextureSetGenerator/calculateLayout
-                 image-rects
+        result (TextureSetGenerator/calculateTextureSetResult
+                 layout-result
                  sprite-geometries
                  use-geometries
-                 anim-iterator
-                 (:margin tile-source-attributes)
-                 (:inner-padding tile-source-attributes)
-                 (:extrude-borders tile-source-attributes)
-                 false true grid 0.0 0.0)]
+                 anim-iterator)]
     (doto (.builder result)
       (.setTileWidth (:width tile-source-attributes))
       (.setTileHeight (:height tile-source-attributes))
@@ -294,9 +319,21 @@
     (TextureSetResult->result result)))
 
 (defn layout-tile-source
-  [^TextureSetGenerator$LayoutResult layout-result ^BufferedImage image tile-source-attributes]
+  ^BufferedImage [^TextureSetGenerator$LayoutResult layout-result ^BufferedImage image tile-source-attributes]
   (let [layout (first (.-layouts layout-result))
         inner-padding (.-innerPadding layout-result)
         extrude-borders (.-extrudeBorders layout-result)
         id->image (zipmap (map (fn [x] (format "tile%d" x)) (range)) (split-image image tile-source-attributes))]
     (TextureSetGenerator/layoutImages layout inner-padding extrude-borders id->image)))
+
+(defn calculate-layout-result
+  [tile-source-attributes]
+  (let [image-rects (split-rects tile-source-attributes)
+        grid (TextureSetLayout$Grid. (:tiles-per-row tile-source-attributes)
+                                     (:tiles-per-column tile-source-attributes))]
+    (TextureSetGenerator/calculateLayoutResult
+     image-rects
+     (:margin tile-source-attributes)
+     (:inner-padding tile-source-attributes)
+     (:extrude-borders tile-source-attributes)
+     false true grid 0.0 0.0)))

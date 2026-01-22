@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -31,7 +31,7 @@ extern "C"
 }
 
 DM_PROPERTY_EXTERN(rmtp_GameObject);
-DM_PROPERTY_U32(rmtp_ComponentsAnim, 0, FrameReset, "#", &rmtp_GameObject);
+DM_PROPERTY_U32(rmtp_ComponentsAnim, 0, PROFILE_PROPERTY_FRAME_RESET, "#", &rmtp_GameObject);
 
 namespace dmGameObject
 {
@@ -390,7 +390,7 @@ namespace dmGameObject
 
     static AnimWorld* GetWorld(HCollection hcollection)
     {
-        dmResource::ResourceType resource_type;
+        HResourceType resource_type;
         dmResource::Result result = dmResource::GetTypeFromExtension(dmGameObject::GetFactory(hcollection), "animc", &resource_type);
         assert(result == dmResource::RESULT_OK);
         uint32_t component_index;
@@ -514,14 +514,18 @@ namespace dmGameObject
                 duration, delay, animation_stopped, userdata1, userdata2, true);
     }
 
-    static uint32_t GetElementCount(PropertyType type)
+    static uint32_t GetElementCount(PropertyType type, dmhash_t* element_ids)
     {
         switch (type)
         {
         case PROPERTY_TYPE_NUMBER:
             return 1;
         case PROPERTY_TYPE_VECTOR3:
+        {
+            if (element_ids[2] == 0)
+                return 2;
             return 3;
+        }
         case PROPERTY_TYPE_VECTOR4:
         case PROPERTY_TYPE_QUAT:
             return 4;
@@ -568,7 +572,7 @@ namespace dmGameObject
                 return PROPERTY_RESULT_TYPE_MISMATCH;
             }
         }
-        uint32_t element_count = GetElementCount(prop_desc.m_Variant.m_Type);
+        uint32_t element_count = GetElementCount(prop_desc.m_Variant.m_Type, prop_desc.m_ElementIds);
         if (element_count == 0)
         {
             return PROPERTY_RESULT_UNSUPPORTED_TYPE;
@@ -625,7 +629,7 @@ namespace dmGameObject
         {
             return prop_result;
         }
-        uint32_t element_count = GetElementCount(prop_desc.m_Variant.m_Type);
+        uint32_t element_count = GetElementCount(prop_desc.m_Variant.m_Type, prop_desc.m_ElementIds);
         if (element_count == 0)
         {
             return PROPERTY_RESULT_UNSUPPORTED_TYPE;
@@ -707,7 +711,9 @@ namespace dmGameObject
         {
             if (INVALID_INDEX == next)
             {
-                world->m_ListenerInstanceToIndex.Erase((uintptr_t)anim->m_Userdata1);
+                uint16_t* p = world->m_ListenerInstanceToIndex.Get((uintptr_t)anim->m_Userdata1);
+                if (p != 0)
+                    world->m_ListenerInstanceToIndex.Erase((uintptr_t)anim->m_Userdata1);
             }
             else
             {

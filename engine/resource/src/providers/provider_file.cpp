@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -112,14 +112,30 @@ namespace dmResourceProviderFile
         return SysResultToProviderResult(r);
     }
 
-    static void SetupArchiveLoader(dmResourceProvider::ArchiveLoader* loader)
+    static dmResourceProvider::Result ReadFilePartial(dmResourceProvider::HArchiveInternal _archive, dmhash_t path_hash, const char* path, uint32_t offset, uint32_t size, uint8_t* buffer, uint32_t* nread)
     {
-        loader->m_CanMount      = MatchesUri;
-        loader->m_Mount         = Mount;
-        loader->m_Unmount       = Unmount;
-        loader->m_GetFileSize   = GetFileSize;
-        loader->m_ReadFile      = ReadFile;
+        FileProviderContext* archive = (FileProviderContext*)_archive;
+        (void)path_hash;
+
+        char path_buffer[DMPATH_MAX_PATH];
+        const char* resolved_path = ResolveFilePath(&archive->m_BaseUri, path, path_buffer, sizeof(path_buffer));
+        if (!resolved_path) {
+            return dmResourceProvider::RESULT_NOT_FOUND;
+        }
+
+        dmSys::Result r = dmSys::LoadResourcePartial(resolved_path, offset, size, buffer, nread);
+        return SysResultToProviderResult(r);
     }
 
-    DM_DECLARE_ARCHIVE_LOADER(ResourceProviderFile, "file", SetupArchiveLoader);
+    static void SetupArchiveLoader(dmResourceProvider::ArchiveLoader* loader)
+    {
+        loader->m_CanMount          = MatchesUri;
+        loader->m_Mount             = Mount;
+        loader->m_Unmount           = Unmount;
+        loader->m_GetFileSize       = GetFileSize;
+        loader->m_ReadFile          = ReadFile;
+        loader->m_ReadFilePartial   = ReadFilePartial;
+    }
+
+    DM_DECLARE_ARCHIVE_LOADER(ResourceProviderFile, "file", SetupArchiveLoader, 0, 0);
 }

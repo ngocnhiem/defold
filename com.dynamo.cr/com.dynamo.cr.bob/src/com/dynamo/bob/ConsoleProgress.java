@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -23,6 +23,7 @@ public class ConsoleProgress implements IProgress {
     private float ticks;
     private float scale = 1;
     private Boolean isATTY = false;
+    private boolean canceled = false;
 
     public ConsoleProgress() {
         reportTo = this;
@@ -77,8 +78,21 @@ public class ConsoleProgress implements IProgress {
     }
 
     @Override
-    public void beginTask(String name, int work) {
-        System.out.print(name);
+    public void beginTask(Task name, int work) {
+        System.out.print(switch (name) {
+            case BUNDLING -> "Bundling...";
+            case BUILDING_ENGINE -> "Building engine...";
+            case CLEANING_ENGINE -> "Cleaning engine";
+            case DOWNLOADING_SYMBOLS -> String.format("Downloading %s symbols...", work);
+            case TRANSPILING_TO_LUA -> "Transpiling to Lua...";
+            case READING_TASKS -> "Reading tasks...";
+            case BUILDING -> "Building...";
+            case CLEANING -> "Cleaning...";
+            case GENERATING_REPORT -> "Generating report...";
+            case WORKING -> "Working...";
+            case READING_CLASSES -> "Reading classes...";
+            case DOWNLOADING_ARCHIVES -> "Downloading archives...";
+        });
         if (reportTo != this) {
             this.scale = work / ticks;
         }
@@ -96,7 +110,14 @@ public class ConsoleProgress implements IProgress {
 
     @Override
     public boolean isCanceled() {
-        return false;
+        if (reportTo != null) {
+            return reportTo.canceled || canceled;
+        }
+        return canceled;
     }
 
+    @Override
+    public void setCanceled(boolean canceled) {
+        this.canceled = canceled;
+    }
 }

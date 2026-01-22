@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <float.h>
 #include <dlib/webserver.h>
 #include <dlib/message.h>
 #include <dlib/dstrings.h>
@@ -56,6 +57,8 @@ namespace dmEngineService
 
     static const char INFO_TEMPLATE[] =
     "{\"version\": \"${ENGINE_VERSION}\", \"platform\": \"${ENGINE_PLATFORM}\", \"sha1\": \"${ENGINE_SHA1}\"}";
+    static const char STATE_TEMPLATE[] =
+    "{\"connection_mode\": ${CONNECTION_MODE}}";
 
     static const char INTERNAL_SERVER_ERROR[] = "(500) Internal server error";
     const char* const FOURCC_RESOURCES = "RESS";
@@ -208,6 +211,14 @@ namespace dmEngineService
             dmWebServer::Send(request, service->m_InfoJson, strlen(service->m_InfoJson));
         }
 
+        static void StateHandler(void* user_data, dmWebServer::Request* request)
+        {
+            EngineService* service = (EngineService*) user_data;
+            dmWebServer::SetStatusCode(request, 200);
+            dmWebServer::Send(request, service->m_StateJson, strlen(service->m_StateJson));
+        }
+        
+
         // This is equivalent to what SSDP is doing when serving the UPNP descriptor through its own http server
         // See ssdp.cpp#ReplaceHttpHostVar
         static const char* ReplaceHttpHostVar(void *user_data, const char *key)
@@ -293,6 +304,10 @@ namespace dmEngineService
             else if (strcmp(key, "ENGINE_PLATFORM") == 0)
             {
                 return dmEngineVersion::PLATFORM;
+            }
+            else if (strcmp(key, "CONNECTION_MODE") == 0)
+            {
+                return ((EngineState*)user_data)->m_ConnectionAppMode ? "true" : "false";
             }
             else
             {
@@ -453,6 +468,11 @@ namespace dmEngineService
             upnp_params.m_Userdata = this;
             dmWebServer::AddHandler(web_server, "/upnp", &upnp_params);
 
+            dmWebServer::HandlerParams state_params;
+            state_params.m_Handler = StateHandler;
+            state_params.m_Userdata = this;
+            dmWebServer::AddHandler(web_server, "/state", &state_params);
+
             // Redirects from old profiler to the new
             if (web_server_redirect)
             {
@@ -488,6 +508,10 @@ namespace dmEngineService
             }
         }
 
+        void FillState(EngineState* state)
+        {
+            dmTemplate::Format(state, m_StateJson, sizeof(m_StateJson), STATE_TEMPLATE, ReplaceCallback);
+        }
 
         dmWebServer::HServer m_WebServer;
         dmWebServer::HServer m_WebServerRedirect; // A redirect from 8002 to the engine service
@@ -502,8 +526,10 @@ namespace dmEngineService
         dmSSDP::HSSDP        m_SSDP;
 
         char                 m_InfoJson[sizeof(INFO_TEMPLATE) + 512]; // 512 is rather arbitrary :-)
+        char                 m_StateJson[sizeof(STATE_TEMPLATE) + 512]; // 512 is rather arbitrary :-)
 
-        dmProfile::HProfile  m_Profile;
+        ResourceHandlerParams m_ResourceHandlerParams;
+        HProfile             m_Profile;
     };
 
     HEngineService New(uint16_t port)
@@ -531,7 +557,7 @@ namespace dmEngineService
         delete engine_service;
     }
 
-    void Update(HEngineService engine_service, dmProfile::HProfile profile)
+    void Update(HEngineService engine_service, HProfile profile)
     {
         DM_PROFILE("Service");
         engine_service->m_Profile = profile;
@@ -636,19 +662,8 @@ namespace dmEngineService
         return SendResourceData(request, name, extension, resource.m_Size, resource.m_SizeOnDisc, resource.m_RefCount);
     }
 
-    static bool DynamicTextureIteratorFunction(dmhash_t gui_res_id, dmhash_t name_hash, uint32_t size, void* user_ctx)
-    {
-        dmWebServer::Request* request = (dmWebServer::Request*)user_ctx;
-        const char* texture_name = dmHashReverseSafe64(name_hash);
-        const char* gui_name = dmHashReverseSafe64(gui_res_id);
-        char full_name[512];
-        dmSnPrintf(full_name, sizeof(full_name), "%s\n%s", gui_name, texture_name);
-        return SendResourceData(request, &full_name[0], "GuiDynamicTexture", size, 0, 1);
-    }
-
     static void OutputGuiDynamicTextures(dmGameObject::SceneNode* node, dmWebServer::Request* request)
     {
-        static const dmhash_t s_GuiResource = dmHashString64("guic");
         static const dmhash_t s_PropertyResource = dmHashString64("resource");
         static const dmhash_t s_PropertyType = dmHashString64("type");
 
@@ -664,11 +679,6 @@ namespace dmEngineService
                 resource_id = pit.m_Property.m_Value.m_Hash;
             else if (pit.m_Property.m_NameHash == s_PropertyType)
                 type = pit.m_Property.m_Value.m_Hash;
-        }
-
-        if (type == s_GuiResource)
-        {
-            dmGameSystem::IterateDynamicTextures(resource_id, node, DynamicTextureIteratorFunction, (void*)request);
         }
 
         dmGameObject::SceneNodeIterator it = dmGameObject::TraverseIterateChildren(node);
@@ -780,6 +790,34 @@ namespace dmEngineService
             dmWebServer::Send(request, buf, sizeof(buf));
     }
 
+    static void SendJsonEscapedText(dmWebServer::Request* request, const char* text)
+    {
+        SendText(request, "\"");
+        for (const char* p = text; *p; ++p)
+        {
+            switch (*p)
+            {
+                case '\"': SendText(request, "\\\""); break;
+                case '\\': SendText(request, "\\\\"); break;
+                case '\n': SendText(request, "\\n"); break;
+                case '\r': SendText(request, "\\r"); break;
+                case '\t': SendText(request, "\\t"); break;
+                default:
+                {
+                    char buf[2] = {*p, 0};
+                    SendText(request, buf);
+                    break;
+                }
+            }
+        }
+        SendText(request, "\"");
+    }
+
+    static float JsonSafeFloat(float f)
+    {
+        return isfinite(f) ? f : FLT_MAX;
+    }
+
     static void OutputJsonProperty(dmGameObject::SceneNodeProperty* property, dmWebServer::Request* request, int indent)
     {
         SendIndent(request, indent);
@@ -787,7 +825,7 @@ namespace dmEngineService
         SendText(request, dmHashReverseSafe64(property->m_NameHash));
         SendText(request, "\": ");
 
-        char buffer[128];
+        char buffer[512];
         buffer[0] = 0;
 
         switch(property->m_Type)
@@ -801,13 +839,22 @@ namespace dmEngineService
                     dmSnPrintf(buffer, sizeof(buffer), "\"0x%016llX\"", (unsigned long long)property->m_Value.m_Hash);
             }
             break;
-        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_NUMBER: dmSnPrintf(buffer, sizeof(buffer), "%f", property->m_Value.m_Number); break;
+        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_NUMBER: dmSnPrintf(buffer, sizeof(buffer), "%f", JsonSafeFloat(property->m_Value.m_Number)); break;
         case dmGameObject::SCENE_NODE_PROPERTY_TYPE_BOOLEAN: dmSnPrintf(buffer, sizeof(buffer), "%d", property->m_Value.m_Bool?1:0); break;
-        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_VECTOR3: dmSnPrintf(buffer, sizeof(buffer), "[%f, %f, %f]", property->m_Value.m_V4[0], property->m_Value.m_V4[1], property->m_Value.m_V4[2]); break;
-        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_VECTOR4: dmSnPrintf(buffer, sizeof(buffer), "[%f, %f, %f, %f]", property->m_Value.m_V4[0], property->m_Value.m_V4[1], property->m_Value.m_V4[2], property->m_Value.m_V4[3]); break;
-        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_QUAT: dmSnPrintf(buffer, sizeof(buffer), "[%f, %f, %f, %f]", property->m_Value.m_V4[0], property->m_Value.m_V4[1], property->m_Value.m_V4[2], property->m_Value.m_V4[3]); break;
+        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_VECTOR3: dmSnPrintf(buffer, sizeof(buffer), "[%f, %f, %f]",
+            JsonSafeFloat(property->m_Value.m_V4[0]),
+            JsonSafeFloat(property->m_Value.m_V4[1]),
+            JsonSafeFloat(property->m_Value.m_V4[2]));
+            break;
+        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_VECTOR4:
+        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_QUAT: dmSnPrintf(buffer, sizeof(buffer), "[%f, %f, %f, %f]",
+            JsonSafeFloat(property->m_Value.m_V4[0]),
+            JsonSafeFloat(property->m_Value.m_V4[1]),
+            JsonSafeFloat(property->m_Value.m_V4[2]),
+            JsonSafeFloat(property->m_Value.m_V4[3]));
+            break;
         case dmGameObject::SCENE_NODE_PROPERTY_TYPE_URL: dmSnPrintf(buffer, sizeof(buffer), "\"%s\"", property->m_Value.m_URL); break;
-        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_TEXT: SendText(request, "\""); SendText(request, property->m_Value.m_Text); SendText(request, "\""); break;
+        case dmGameObject::SCENE_NODE_PROPERTY_TYPE_TEXT: SendJsonEscapedText(request, property->m_Value.m_Text); break;
         default: break;
         }
 
@@ -895,10 +942,9 @@ namespace dmEngineService
     {
         dmWebServer::HandlerParams resource_params;
         resource_params.m_Handler = HttpResourceRequestCallback;
-        ResourceHandlerParams* params = (ResourceHandlerParams*) malloc(sizeof(ResourceHandlerParams));
-        params->m_Factory = factory;
-        params->m_Regist = regist;
-        resource_params.m_Userdata = params;
+        engine_service->m_ResourceHandlerParams.m_Factory = factory;
+        engine_service->m_ResourceHandlerParams.m_Regist = regist;
+        resource_params.m_Userdata = &engine_service->m_ResourceHandlerParams;
         dmWebServer::AddHandler(engine_service->m_WebServer, "/resources_data", &resource_params);
 
         dmWebServer::HandlerParams gameobject_params;
@@ -917,5 +963,9 @@ namespace dmEngineService
         profile_params.m_Userdata = 0;
         dmWebServer::AddHandler(engine_service->m_WebServer, "/", &profile_params);
     }
-}
 
+     void InitState(HEngineService engine_service, EngineState* state)
+     {
+        engine_service->FillState(state);
+     }
+}

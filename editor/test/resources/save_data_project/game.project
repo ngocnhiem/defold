@@ -54,6 +54,7 @@ gcm_sender_id = com.defold.save-data-project
 fcm_application_id = com.defold.save-data-project
 manifest = /builtins/manifests/android/AndroidManifest.xml
 proguard = /builtins/manifests/android/dmengine.pro
+extract_native_libs = 1
 
 [project]
 title = Save Data Project
@@ -61,11 +62,16 @@ version = 1.1
 publisher = Defold Foundation
 developer = Defold Foundation
 write_log = 1
+write_log_file = 1
+minimum_log_level = 2
 compress_archive = 1
 custom_resources = /referenced/custom
 bundle_resources = /referenced/bundle
 bundle_exclude_resources = /referenced/bundle/log.txt
-dependencies#0 = https://github.com/defold/extension-spine/archive/main.zip
+dependencies#0 = {{defold.extension.rive.url}}
+dependencies#1 = {{defold.extension.simpledata.url}}
+dependencies#2 = {{defold.extension.spine.url}}
+dependencies#3 = {{defold.extension.texturepacker.url}}
 
 [input]
 game_binding = /checked.input_bindingc
@@ -87,6 +93,9 @@ show_fullscreen_button = 0
 show_made_with_defold = 0
 show_console_banner = 0
 scale_mode = no_scale
+retry_count = 11
+retry_time = 1.5
+transparent_graphics_context = 1
 
 [ios]
 app_icon_76x76 = /referenced/images/diamond.png
@@ -101,6 +110,7 @@ bundle_identifier = com.defold.save-data-project
 bundle_name = Save Data Project
 bundle_version = 1.0
 infoplist = /builtins/manifests/ios/Info.plist
+privacymanifest = /builtins/manifests/ios/PrivacyInfo.xcprivacy
 default_language = en
 localizations = en
 entitlements = /referenced/entitlements.plist
@@ -112,6 +122,7 @@ bundle_identifier = com.defold.save-data-project
 bundle_name = Save Data Project
 bundle_version = 1.0
 infoplist = /builtins/manifests/osx/Info.plist
+privacymanifest = /builtins/manifests/osx/PrivacyInfo.xcprivacy
 app_icon = /referenced/icon-macos.icns
 
 [windows]
@@ -135,6 +146,7 @@ max_count = 128
 max_particlefx_count = 128
 max_animation_count = 512
 max_particle_count = 512
+safe_area_mode = long
 
 [label]
 max_count = 32
@@ -146,20 +158,29 @@ max_count = 64
 [model]
 max_count = 64
 split_meshes = 1
+max_bone_matrix_texture_width = 512
+max_bone_matrix_texture_height = 512
 
 [particle_fx]
 max_count = 128
 max_emitter_count = 128
 max_particle_count = 2048
+max_particle_buffer_count = 512
 
 [sound]
 use_thread = 0
 gain = 0.9
+use_linear_gain = 1
 max_sound_data = 64
 max_sound_buffers = 16
 max_sound_sources = 32
 max_sound_instances = 128
 max_component_count = 16
+sample_frame_count = 0
+stream_enabled = 0
+stream_chunk_size = 16384
+stream_preload_size = 16384
+stream_cache_size = 2097152
 
 [sprite]
 max_count = 256
@@ -172,6 +193,7 @@ max_tile_count = 1024
 [engine]
 run_while_iconified = 1
 fixed_update_frequency = 30
+max_time_step = 0.1
 
 [facebook]
 appid = com.defold.save-data-project
@@ -181,9 +203,13 @@ default_texture_min_filter = nearest
 default_texture_mag_filter = nearest
 max_draw_calls = 512
 max_characters = 4096
+max_font_batches = 128
 max_debug_vertices = 8192
 texture_profiles = /checked.texture_profiles
 verify_graphics_calls = 0
+opengl_version_hint = 33
+opengl_core_profile_hint = 1
+memory_size = 512
 
 [iap]
 auto_finish_transactions = 0
@@ -216,9 +242,16 @@ trigger_overlap_capacity = 8
 velocity_threshold = 0.9
 max_fixed_timesteps = 3
 
+[box2d]
+velocity_iterations = 1
+position_iterations = 2
+sub_step_count = 3
+
 [profiler]
 track_cpu = 1
 sleep_between_server_updates = 10
+performance_timeline_enabled = 0
+enabled = 1
 
 [render]
 clear_color_red = 0.0
@@ -233,9 +266,12 @@ uri = http://localhost:1234/save-data-project
 
 [library]
 include_dirs = library
+defold_min_version = 1.10.0
 
 [liveupdate]
+enabled = 1
 settings = /liveupdate.settings
+mount_on_start = 0
 
 [native_extension]
 app_manifest = /checked.appmanifest
@@ -244,3 +280,8 @@ app_manifest = /checked.appmanifest
 player_name = Player One
 player_health = 120
 
+[shader]
+exclude_gles_sm100 = 0
+
+[font]
+runtime_generation = 1

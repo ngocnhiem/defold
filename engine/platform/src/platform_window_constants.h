@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -17,6 +17,7 @@
 
 namespace dmPlatform
 {
+    extern const int PLATFORM_KEY_START;
     extern const int PLATFORM_JOYSTICK_LAST;
     extern const int PLATFORM_KEY_ESC;
     extern const int PLATFORM_KEY_F1;
@@ -86,6 +87,23 @@ namespace dmPlatform
     extern const int PLATFORM_MOUSE_BUTTON_6;
     extern const int PLATFORM_MOUSE_BUTTON_7;
     extern const int PLATFORM_MOUSE_BUTTON_8;
+
+    extern const int PLATFORM_JOYSTICK_1;
+    extern const int PLATFORM_JOYSTICK_2;
+    extern const int PLATFORM_JOYSTICK_3;
+    extern const int PLATFORM_JOYSTICK_4;
+    extern const int PLATFORM_JOYSTICK_5;
+    extern const int PLATFORM_JOYSTICK_6;
+    extern const int PLATFORM_JOYSTICK_7;
+    extern const int PLATFORM_JOYSTICK_8;
+    extern const int PLATFORM_JOYSTICK_9;
+    extern const int PLATFORM_JOYSTICK_10;
+    extern const int PLATFORM_JOYSTICK_11;
+    extern const int PLATFORM_JOYSTICK_12;
+    extern const int PLATFORM_JOYSTICK_13;
+    extern const int PLATFORM_JOYSTICK_14;
+    extern const int PLATFORM_JOYSTICK_15;
+    extern const int PLATFORM_JOYSTICK_16;
 }
 
 #endif // DM_PLATFORM_WINDOW_CONSTANTS_H

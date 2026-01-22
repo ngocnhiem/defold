@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -22,10 +22,11 @@
 
 #include "../../gamesys.h"
 
-#include "../../resources/res_font_map.h"
-#include "../../resources/res_fragment_program.h"
-#include "../../resources/res_vertex_program.h"
+#include "../../resources/res_font.h"
+#include "../../resources/res_shader_program.h"
 #include "../../resources/res_material.h"
+
+#include <dmsdk/resource/resource.h>
 
 #ifdef __MACH__
 // Potential name clash with ddf. If included before ddf/ddf.h (TYPE_BOOL)
@@ -127,9 +128,11 @@ namespace dmFontView
             context->m_Window = dmPlatform::NewWindow();
 
             dmPlatform::WindowParams window_params = {};
-            window_params.m_Width           = 960;
-            window_params.m_Height          = 540;
-            window_params.m_Title           = "FontView";
+            window_params.m_Width            = 960;
+            window_params.m_Height           = 540;
+            window_params.m_Title            = "FontView";
+            window_params.m_ContextAlphabits = 8;
+            window_params.m_GraphicsApi      = dmPlatform::PLATFORM_GRAPHICS_API_VULKAN;
 
             dmPlatform::OpenWindow(context->m_Window, window_params);
 
@@ -152,6 +155,7 @@ namespace dmFontView
             render_params.m_MaxRenderTypes = 10;
             render_params.m_MaxInstances = 100;
             render_params.m_MaxCharacters = 1024;
+            render_params.m_MaxBatches = 128;
             context->m_RenderContext = dmRender::NewRenderContext(context->m_GraphicsContext, render_params);
             dmRender::SetViewMatrix(context->m_RenderContext, Matrix4::identity());
             dmRender::SetProjectionMatrix(context->m_RenderContext, Matrix4::identity());
@@ -170,9 +174,9 @@ namespace dmFontView
                 return false;\
             }\
 
-            REGISTER_RESOURCE_TYPE("fontc", 0, dmGameSystem::ResFontMapCreate, 0, dmGameSystem::ResFontMapDestroy, dmGameSystem::ResFontMapRecreate);
-            REGISTER_RESOURCE_TYPE("vpc", dmGameSystem::ResVertexProgramPreload, dmGameSystem::ResVertexProgramCreate, 0, dmGameSystem::ResVertexProgramDestroy, dmGameSystem::ResVertexProgramRecreate);
-            REGISTER_RESOURCE_TYPE("fpc", dmGameSystem::ResFragmentProgramPreload, dmGameSystem::ResFragmentProgramCreate, 0, dmGameSystem::ResFragmentProgramDestroy, dmGameSystem::ResFragmentProgramRecreate);
+            //REGISTER_RESOURCE_TYPE("fontc", 0, dmGameSystem::ResFontCreate, 0, dmGameSystem::ResFontDestroy, dmGameSystem::ResFontRecreate);
+            // Link with "fontc" resource type
+            REGISTER_RESOURCE_TYPE("spc", dmGameSystem::ResShaderProgramPreload, dmGameSystem::ResShaderProgramCreate, 0, dmGameSystem::ResShaderProgramDestroy, dmGameSystem::ResShaderProgramRecreate);
             REGISTER_RESOURCE_TYPE("materialc", 0, dmGameSystem::ResMaterialCreate, 0, dmGameSystem::ResMaterialDestroy, 0);
 
     #undef REGISTER_RESOURCE_TYPE
@@ -195,8 +199,11 @@ namespace dmFontView
 
     void Finalize(Context* context)
     {
-        dmHID::Final(context->m_HidContext);
-        dmHID::DeleteContext(context->m_HidContext);
+        if (context->m_HidContext)
+        {
+            dmHID::Final(context->m_HidContext);
+            dmHID::DeleteContext(context->m_HidContext);
+        }
 
         if (context->m_Factory)
         {
@@ -205,9 +212,13 @@ namespace dmFontView
         }
         if (context->m_RenderContext)
             dmRender::DeleteRenderContext(context->m_RenderContext, 0);
-        dmGraphics::DeleteContext(context->m_GraphicsContext);
+        if (context->m_GraphicsContext)
+            dmGraphics::DeleteContext(context->m_GraphicsContext);
 
-        dmPlatform::CloseWindow(context->m_Window);
-        dmPlatform::DeleteWindow(context->m_Window);
+        if (context->m_Window)
+        {
+            dmPlatform::CloseWindow(context->m_Window);
+            dmPlatform::DeleteWindow(context->m_Window);
+        }
     }
 }

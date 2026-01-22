@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -18,74 +18,67 @@
             [editor.gl :as gl]
             [editor.gl.texture :as texture]
             [editor.image-util :as image-util]
+            [editor.localization :as localization]
             [editor.pipeline.tex-gen :as tex-gen]
-            [editor.protobuf :as protobuf]
             [editor.resource :as resource]
             [editor.resource-io :as resource-io]
             [editor.resource-node :as resource-node]
-            [editor.workspace :as workspace]
-            [util.digestable :as digestable])
-  (:import [com.dynamo.bob.textureset TextureSetGenerator$UVTransform]
-           [java.awt.image BufferedImage]))
+            [editor.texture-util :as texture-util]
+            [editor.workspace :as workspace])
+  (:import [com.dynamo.bob.pipeline TextureGenerator$GenerateResult]
+           [com.dynamo.bob.textureset TextureSetGenerator$UVTransform]))
 
 (set! *warn-on-reflection* true)
 
-(def exts ["jpg" "png"])
+(def exts ["jpg" "jpeg" "png"])
+
+(defn image-resource?
+  [resource]
+  (boolean (some #{(resource/type-ext resource)} exts)))
 
 (defn- build-texture [resource _dep-resources user-data]
   (let [{:keys [content-generator texture-profile compress?]} user-data
         image ((:f content-generator) (:args content-generator))]
     (g/precluding-errors
       [image]
-      (let [texture-image (tex-gen/make-texture-image image texture-profile compress?)]
+      (let [texture-generator-result (tex-gen/make-texture-image image texture-profile compress?)]
         {:resource resource
-         :content  (protobuf/pb->bytes texture-image)}))))
+         :write-content-fn tex-gen/write-texturec-content-fn
+         :user-data {:texture-generator-result texture-generator-result}}))))
 
 (defn make-texture-build-target
   [workspace node-id image-generator texture-profile compress?]
   (assert (contains? image-generator :sha1))
-  (let [texture-type (workspace/get-resource-type workspace "texture")
-        texture-hash (digestable/sha1-hash
-                       {:compress? compress?
-                        :image-sha1 (:sha1 image-generator)
-                        :texture-profile texture-profile})
-        texture-resource (resource/make-memory-resource workspace texture-type texture-hash)]
-    (bt/with-content-hash
-      {:node-id node-id
-       :resource (workspace/make-build-resource texture-resource)
-       :build-fn build-texture
-       :user-data {:content-generator image-generator
-                   :compress? compress?
-                   :texture-profile texture-profile}})))
+  (bt/with-content-hash
+    {:node-id node-id
+     :resource (workspace/make-placeholder-build-resource workspace "texture")
+     :build-fn build-texture
+     :user-data {:content-generator image-generator
+                 :compress? compress?
+                 :texture-profile texture-profile}}))
 
 (defn- build-array-texture [resource _dep-resources user-data]
   (let [{:keys [content-generator texture-profile texture-page-count compress?]} user-data
         images ((:f content-generator) (:args content-generator))]
     (g/precluding-errors
       [images]
-      (let [texture-images (mapv #(tex-gen/make-texture-image % texture-profile compress?) images)
-            combined-texture-image (tex-gen/assemble-texture-images texture-images texture-page-count)]
+      (let [texture-generator-results (mapv #(tex-gen/make-texture-image % texture-profile compress?) images)
+            ^TextureGenerator$GenerateResult combined-texture-image (tex-gen/assemble-texture-images texture-generator-results texture-page-count)]
         {:resource resource
-         :content  (protobuf/pb->bytes combined-texture-image)}))))
+         :write-content-fn tex-gen/write-texturec-content-fn
+         :user-data {:texture-generator-result combined-texture-image}}))))
 
 (defn make-array-texture-build-target
   [workspace node-id array-images-generator texture-profile texture-page-count compress?]
   (assert (contains? array-images-generator :sha1))
-  (let [texture-type (workspace/get-resource-type workspace "texture")
-        texture-hash (digestable/sha1-hash
-                       {:compress? compress?
-                        :image-sha1 (:sha1 array-images-generator)
-                        :texture-page-count texture-page-count
-                        :texture-profile texture-profile})
-        texture-resource (resource/make-memory-resource workspace texture-type texture-hash)]
-    (bt/with-content-hash
-      {:node-id node-id
-       :resource (workspace/make-build-resource texture-resource)
-       :build-fn build-array-texture
-       :user-data {:content-generator array-images-generator
-                   :compress? compress?
-                   :texture-page-count texture-page-count
-                   :texture-profile texture-profile}})))
+  (bt/with-content-hash
+    {:node-id node-id
+     :resource (workspace/make-placeholder-build-resource workspace "texture")
+     :build-fn build-array-texture
+     :user-data {:content-generator array-images-generator
+                 :compress? compress?
+                 :texture-page-count texture-page-count
+                 :texture-profile texture-profile}}))
 
 (g/defnk produce-build-targets [_node-id resource content-generator texture-profile build-settings]
   [(bt/with-content-hash
@@ -96,23 +89,11 @@
                   :compress? (:compress-textures? build-settings false)
                   :texture-profile texture-profile}})])
 
-(defn- generate-gpu-texture [{:keys [texture-image]} request-id params unit]
-  (texture/texture-image->gpu-texture request-id texture-image params unit))
-
-(defn- generate-content [{:keys [_node-id resource]}]
-  (resource-io/with-error-translation resource _node-id :resource
-    (image-util/read-image resource)))
-
 (g/defnode ImageNode
   (inherits resource-node/ResourceNode)
 
   (input build-settings g/Any)
   (input texture-profiles g/Any)
-
-  ;; we never modify ImageNode, save-data and source-value can be trivial and not cached
-  (output undecorated-save-data g/Any (g/constantly nil))
-  (output save-data g/Any (g/constantly nil))
-  (output source-value g/Any (g/constantly nil))
 
   (output texture-profile g/Any (g/fnk [texture-profiles resource]
                                   (tex-gen/match-texture-profile texture-profiles (resource/proj-path resource))))
@@ -121,15 +102,19 @@
                                (resource-io/with-error-translation resource _node-id :size
                                  (image-util/read-size resource))))
 
-  (output content BufferedImage (g/fnk [content-generator]
-                                  ((:f content-generator) (:args content-generator))))
+  (output content-generator g/Any :cached
+          (g/fnk [_node-id resource]
+            (texture-util/make-buffered-image-generator resource _node-id :content-generator)))
 
-  (output content-generator g/Any (g/fnk [_node-id resource :as args]
-                                    {:f generate-content
-                                     :args args
-                                     :sha1 (resource/resource->path-inclusive-sha1-hex resource)}))
+  (output gpu-texture-generator g/Any :cached
+          (g/fnk [_node-id content-generator texture-profile]
+            (texture-util/make-gpu-texture-generator _node-id content-generator texture-profile)))
 
-  (output texture-image g/Any (g/fnk [content texture-profile] (tex-gen/make-preview-texture-image content texture-profile)))
+  (output gpu-texture g/Any :cached
+          (g/fnk [gpu-texture-generator]
+            (-> (texture-util/generate-gpu-texture gpu-texture-generator)
+                (texture/set-params {:min-filter gl/nearest
+                                     :mag-filter gl/nearest}))))
 
   ;; NOTE: The anim-data and gpu-texture outputs allow standalone images to be used in place of texture sets in legacy projects.
   (output anim-data g/Any (g/fnk [size]
@@ -138,17 +123,6 @@
                                    :uv-transforms [(TextureSetGenerator$UVTransform.)])}))
 
   (output texture-page-count g/Int (g/constantly texture/non-paged-page-count))
-
-  (output gpu-texture g/Any :cached (g/fnk [_node-id texture-image]
-                                      (texture/texture-image->gpu-texture _node-id
-                                                                          texture-image
-                                                                          {:min-filter gl/nearest
-                                                                           :mag-filter gl/nearest})))
-
-  (output gpu-texture-generator g/Any (g/fnk [texture-image :as args]
-                                        {:f    generate-gpu-texture
-                                         :args args}))
-
   (output build-targets g/Any :cached produce-build-targets))
 
 (defn- load-image
@@ -161,7 +135,7 @@
   (concat
     (workspace/register-resource-type workspace
                                       :ext exts
-                                      :label "Image"
+                                      :label (localization/message "resource.type.image")
                                       :icon "icons/32/Icons_25-AT-Image.png"
                                       :build-ext "texturec"
                                       :node-type ImageNode

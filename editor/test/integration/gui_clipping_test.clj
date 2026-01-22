@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -17,11 +17,12 @@
             [clojure.test :refer :all]
             [dynamo.graph :as g]
             [editor.gui :as gui]
-            [integration.test-util :as test-util]))
+            [integration.test-util :as test-util]
+            [util.fn :as fn]))
 
 (defn- gui-node [scene id]
   (let [id->node (->> (get-in (g/node-value scene :node-outline) [:children 0])
-                   (tree-seq (constantly true) :children)
+                   (tree-seq fn/constantly-true :children)
                    (map :node-id)
                    (map (fn [node-id] [(g/node-value node-id :id) node-id]))
                    (into {}))]
@@ -38,10 +39,10 @@
   ([project scene parent inverted? visible?]
     (let [parent (or parent (g/node-value scene :node-tree))
           node (add-box! project scene parent)]
-      (g/set-property! node
-                       :clipping-mode :clipping-mode-stencil
-                       :clipping-visible visible?
-                       :clipping-inverted inverted?)
+      (g/set-properties! node
+        :clipping-mode :clipping-mode-stencil
+        :clipping-visible visible?
+        :clipping-inverted inverted?)
       node)))
 
 (defn- add-inv-clipper!
@@ -54,12 +55,12 @@
   (let [n (atom -1)]
     #(swap! n inc)))
 
-(defn- add-layers! [project scene layers]
+(defn- add-layers! [scene layers]
   (let [parent (g/node-value scene :layers-node)
         counter (make-counter)]
     (g/transact
       (for [layer layers]
-        (gui/add-layer project scene parent layer (counter) nil)))))
+        (gui/add-layer scene parent layer (counter) nil)))))
 
 (defn- set-layer! [node-id layer]
   (g/set-property! node-id :layer layer))
@@ -74,7 +75,7 @@
   (let [scene (g/node-value scene-id :scene)
         gpu {:sb (->stencil-buffer)
              :fb (->frame-buffer)}
-        scenes (filter #(contains? shapes (:node-id %)) (tree-seq (constantly true) :children scene))]
+        scenes (filter #(contains? shapes (:node-id %)) (tree-seq fn/constantly-true :children scene))]
     (-> (reduce (fn [gpu scene]
                   (let [colors (shapes (:node-id scene))
                         shape (reduce bit-or colors)
@@ -87,7 +88,7 @@
                       (:clear clipping-state)
                       (assoc :sb (->stencil-buffer))
 
-                      (reduce #(or %1 %2) test)
+                      (reduce fn/or test)
                       (->
                         (update :sb (partial mapv (fn [t v] (if t
                                                               (bit-or (bit-and (:ref-val clipping-state) (:write-mask clipping-state))
@@ -147,7 +148,7 @@
     (is (nil? act))))
 
 (defn- scene-seq [scene]
-  (tree-seq (constantly true) :children scene))
+  (tree-seq fn/constantly-true :children scene))
 
 (defn- visual-seq [scene]
   (->> scene
@@ -525,7 +526,7 @@
     (let [scene (test-util/resource-node project "/gui/empty.gui")
           a (add-box! project scene nil)
           b (add-box! project scene a)]
-      (add-layers! project scene ["layer1"])
+      (add-layers! scene ["layer1"])
       (set-layer! a "layer1")
       (assert-render-order scene [a b]))))
 
@@ -540,7 +541,7 @@
     (let [scene (test-util/resource-node project "/gui/empty.gui")
           a (add-box! project scene nil)
           b (add-box! project scene a)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! b "layer1")
       (assert-render-order scene [b a]))))
@@ -573,7 +574,7 @@
           a (add-clipper! project scene nil false true)
           b (add-box! project scene a)
           c (add-box! project scene nil)]
-      (add-layers! project scene ["layer1"])
+      (add-layers! scene ["layer1"])
       (set-layer! b "layer1")
       (assert-render-order scene [a c b])
       (assert-clipping-order scene a a)
@@ -591,7 +592,7 @@
           a (add-clipper! project scene nil false true)
           b (add-box! project scene a)
           c (add-box! project scene nil)]
-      (add-layers! project scene ["layer1"])
+      (add-layers! scene ["layer1"])
       (set-layer! a "layer1")
       (assert-render-order scene [c a b])
       (assert-clipping-order scene a a)
@@ -609,7 +610,7 @@
           a (add-clipper! project scene nil false true)
           b (add-box! project scene a)
           c (add-box! project scene nil)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! b "layer1")
       (assert-render-order scene [c b a])
@@ -627,7 +628,7 @@
           c (add-box! project scene nil)
           a (add-clipper! project scene nil false true)
           b (add-box! project scene a)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! b "layer1")
       (assert-render-order scene [c b a])
@@ -645,7 +646,7 @@
           a (add-inv-clipper! project scene nil true)
           b (add-box! project scene a)
           c (add-box! project scene nil)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! b "layer1")
       (assert-render-order scene [c b a])
@@ -665,7 +666,7 @@
           a (add-clipper! project scene z false true)
           b (add-box! project scene a)
           c (add-box! project scene z)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! b "layer1")
       (assert-render-order scene [z c b a])
@@ -690,7 +691,7 @@
           c (add-box! project scene b)
           d (add-box! project scene a)
           e (add-box! project scene nil)]
-      (add-layers! project scene ["layer1" "layer2" "layer3" "layer4"])
+      (add-layers! scene ["layer1" "layer2" "layer3" "layer4"])
       (set-layer! a "layer2")
       (set-layer! b "layer4")
       (set-layer! c "layer3")
@@ -711,7 +712,7 @@
           a (add-box! project scene nil)
           b (add-clipper! project scene a false true)
           c (add-box! project scene b)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! b "layer1")
       (set-layer! c "layer2")
@@ -731,7 +732,7 @@
           b (add-clipper! project scene a false false)
           c (add-box! project scene b)
           d (add-box! project scene b)]
-      (add-layers! project scene ["layer1" "layer2"])
+      (add-layers! scene ["layer1" "layer2"])
       (set-layer! a "layer2")
       (set-layer! c "layer1")
       (assert-render-order scene [c a d]))))

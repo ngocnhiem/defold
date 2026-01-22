@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -206,6 +206,8 @@ TEST_F(ScriptVmathTest, TestQuatFail)
     ASSERT_FALSE(RunString(L, "local q = vmath.lerp(1, vmath.quat(0, 0, 0, 1), vmath.vector3(0, 0, 0))"));
     // Slerp
     ASSERT_FALSE(RunString(L, "local q = vmath.slerp(1, vmath.quat(0, 0, 0, 1), vmath.vector3(0, 0, 0))"));
+    // From matrix4
+    ASSERT_FALSE(RunString(L, "local q = vmath.quat_matrix4()"));
 }
 
 TEST_F(ScriptVmathTest, TestTransform)
@@ -292,6 +294,10 @@ TEST_F(ScriptVmathTest, TestMatrix4Fail)
     ASSERT_FALSE(RunString(L, "local m = vmath.matrix4() * true"));
     // translation
     ASSERT_FALSE(RunString(L, "local m = vmath.matrix4_translation()"));
+    // scale
+    ASSERT_FALSE(RunString(L, "local m = vmath.matrix4_scale()"));
+    // compose
+    ASSERT_FALSE(RunString(L, "local m = vmath.matrix4_compose()"));
 }
 
 
@@ -362,8 +368,16 @@ TEST_F(ScriptVmathTest, TestToValueFn)
     ASSERT_EQ(top, lua_gettop(L));
 }
 
+TEST_F(ScriptVmathTest, TestVMathClamp)
+{
+    ASSERT_TRUE(RunFile(L, "test_script_vmath.luac"));
+}
+
+extern "C" void dmExportedSymbols();
+
 int main(int argc, char **argv)
 {
+    dmExportedSymbols();
     TestMainPlatformInit();
     jc_test_init(&argc, argv);
     return jc_test_run_all();

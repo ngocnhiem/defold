@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -110,6 +110,24 @@ namespace dmRender
                 dmGraphics::SetIndexBufferData(ibuf, size, data, buffer_usage);
             } break;
             default:break;
+        }
+    }
+
+    void SetBufferSubData(HRenderContext render_context, HBufferedRenderBuffer buffer, uint32_t offset, uint32_t size, void* data)
+    {
+        switch(buffer->m_Type)
+        {
+        case RENDER_BUFFER_TYPE_VERTEX_BUFFER:
+        {
+            dmGraphics::HVertexBuffer vbuf = (dmGraphics::HVertexBuffer) buffer->m_Buffers[buffer->m_BufferIndex];
+            dmGraphics::SetVertexBufferSubData(vbuf, offset, size, data);
+        } break;
+        case RENDER_BUFFER_TYPE_INDEX_BUFFER:
+        {
+            dmGraphics::HIndexBuffer ibuf = (dmGraphics::HIndexBuffer) buffer->m_Buffers[buffer->m_BufferIndex];
+            dmGraphics::SetIndexBufferSubData(ibuf, offset, size, data);
+        } break;
+        default:break;
         }
     }
 

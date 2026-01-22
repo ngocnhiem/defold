@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -77,7 +77,7 @@
   (testing "simple update"
     (ts/with-clean-system
       (let [[resource] (ts/tx-nodes (g/make-node world Resource :marker (int 0)))
-            tx-result  (g/transact (it/update-property resource :marker safe+ [42]))]
+            tx-result  (g/transact (it/update-property resource :marker safe+ [42] nil))]
         (is (= :ok (:status tx-result)))
         (is (= 42 (g/node-value resource :marker))))))
 
@@ -161,7 +161,7 @@
 (deftest precise-invalidation
   (ts/with-clean-system
     (let [{:keys [calculator person first-name-cell greeter formal-greeter multi-node-target]} (build-network world)]
-      (are [update expected] (= (into #{} (pairwise expected)) (affected-by (apply g/set-property update)))
+      (are [update expected] (= (into #{} (pairwise expected)) (affected-by (apply g/set-properties update)))
         [calculator :touched true]                {calculator        #{:_declared-properties :_properties :touched}}
         [person :date-of-birth (java.util.Date.)] {person            #{:_declared-properties :_properties :age :date-of-birth}
                                                    calculator        #{:passthrough}}
@@ -195,7 +195,7 @@
       (is (some #{real-id} (map gt/endpoint-node-id outputs-modified)))
       (is (= #{:_declared-properties :_properties :_overridden-properties :_node-id :_output-jammers :self-dependent :a-property :ordinary}
              (into #{} (map gt/endpoint-label) outputs-modified)))
-      (let [tx-data          [(it/update-property real-id :a-property (constantly "new-value") [])]
+      (let [tx-data          [(it/update-property real-id :a-property (constantly "new-value") [] nil)]
             tx-result        (g/transact tx-data)
             outputs-modified (:outputs-modified tx-result)]
         (is (some #{real-id} (map gt/endpoint-node-id outputs-modified)))

@@ -1,36 +1,36 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
 ;; specific language governing permissions and limitations under the License.
 
 (ns editor.targets
-  (:require [clojure.string :as str]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.xml :as xml]
-            [clojure.java.io :as io]
-            [editor.process :as process]
+            [editor.console :as console]
             [editor.dialogs :as dialogs]
+            [editor.engine :as engine]
             [editor.handler :as handler]
+            [editor.localization :as localization]
+            [editor.notifications :as notifications]
             [editor.prefs :as prefs]
+            [editor.process :as process]
             [editor.ui :as ui]
-            [editor.util :as util])
+            [editor.workspace :as workspace])
   (:import [clojure.lang ExceptionInfo]
            [com.dynamo.upnp DeviceInfo SSDP SSDP$Logger]
            [java.io ByteArrayInputStream ByteArrayOutputStream IOException]
            [java.net InetAddress MalformedURLException NetworkInterface SocketTimeoutException URL URLConnection]
-           [java.util UUID]
-           [javafx.scene Parent Scene]
-           [javafx.scene.control TextArea]
-           [javafx.scene.input KeyCode KeyEvent]
-           [javafx.stage Modality]))
+           [java.util UUID]))
 
 (set! *warn-on-reflection* true)
 
@@ -79,12 +79,14 @@
 (defn remote-target? [target]
   (not (launched-target? target)))
 
-(defn add-launched-target! [target]
+(defn add-launched-target! [instance-index target]
   (assert (launched-target? target))
   (let [launched-target (assoc target
-                               :local-address "127.0.0.1"
-                               :id (str (UUID/randomUUID)))]
-    (kill-launched-targets!)
+                          :local-address "127.0.0.1"
+                          :id (str (UUID/randomUUID))
+                          :instance-index instance-index)]
+    (when (= instance-index 0)
+      (kill-launched-targets!))
     (swap! launched-targets conj launched-target)
     (clear-selected-target-hint!)
     (invalidate-target-menu!)
@@ -114,19 +116,26 @@
       (add-watch launched-targets [::url id callback] (url-watcher id callback)))))
 
 (defn update-launched-target! [target target-info]
-  (let [old @launched-targets]
+  (let [old @launched-targets
+        result-target (volatile! nil)]
     (reset! launched-targets
             (map (fn [launched-target]
                    (if (= (:id launched-target) (:id target))
-                     (merge launched-target target-info)
+                     (let [rt (merge launched-target target-info)]
+                       (vreset! result-target rt)
+                       rt)
                      launched-target))
                  old))
     (when (not= old @launched-targets)
       (clear-selected-target-hint!)
-      (invalidate-target-menu!))))
+      (invalidate-target-menu!))
+    @result-target))
 
 (defn launched-targets? []
   (seq @launched-targets))
+
+(defn all-launched-targets []
+  @launched-targets)
 
 (defn- http-get [^URL url]
   (let [conn   ^URLConnection (doto (.openConnection url)
@@ -221,8 +230,8 @@
                   (filter some?))
         errors (filter string? targets-result)
         {external-targets false local-targets true} (group-by local-target? targets)
-        targets (into [] (comp cat (distinct)) [(sort-by :name util/natural-order local-targets)
-                                                (sort-by :name util/natural-order external-targets)])]
+        targets (into [] (comp cat (distinct)) [(sort-by :url local-targets)
+                                                (sort-by :url external-targets)])]
     (doseq [error errors]
       (log-fn error))
     (reset! targets-atom targets)
@@ -297,70 +306,117 @@
   (start))
 
 (defn all-targets []
-  (concat @launched-targets @ssdp-targets))
+  (concat [{:id :all-launched-targets}] @launched-targets @ssdp-targets))
 
 (defn selected-target [prefs]
   (swap! selected-target-atom
          (fn [selected-target]
            (if (not= ::undefined selected-target)
              selected-target
-             (let [target-id (prefs/get-prefs prefs "selected-target-id" nil)]
+             (let [target-id (prefs/get prefs [:run :selected-target-id])]
                (find-by-id (all-targets) target-id))))))
 
 (defn controllable-target? [target]
   (some? (:url target)))
 
+(defn all-launched-targets? [target]
+  (= :all-launched-targets (:id target)))
+
+(defn- show-error-message [exception workspace]
+  (ui/run-later
+    (notifications/show!
+      (workspace/notifications workspace)
+      {:type :error
+       :id ::target-connection-error
+       :message (localization/message
+                  "notification.targets.selected-target-unavailable.error"
+                  {"error" (or (ex-message exception) (.getSimpleName (class exception)))})})))
+
 (defn select-target! [prefs target]
   (reset! selected-target-atom target)
-  (prefs/set-prefs prefs "selected-target-id" (:id target))
+  (prefs/set! prefs [:run :selected-target-id] (:id target))
+  (let [log-stream (engine/get-log-service-stream target)]
+    (when log-stream
+      (console/set-log-service-stream log-stream)))
   target)
 
-(defn- url-string [url-string]
+(defn- url-message
+  "Returns localization MessagePattern (or string)"
+  [url-string]
   (try
     (if (nil? url-string)
-      "engine service not available"
+      (localization/message "engine.url.unavailable")
       (let [url (URL. url-string)
             host (.getHost url)
             port (.getPort url)]
         (str host (when (not= port -1) (str ":" port)))))
     (catch Exception _
-      "invalid host")))
+      (localization/message "engine.url.invalid-host"))))
 
-(defn target-menu-label [target]
-  (format "%s - %s" (str (if (local-target? target) "Local " "") (:name target)) (url-string (:url target))))
+(defn target-message
+  "Returns localization MessagePattern (or string)"
+  [target]
+  (let [{:keys [url name]} target
+        name-message (if (local-target? target)
+                       (localization/message "engine.name.local" {"name" name})
+                       name)]
+    (if (some? url)
+      (localization/message "engine.name.with-url" {"name" name-message "url" (url-message url)})
+      name-message)))
 
-(defn target-message-label [target]
-  (let [url (:url target)]
-    (str (when (local-target? target) "Local ") (:name target)
-         (when (some? url) (str " - " (url-string url))))))
+(defn target-menu-item-message
+  "Returns localization MessagePattern (or string)"
+  [target]
+  (let [instance-index (:instance-index target)
+        target-message (target-message target)]
+    (if (or (nil? instance-index) (= instance-index 0))
+      target-message
+      (localization/message "engine.name.with-instance" {"name" target-message "instance" instance-index}))))
 
 (defn- target-option [target]
-  {:label     (target-menu-label target)
-   :command   :target
+  {:label     (target-menu-item-message target)
+   :command   :run.select-target
    :check     true
    :user-data target})
 
 (def ^:private separator {:label :separator})
 
-(handler/defhandler :target :global
-  (run [user-data prefs]
+(handler/defhandler :run.select-target :global
+  (run [user-data prefs workspace]
     (when user-data
-      (select-target! prefs (if (= user-data :new-local-engine) nil user-data))))
+      (try
+        (select-target! prefs (if (= user-data :new-local-engine) nil user-data))
+        (catch Exception e
+          (show-error-message e workspace)))))
   (state [user-data prefs]
-         (let [selected-target (selected-target prefs)]
-           (or (= user-data selected-target)
-               (and (nil? selected-target)
-                    (= user-data :new-local-engine)))))
+    (let [selected-target (selected-target prefs)]
+      (or (= user-data selected-target)
+          (= (:id user-data) (:id selected-target) :all-launched-targets)
+          (and (nil? selected-target)
+               (= user-data :new-local-engine)))))
   (options [user-data]
-           (when-not user-data
-             (let [launched-options (mapv target-option @launched-targets)
-                   ssdp-options (mapv target-option @ssdp-targets)]
-               (cond
-                 (seq launched-options)
-                 (into launched-options (concat [separator] ssdp-options))
+    (when-not user-data
+      (let [launched-options (mapv target-option @launched-targets)
+            ssdp-options (mapv target-option @ssdp-targets)]
+        (cond
+          (seq launched-options)
+          (if (> (count launched-options) 1)
+            (into [{:label (localization/message "command.run.select-target.option.all-launched-instances")
+                    :check true
+                    :command :run.select-target
+                    :user-data {:id :all-launched-targets}}]
+                  (concat launched-options
+                          [separator]
+                          ssdp-options))
+            (into launched-options (concat [separator] ssdp-options)))
 
-                 :else
-                 (into [{:label "New Local Engine" :check true :command :target :user-data :new-local-engine} separator] ssdp-options))))))
+          :else
+          (into [{:label (localization/message "command.run.select-target.option.new-local-engine")
+                  :check true
+                  :command :run.select-target
+                  :user-data :new-local-engine}
+                 separator]
+                ssdp-options))))))
 
 (defn- locate-device [ip port]
   (when (not-empty ip)
@@ -376,37 +432,49 @@
         device
         (throw (ex-info (format "'%s' could not be reached from this host" ip) {}))))))
 
-(handler/defhandler :target-ip :global
-  (run [prefs]
-       (ui/run-later
-         (loop [manual-ip+port (dialogs/make-target-ip-dialog (prefs/get-prefs prefs "manual-target-ip+port" "") nil)]
-           (when (some? manual-ip+port)
-             (prefs/set-prefs prefs "manual-target-ip+port" manual-ip+port)
-             (let [[manual-ip port] (str/split manual-ip+port #":")
-                   device (try
-                            (locate-device manual-ip port)
-                            (catch Exception e (.getMessage e)))
-                   target (when (not (string? device))
-                            (device->target update-targets-context device))
-                   error-msg (or (and (string? target) target)
-                                 (and (string? device) device))]
-               (if error-msg
-                 (recur (dialogs/make-target-ip-dialog manual-ip+port error-msg))
-                 (do
-                   (reset! manual-device device)
-                   (select-target! prefs target)
-                   (invalidate-target-menu!)))))))))
+(handler/defhandler :run.set-target-ip :global
+  (run [prefs localization]
+    (ui/run-later
+      (loop [manual-ip+port (dialogs/make-target-ip-dialog (prefs/get prefs [:run :manual-target-ip+port]) nil localization)]
+        (when (some? manual-ip+port)
+          (prefs/set! prefs [:run :manual-target-ip+port] manual-ip+port)
+          (let [[manual-ip port] (str/split manual-ip+port #":")
+                device (try
+                         (locate-device manual-ip port)
+                         (catch Exception e (.getMessage e)))
+                target (when (not (string? device))
+                         (device->target update-targets-context device))
+                error-msg (or (and (string? target) target)
+                              (and (string? device) device))]
+            (if error-msg
+              (recur (dialogs/make-target-ip-dialog manual-ip+port error-msg localization))
+              (do
+                (reset! manual-device device)
+                (select-target! prefs target)
+                (invalidate-target-menu!)))))))))
 
-(handler/defhandler :target-log :global
+(handler/defhandler :run.show-target-log :global
+  (run [localization]
+    (dialogs/make-target-log-dialog event-log #(reset! event-log []) restart localization)))
+
+(handler/defhandler :run.stop :global
+  (enabled? [app-view] (launched-targets?))
+  (active? [] true)
   (run []
-       (dialogs/make-target-log-dialog event-log #(reset! event-log []) restart)))
+       (kill-launched-targets!)))
 
-(handler/register-menu! ::menubar :editor.defold-project/project-end
-  [{:label "Target"
+(handler/register-menu! ::menubar :editor.defold-project/targets
+  [{:label (localization/message "command.run.select-target")
     :id ::target
     :on-submenu-open update!
-    :command :target}
-   {:label "Enter Target IP"
-    :command :target-ip}
-   {:label "Target Discovery Log"
-    :command :target-log}])
+    :command :run.select-target
+    :expand true}
+   {:label (localization/message "command.run.stop")
+    :command :run.stop}
+   {:label (localization/message "command.run.set-instance-count")
+    :command :run.set-instance-count
+    :expand true}
+   {:label (localization/message "command.run.set-target-ip")
+    :command :run.set-target-ip}
+   {:label (localization/message "command.run.show-target-log")
+    :command :run.show-target-log}])

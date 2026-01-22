@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -19,12 +19,24 @@
 
 #include <glfw/glfw.h>
 
+#include <dlib/platform.h>
+#include <dlib/log.h>
+#include <dlib/array.h>
+#include <dlib/math.h>
+
 #include "platform_window.h"
 #include "platform_window_constants.h"
+#include "platform_window_opengl.h"
+
+#if defined(ANDROID)
+#include "platform_window_android.h"
+#elif defined(DM_PLATFORM_IOS)
+#include "platform_window_ios.h"
+#endif
 
 namespace dmPlatform
 {
-    struct Window
+    struct dmWindow
     {
         WindowResizeCallback          m_ResizeCallback;
         void*                         m_ResizeCallbackUserData;
@@ -40,16 +52,20 @@ namespace dmPlatform
         void*                         m_SetMarkedTextCallbackUserData;
         WindowDeviceChangedCallback   m_DeviceChangedCallback;
         void*                         m_DeviceChangedCallbackUserData;
+        WindowGamepadEventCallback    m_GamepadEventCallback;
+        void*                         m_GamepadEventCallbackUserData;
+        dmArray<GLFWTouch>            m_TouchData;
         int32_t                       m_Width;
         int32_t                       m_Height;
         uint32_t                      m_Samples               : 8;
         uint32_t                      m_WindowOpened          : 1;
         uint32_t                      m_SwapIntervalSupported : 1;
+        uint32_t                      m_SwapBufferSupported   : 1;
         uint32_t                      m_HighDPI               : 1;
     };
 
     // Needed by glfw2.7
-    static Window* g_Window = 0;
+    static dmWindow* g_Window = 0;
 
     static void OnWindowResize(int width, int height)
     {
@@ -116,12 +132,20 @@ namespace dmPlatform
         }
     }
 
+    static void OnGamepad(int gamepad_id, int connected)
+    {
+        if (g_Window->m_GamepadEventCallback)
+        {
+            g_Window->m_GamepadEventCallback(g_Window->m_GamepadEventCallbackUserData, gamepad_id, connected ? GAMEPAD_EVENT_CONNECTED : GAMEPAD_EVENT_DISCONNECTED);
+        }
+    }
+
     HWindow NewWindow()
     {
         if (g_Window == 0)
         {
-            Window* wnd = new Window;
-            memset(wnd, 0, sizeof(Window));
+            dmWindow* wnd = new dmWindow;
+            memset(wnd, 0, sizeof(dmWindow));
 
             if (glfwInit() == GL_FALSE)
             {
@@ -137,7 +161,7 @@ namespace dmPlatform
         return 0;
     }
 
-    PlatformResult OpenWindowOpenGL(Window* wnd, const WindowParams& params)
+    static PlatformResult OpenWindowOpenGL(dmWindow* wnd, const WindowParams& params)
     {
         if (params.m_HighDPI)
         {
@@ -150,28 +174,36 @@ namespace dmPlatform
 #if defined(ANDROID)
         // Seems to work fine anyway without any hints
         // which is good, since we want to fallback from OpenGLES 3 to 2
-#elif defined(__linux__)
+#elif defined(DM_PLATFORM_IOS)
         glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3);
-        glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 3);
-#elif defined(_WIN32)
-        glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3);
-        glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 3);
-#elif defined(__MACH__)
-        glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3);
-    #if defined(DM_PLATFORM_IOS)
         glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 0); // 3.0 on iOS
-    #else
-        glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 2); // 3.2 on macOS (actually picks 4.1 anyways)
-    #endif
 #endif
 
         bool is_desktop = false;
-#if defined(DM_PLATFORM_WINDOWS) || (defined(DM_PLATFORM_LINUX) && !defined(ANDROID)) || defined(DM_PLATFORM_MACOS)
+#if defined(DM_PLATFORM_LINUX) && !defined(ANDROID)
         is_desktop = true;
 #endif
-        if (is_desktop) {
-            glfwOpenWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-            glfwOpenWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        if (is_desktop)
+        {
+            uint32_t major = 3, minor = 3;
+            if (!OpenGLGetVersion(params.m_OpenGLVersionHint, &major, &minor))
+            {
+                dmLogWarning("OpenGL version hint %d is not supported. Using default version (%d.%d)",
+                    params.m_OpenGLVersionHint, major, minor);
+            }
+
+            // Use specific OpenGL version.
+            if (major != 0 && minor != 0)
+            {
+                glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, major);
+                glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, minor);
+            }
+
+            if (params.m_OpenGLUseCoreProfileHint)
+            {
+                glfwOpenWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+                glfwOpenWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+            }
         }
 
         int mode = GLFW_WINDOW;
@@ -179,7 +211,7 @@ namespace dmPlatform
         {
             mode = GLFW_FULLSCREEN;
         }
-        if (!glfwOpenWindow(params.m_Width, params.m_Height, 8, 8, 8, 8, 32, 8, mode))
+        if (!glfwOpenWindow(params.m_Width, params.m_Height, 8, 8, 8, params.m_ContextAlphabits, 32, 8, mode))
         {
             if (is_desktop)
             {
@@ -200,7 +232,7 @@ namespace dmPlatform
 
                 glfwOpenWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-                if (!glfwOpenWindow(params.m_Width, params.m_Height, 8, 8, 8, 8, 32, 8, mode))
+                if (!glfwOpenWindow(params.m_Width, params.m_Height, 8, 8, 8, params.m_ContextAlphabits, 32, 8, mode))
                 {
                     return PLATFORM_RESULT_WINDOW_OPEN_ERROR;
                 }
@@ -212,11 +244,12 @@ namespace dmPlatform
         }
 
         wnd->m_SwapIntervalSupported = 1;
+        wnd->m_SwapBufferSupported = 1;
 
         return PLATFORM_RESULT_OK;
     }
 
-    PlatformResult OpenWindowVulkan(Window* wnd, const WindowParams& params)
+    static PlatformResult OpenWindowNoAPI(dmWindow* wnd, const WindowParams& params)
     {
         glfwOpenWindowHint(GLFW_CLIENT_API,   GLFW_NO_API);
         glfwOpenWindowHint(GLFW_FSAA_SAMPLES, params.m_Samples);
@@ -227,6 +260,12 @@ namespace dmPlatform
         {
             return PLATFORM_RESULT_WINDOW_OPEN_ERROR;
         }
+
+    #if defined(ANDROID) || defined(DM_PLATFORM_IOS)
+        wnd->m_SwapBufferSupported = 1;
+    #endif
+        if(params.m_GraphicsApi == PLATFORM_GRAPHICS_API_WEBGPU)
+            wnd->m_SwapBufferSupported = 1;
 
         return PLATFORM_RESULT_OK;
     }
@@ -243,10 +282,12 @@ namespace dmPlatform
         switch(params.m_GraphicsApi)
         {
             case PLATFORM_GRAPHICS_API_OPENGL:
+            case PLATFORM_GRAPHICS_API_OPENGLES:
                 res = OpenWindowOpenGL(window, params);
                 break;
+            case PLATFORM_GRAPHICS_API_WEBGPU:
             case PLATFORM_GRAPHICS_API_VULKAN:
-                res = OpenWindowVulkan(window, params);
+                res = OpenWindowNoAPI(window, params);
                 break;
             default: assert(0);
         }
@@ -258,10 +299,11 @@ namespace dmPlatform
             glfwSetWindowCloseCallback(OnWindowClose);
             glfwSetWindowFocusCallback(OnWindowFocus);
             glfwSetWindowIconifyCallback(OnWindowIconify);
+            glfwSetGamepadCallback(OnGamepad);
             glfwSwapInterval(1);
             glfwGetWindowSize(&window->m_Width, &window->m_Height);
 
-        #if !defined(DM_PLATFORM_WEB)
+        #if !defined(__EMSCRIPTEN__)
             glfwSetWindowTitle(params.m_Title);
         #endif
 
@@ -310,6 +352,11 @@ namespace dmPlatform
         glfwTerminate();
     }
 
+    void SetWindowTitle(HWindow window, const char* title)
+    {
+        glfwSetWindowTitle(title);
+    }
+
     void SetWindowSize(HWindow window, uint32_t width, uint32_t height)
     {
         glfwSetWindowSize((int)width, (int)height);
@@ -325,6 +372,11 @@ namespace dmPlatform
         }
     }
 
+    void SetWindowPosition(HWindow window, int32_t x, int32_t y)
+    {
+        glfwSetWindowPos(x, y);
+    }
+
     uint32_t GetWindowWidth(HWindow window)
     {
         return (uint32_t) window->m_Width;
@@ -332,6 +384,40 @@ namespace dmPlatform
     uint32_t GetWindowHeight(HWindow window)
     {
         return (uint32_t) window->m_Height;
+    }
+
+    static void SetSafeAreaFull(HWindow window, SafeArea* out)
+    {
+        const uint32_t width = GetWindowWidth(window);
+        const uint32_t height = GetWindowHeight(window);
+
+        out->m_X = 0;
+        out->m_Y = 0;
+        out->m_Width = width;
+        out->m_Height = height;
+        out->m_InsetLeft = 0;
+        out->m_InsetTop = 0;
+        out->m_InsetRight = 0;
+        out->m_InsetBottom = 0;
+    }
+
+    bool GetSafeArea(HWindow window, SafeArea* out)
+    {
+        SetSafeAreaFull(window, out);
+
+#if defined(ANDROID)
+        if (GetSafeAreaAndroid(window, out))
+        {
+            return true;
+        }
+#elif defined(DM_PLATFORM_IOS)
+        if (GetSafeAreaiOS(window, out))
+        {
+            return true;
+        }
+#endif
+
+        return true;
     }
 
     static int WindowStateToGLFW(WindowState state)
@@ -365,6 +451,7 @@ namespace dmPlatform
     #ifndef __EMSCRIPTEN__
         #define GLFW_AUX_CONTEXT_SUPPORTED
     #endif
+
     static inline int32_t QueryAuxContextImpl()
     {
     #if defined(GLFW_AUX_CONTEXT_SUPPORTED)
@@ -419,12 +506,48 @@ namespace dmPlatform
         return glfwGetDisplayScaleFactor();
     }
 
+    uintptr_t GetProcAddress(HWindow window, const char* proc_name)
+    {
+        return (uintptr_t) glfwGetProcAddress(proc_name);
+    }
+
     void SetSwapInterval(HWindow window, uint32_t swap_interval)
     {
         if (window->m_SwapIntervalSupported)
         {
             glfwSwapInterval(swap_interval);
         }
+    }
+
+    bool GetAcceleration(HWindow window, float* x, float* y, float* z)
+    {
+        return glfwGetAcceleration(x,y,z);
+    }
+
+    uint32_t GetTouchData(HWindow window, TouchData* touch_data, uint32_t touch_data_count)
+    {
+        int32_t touch_count = 0;
+
+        if (window->m_TouchData.Capacity() < touch_data_count)
+        {
+            window->m_TouchData.SetCapacity(touch_data_count);
+            window->m_TouchData.SetSize(touch_data_count);
+        }
+
+        glfwGetTouch(window->m_TouchData.Begin(), touch_data_count, &touch_count);
+
+        for (int i = 0; i < touch_count; ++i)
+        {
+            touch_data[i].m_TapCount = window->m_TouchData[i].TapCount;
+            touch_data[i].m_Phase    = window->m_TouchData[i].Phase;
+            touch_data[i].m_X        = window->m_TouchData[i].X;
+            touch_data[i].m_Y        = window->m_TouchData[i].Y;
+            touch_data[i].m_DX       = window->m_TouchData[i].DX;
+            touch_data[i].m_DY       = window->m_TouchData[i].DY;
+            touch_data[i].m_Id       = window->m_TouchData[i].Id;
+        }
+
+        return (uint32_t) touch_count;
     }
 
     int32_t GetKey(HWindow window, int32_t code)
@@ -478,20 +601,56 @@ namespace dmPlatform
             case DEVICE_STATE_KEYBOARD_PASSWORD:
                 glfwShowKeyboard(op1, GLFW_KEYBOARD_PASSWORD, op2);
                 break;
-            default:
-                dmLogWarning("Unable to get device state (%d), unknown state.", (int) state);
+            case DEVICE_STATE_KEYBOARD_RESET:
+                glfwResetKeyboard();
                 break;
+            default:break;
         }
     }
 
     bool GetDeviceState(HWindow window, DeviceState state)
     {
-        if (state == DEVICE_STATE_CURSOR_LOCK)
+        return GetDeviceState(window, state, 0);
+    }
+
+    bool GetDeviceState(HWindow window, DeviceState state, int32_t op1)
+    {
+        switch(state)
         {
-            return glfwGetMouseLocked();
+            case DEVICE_STATE_CURSOR_LOCK:      return glfwGetMouseLocked();
+            case DEVICE_STATE_JOYSTICK_PRESENT: return glfwGetJoystickParam(op1, GLFW_PRESENT);
+            default:break;
         }
         dmLogWarning("Unable to get device state (%d), unknown state.", (int) state);
         return false;
+    }
+
+    const char* GetJoystickDeviceName(HWindow window, uint32_t joystick_index)
+    {
+        char* device_name;
+        glfwGetJoystickDeviceId(joystick_index, &device_name);
+        return (const char*) device_name;
+    }
+
+    uint32_t GetJoystickAxes(HWindow window, uint32_t joystick_index, float* values, uint32_t values_capacity)
+    {
+        uint32_t count = dmMath::Min(glfwGetJoystickParam(joystick_index, GLFW_AXES), (int) values_capacity);
+        glfwGetJoystickPos(joystick_index, values, count);
+        return count;
+    }
+
+    uint32_t GetJoystickHats(HWindow window, uint32_t joystick_index, uint8_t* values, uint32_t values_capacity)
+    {
+        uint32_t count = dmMath::Min(glfwGetJoystickParam(joystick_index, GLFW_HATS), (int) values_capacity);
+        glfwGetJoystickHats(joystick_index, values, count);
+        return count;
+    }
+
+    uint32_t GetJoystickButtons(HWindow window, uint32_t joystick_index, uint8_t* values, uint32_t values_capacity)
+    {
+        uint32_t count = dmMath::Min(glfwGetJoystickParam(joystick_index, GLFW_BUTTONS), (int) values_capacity);
+        glfwGetJoystickButtons(joystick_index, values, count);
+        return count;
     }
 
     int32_t TriggerCloseCallback(HWindow window)
@@ -503,12 +662,24 @@ namespace dmPlatform
         return 0;
     }
 
+    void ShowWindow(HWindow window)
+    {
+    }
+
     void PollEvents(HWindow window)
     {
         // NOTE: GLFW_AUTO_POLL_EVENTS might be enabled but an application shouldn't have rely on
         // running glfwSwapBuffers for event queue polling
         // Accessing OpenGL isn't permitted on iOS when the application is transitioning to resumed mode either
         glfwPollEvents();
+    }
+
+    void SwapBuffers(HWindow window)
+    {
+        if (window->m_SwapBufferSupported)
+        {
+            glfwSwapBuffers();
+        }
     }
 
     void SetKeyboardCharCallback(HWindow window, WindowAddKeyboardCharCallback cb, void* user_data)
@@ -529,6 +700,24 @@ namespace dmPlatform
         window->m_DeviceChangedCallbackUserData = user_data;
     }
 
+    void SetGamepadEventCallback(HWindow window, WindowGamepadEventCallback cb, void* user_data)
+    {
+        window->m_GamepadEventCallback         = cb;
+        window->m_GamepadEventCallbackUserData = user_data;
+    }
+
+    const char** VulkanGetRequiredInstanceExtensions(uint32_t* count)
+    {
+        *count = 0;
+        return 0;
+    }
+
+    int32_t OpenGLGetDefaultFramebufferId()
+    {
+        return glfwGetDefaultFramebuffer();
+    }
+
+    const int PLATFORM_KEY_START           = 0;
     const int PLATFORM_JOYSTICK_LAST       = GLFW_JOYSTICK_LAST;
     const int PLATFORM_KEY_ESC             = GLFW_KEY_ESC;
     const int PLATFORM_KEY_F1              = GLFW_KEY_F1;
@@ -587,6 +776,7 @@ namespace dmPlatform
     const int PLATFORM_KEY_RSUPER          = GLFW_KEY_RSUPER;
     const int PLATFORM_KEY_MENU            = GLFW_KEY_MENU;
     const int PLATFORM_KEY_BACK            = GLFW_KEY_BACK;
+
     const int PLATFORM_MOUSE_BUTTON_LEFT   = GLFW_MOUSE_BUTTON_LEFT;
     const int PLATFORM_MOUSE_BUTTON_MIDDLE = GLFW_MOUSE_BUTTON_MIDDLE;
     const int PLATFORM_MOUSE_BUTTON_RIGHT  = GLFW_MOUSE_BUTTON_RIGHT;
@@ -598,4 +788,21 @@ namespace dmPlatform
     const int PLATFORM_MOUSE_BUTTON_6      = GLFW_MOUSE_BUTTON_6;
     const int PLATFORM_MOUSE_BUTTON_7      = GLFW_MOUSE_BUTTON_7;
     const int PLATFORM_MOUSE_BUTTON_8      = GLFW_MOUSE_BUTTON_8;
+
+    const int PLATFORM_JOYSTICK_1          = GLFW_JOYSTICK_1;
+    const int PLATFORM_JOYSTICK_2          = GLFW_JOYSTICK_2;
+    const int PLATFORM_JOYSTICK_3          = GLFW_JOYSTICK_3;
+    const int PLATFORM_JOYSTICK_4          = GLFW_JOYSTICK_4;
+    const int PLATFORM_JOYSTICK_5          = GLFW_JOYSTICK_5;
+    const int PLATFORM_JOYSTICK_6          = GLFW_JOYSTICK_6;
+    const int PLATFORM_JOYSTICK_7          = GLFW_JOYSTICK_7;
+    const int PLATFORM_JOYSTICK_8          = GLFW_JOYSTICK_8;
+    const int PLATFORM_JOYSTICK_9          = GLFW_JOYSTICK_9;
+    const int PLATFORM_JOYSTICK_10         = GLFW_JOYSTICK_10;
+    const int PLATFORM_JOYSTICK_11         = GLFW_JOYSTICK_11;
+    const int PLATFORM_JOYSTICK_12         = GLFW_JOYSTICK_12;
+    const int PLATFORM_JOYSTICK_13         = GLFW_JOYSTICK_13;
+    const int PLATFORM_JOYSTICK_14         = GLFW_JOYSTICK_14;
+    const int PLATFORM_JOYSTICK_15         = GLFW_JOYSTICK_15;
+    const int PLATFORM_JOYSTICK_16         = GLFW_JOYSTICK_16;
 }

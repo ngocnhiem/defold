@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -63,6 +63,7 @@ namespace dmRender
         HRenderScript                 m_RenderScript;
         dmScript::ScriptWorld*        m_ScriptWorld;
         uint32_t                      m_PredicateCount;
+        uint32_t                      m_UniqueScriptId;
         int                           m_InstanceReference;
         int                           m_RenderScriptDataReference;
         int                           m_ContextTableReference;
@@ -70,6 +71,9 @@ namespace dmRender
 
     void InitializeRenderScriptContext(RenderScriptContext& context, dmGraphics::HContext graphics_context, dmScript::HContext script_context, uint32_t command_buffer_size);
     void FinalizeRenderScriptContext(RenderScriptContext& context, dmScript::HContext script_context);
+
+    void InitializeRenderScriptCameraContext(HRenderContext render_context, dmScript::HContext script_context);
+    void FinalizeRenderScriptCameraContext(HRenderContext render_context);
 }
 
 #endif // DMRENDER_RENDER_SCRIPT_H

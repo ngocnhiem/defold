@@ -18,22 +18,10 @@ def run_bob(task):
             env[key] = v
 
     if Options.options.with_asan:
-        platform = env['PLATFORM']
-        if platform in ('x86_64-macos', 'arm64-macos', 'arm64-ios', 'x86_64-ios'):
-            sdkinfo = sdk.get_sdk_info(sdk.SDK_ROOT, platform)
-            if 'DYLD_INSERT_LIBRARIES' in env:
-                env['DYLD_INSERT_LIBRARIES'] += os.pathsep
-            else:
-                env['DYLD_INSERT_LIBRARIES'] = ""
-            env['DYLD_INSERT_LIBRARIES'] += sdkinfo['asan']['path']
-
-            # Making sure java can find its libmlib_image.dylib
-            # I didn't need this locally, but on Github CI /MAWE
-            java_lib_path = os.path.join(os.environ['JAVA_HOME'], 'lib')
-            if 'DYLD_LIBRARY_PATH' in env:
-                env['DYLD_LIBRARY_PATH'] += os.pathsep + java_lib_path
-            else:
-                env['DYLD_LIBRARY_PATH'] = java_lib_path
+        # Running host tools like Bob under ASan is unsupported on macOS; strip any
+        # sanitizer preload variables before spawning java.
+        env.pop('DYLD_INSERT_LIBRARIES', None)
+        env.pop('LD_PRELOAD', None)
 
     # The tests needs the compiled builtins folder locally for this test to work
     builtins_src = "build/content/builtins"
@@ -62,16 +50,17 @@ def build(bld):
 
     resource_type_symbols = ['ResourceTypeGameObject', 'ResourceTypeCollection', 'ResourceTypeScript', 'ResourceTypeLua',
                              'ResourceTypeAnim', 'ResourceTypeAnimationSet', 'ResourceTypeGui', 'ResourceTypeGuiScript',
-                             'ResourceProviderFile', 'ResourceProviderArchive', 'ResourceProviderArchiveMutable']
-    component_type_symbols = ['ComponentTypeAnim', 'ComponentTypeScript', 'ComponentTypeGui', 'ComponentTypeMesh']
-    exported_symbols = ['ProfilerExt', 'GraphicsAdapterNull']
+                             'ResourceProviderFile', 'ResourceProviderArchive', 'ResourceProviderArchiveMutable',
+                             'ResourceTypeOgg','ResourceTypeOpus', 'ResourceTypeWav', 'ResourceTypeFont', 'ResourceTypeTTF']
+    component_type_symbols = ['ComponentTypeAnim', 'ComponentTypeScript', 'ComponentTypeGui', 'ComponentTypeMesh', 'ComponentTypeSound']
+    exported_symbols = ['ProfilerExt', 'GraphicsAdapterNull', 'ScriptModelExt']
 
     bld.add_group()
     obj = bld(
         features = 'c cxx cprogram test',
-        use = 'TESTMAIN APP RECORD CRASH VPX GAMEOBJECT DDF LIVEUPDATE GAMESYS RESOURCE DMGLFW GRAPHICS_NULL GRAPHICS_UTIL PHYSICS PLATFORM_NULL RENDER SOCKET SCRIPT LUA EXTENSION HID_NULL INPUT PARTICLE RIG GUI SOUND_NULL DLIB APP engine engine_service'.split() + additional_libs + profile_lib,
+        use = 'TESTMAIN APP RECORD CRASH VPX GAMEOBJECT DDF LIVEUPDATE FONT GAMESYS RESOURCE DMGLFW GRAPHICS_NULL GRAPHICS_UTIL PHYSICS PLATFORM_NULL RENDER SOCKET SCRIPT LUA EXTENSION HID_NULL INPUT PARTICLE RIG GUI SOUND_NULL DLIB APP engine engine_service'.split() + additional_libs + profile_lib,
         exported_symbols = exported_symbols + resource_type_symbols + component_type_symbols,
-        web_libs = ['library_sys.js', 'library_script.js'],
+        web_libs = ['library_sys.js', 'library_script.js', 'library_render.js'],
         includes = '../../proto .',
         defines = defines,
         source = bld.path.ant_glob('**/*.cpp'),
@@ -91,10 +80,29 @@ def build(bld):
         bob_flags.append("--use-vanilla-lua")
     bob_flags = ' '.join(bob_flags)
 
-    # Build engine test content using bob
-    # We always run distclean. Hook into waf clean/distclean in some way?
-    bob_command = 'java -jar ./build/content/bob-engine.jar -root ./src/test -k clean build %s' % bob_flags
+    classpath = os.pathsep.join(['./build/content/bob-engine.jar'] + bld.env['PLATFORM_SHADER_COMPILER_PLUGIN_JAR'])
 
+    # Clean folder
+    bld(rule = run_bob,
+        run_args = f'java -cp {classpath} com.dynamo.bob.Bob -root ./src/test clean',
+        source = 'wscript',
+        always = True)
+
+    # Build custom collections first to prevent overrides in default game.projectc
+    settings = [
+        'cross_script_messaging.ini',
+        'render_script.ini',
+        'camera_acquire_input_focus.ini']
+    for setting_file in settings:
+        bld.add_group()
+        bld(rule = run_bob,
+            run_args = f'java -cp {classpath} com.dynamo.bob.Bob -root ./src/test build %s --settings ./src/test/%s' % (bob_flags, setting_file),
+            source = 'wscript',
+            always = True)
+
+    # Build main setup
+    bob_command = f'java -cp {classpath} com.dynamo.bob.Bob -root ./src/test build %s' % bob_flags
+    bld.add_group()
     bld(rule = run_bob,
         run_args = bob_command,
         source = 'wscript',

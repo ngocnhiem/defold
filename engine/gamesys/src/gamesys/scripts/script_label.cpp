@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -16,11 +16,10 @@
 #include <dlib/log.h>
 #include "../gamesys.h"
 #include "../gamesys_private.h"
+#include <render/font/fontmap.h>
 #include <render/render.h>
-#include <render/font_renderer.h>
 #include <script/script.h>
-#include <dmsdk/gameobject/script.h>
-
+#include <dmsdk/gamesys/script.h>
 
 #include "script_label.h"
 #include "../components/comp_label.h"
@@ -36,6 +35,7 @@ namespace dmGameSystem
  * @document
  * @name Label
  * @namespace label
+ * @language Lua
  */
 
 /*# [type:vector4] label color
@@ -230,7 +230,7 @@ namespace dmGameSystem
  * ```
  */
 
-/*# [type:bool] label line break
+/*# [type:boolean] label line break
  *
  * The line break of the label.
  * This value is used to adjust the vertical spacing of characters in the text.
@@ -265,7 +265,7 @@ static const char* LABEL_EXT = "labelc";
  *
  * @name label.set_text
  * @param url [type:string|hash|url] the label that should have a constant set
- * @param text [type:string] the text
+ * @param text [type:string|number] the text
  * @examples
  *
  * ```lua
@@ -278,7 +278,7 @@ static int SetText(lua_State* L)
 {
     DM_LUA_STACK_CHECK(L, 0);
 
-    dmGameObject::HInstance instance = CheckGoInstance(L);
+    (void)CheckGoInstance(L); // left to check that it's not called from incorrect context.
 
     dmMessage::URL receiver;
     dmMessage::URL sender;
@@ -300,13 +300,18 @@ static int SetText(lua_State* L)
     uint32_t data_size = sizeof(dmGameSystemDDF::SetText) + text_len + 1;
     if (data_size > dmMessage::DM_MESSAGE_MAX_DATA_SIZE)
     {
-        return DM_LUA_ERROR("The label string is too long!");
+        return DM_LUA_ERROR("The label string is too long: %u (max is message size %u)", data_size, dmMessage::DM_MESSAGE_MAX_DATA_SIZE);
     }
     uint8_t data[dmMessage::DM_MESSAGE_MAX_DATA_SIZE];
 
     dmGameSystemDDF::SetText* message = (dmGameSystemDDF::SetText*)data;
     message->m_Text = (const char*)sizeof(dmGameSystemDDF::SetText);
     memcpy((void*)(data + sizeof(dmGameSystemDDF::SetText)), text, text_len + 1);
+
+    dmMessage::URL receiver;
+    dmMessage::URL sender;
+    dmScript::GetURL(L, &sender);
+    dmScript::ResolveURL(L, 1, &receiver, &sender);
 
     if (dmMessage::RESULT_OK != dmMessage::Post(&sender, &receiver, dmGameSystemDDF::SetText::m_DDFDescriptor->m_NameHash, (uintptr_t)instance, (uintptr_t)dmGameSystemDDF::SetText::m_DDFDescriptor, data, data_size, 0) )
     {
@@ -329,7 +334,8 @@ static int GetTextMetrics(lua_State* L)
     dmScript::ResolveURL(L, 1, &receiver, &sender);
 
     dmGameSystem::LabelComponent* component = 0;
-    dmGameObject::GetComponentFromLua(L, 1, LABEL_EXT, 0, (void**)&component, 0);
+    dmScript::GetComponentFromLua(L, 1, LABEL_EXT, 0, (dmGameObject::HComponent*)&component, 0);
+
     assert(component != 0);
 
     dmRender::TextMetrics metrics;
@@ -380,7 +386,7 @@ static int GetText(lua_State* L)
     dmScript::ResolveURL(L, 1, &receiver, &sender);
 
     dmGameSystem::LabelComponent* component = 0;
-    dmGameObject::GetComponentFromLua(L, 1, LABEL_EXT, 0, (void**)&component, 0);
+    dmScript::GetComponentFromLua(L, 1, LABEL_EXT, 0, (dmGameObject::HComponent*)&component, 0);
 
     const char* value = dmGameSystem::CompLabelGetText(component);
     lua_pushstring(L, value);

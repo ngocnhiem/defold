@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -15,9 +15,6 @@
 package com.dynamo.bob.pipeline.graph;
 
 import java.util.List;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.Stack;
 
 import com.dynamo.bob.Project;
 import com.dynamo.bob.CompileExceptionError;
@@ -84,20 +81,20 @@ public class ResourceWalker {
             return;
         }
 
-        GeneratedMessageV3.Builder<?> builder = ProtoBuilder.newBuilder(ext);
+        GeneratedMessageV3.Builder builder = ProtoBuilder.newBuilder(ext);
         try {
             final byte[] content = resource.output().getContent();
             if(content == null) {
                 throw new CompileExceptionError(resource, 0, "Unable to find resource " + resource.getPath());
             }
             builder.mergeFrom(content);
-            Message message = (Message)builder.build();
+            Message message = builder.build();
             visitor.visitMessage(message, resource, parentResource);
             visitMessage(project, resource, message, visitor);
         } catch(CompileExceptionError e) {
             throw e;
         } catch(Exception e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Resource '" + resource.getPath() + "': " + e.getMessage(), e);
         }
         visitor.leave(resource, parentResource);
     }

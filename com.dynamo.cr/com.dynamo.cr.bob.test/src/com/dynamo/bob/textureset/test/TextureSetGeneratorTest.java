@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -15,7 +15,6 @@
 package com.dynamo.bob.textureset.test;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -27,17 +26,17 @@ import java.util.List;
 
 import org.junit.Test;
 
+import com.dynamo.bob.CompileExceptionError;
 import com.dynamo.bob.pipeline.AtlasUtil.MappedAnimDesc;
 import com.dynamo.bob.pipeline.AtlasUtil.MappedAnimIterator;
 import com.dynamo.bob.textureset.TextureSetGenerator;
-import com.dynamo.bob.textureset.TextureSetGenerator.AnimDesc;
-import com.dynamo.bob.textureset.TextureSetGenerator.AnimIterator;
 import com.dynamo.bob.textureset.TextureSetGenerator.TextureSetResult;
 import com.dynamo.bob.textureset.TextureSetGenerator.UVTransform;
 import com.dynamo.gamesys.proto.TextureSetProto.TextureSet;
 import com.dynamo.gamesys.proto.TextureSetProto.TextureSetAnimation;
 import com.dynamo.gamesys.proto.Tile.Playback;
 import com.dynamo.gamesys.proto.Tile.SpriteTrimmingMode;
+import com.dynamo.gamesys.proto.AtlasProto.AtlasImage;
 
 public class TextureSetGeneratorTest {
 
@@ -47,12 +46,21 @@ public class TextureSetGeneratorTest {
         return new BufferedImage(w, h, BufferedImage.TYPE_4BYTE_ABGR);
     }
 
+    AtlasImage newAtlasImage(float pivot_x, float pivot_y, SpriteTrimmingMode mode) {
+        return AtlasImage.newBuilder()
+            .setImage("")
+            .setPivotX(pivot_x)
+            .setPivotY(pivot_y)
+            .setSpriteTrimMode(mode)
+            .build();
+    }
+
     MappedAnimDesc newAnim(String id, List<String> paths) {
         return new MappedAnimDesc(id, paths, paths, Playback.PLAYBACK_LOOP_BACKWARD, 30, false, false);
     }
 
     @Test
-    public void test1() {
+    public void test1() throws CompileExceptionError {
         List<BufferedImage> images =
                 Arrays.asList(newImage(16, 16),
                               newImage(16, 16),
@@ -60,7 +68,11 @@ public class TextureSetGeneratorTest {
                               newImage(16, 16));
 
         List<String> ids = Arrays.asList("1", "2", "3", "4");
-        List<SpriteTrimmingMode> imageTrimModes = Arrays.asList(SpriteTrimmingMode.SPRITE_TRIM_MODE_6, SpriteTrimmingMode.SPRITE_TRIM_MODE_6, SpriteTrimmingMode.SPRITE_TRIM_MODE_6, SpriteTrimmingMode.SPRITE_TRIM_MODE_6);
+        List<AtlasImage> atlasImages = new ArrayList<>();
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_6));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_6));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_6));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_6));
 
         List<MappedAnimDesc> animations = new ArrayList<MappedAnimDesc>();
         animations.add(newAnim("anim1", Arrays.asList("1", "2", "3")));
@@ -68,7 +80,7 @@ public class TextureSetGeneratorTest {
 
         MappedAnimIterator iterator = new MappedAnimIterator(animations, ids);
 
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
         TextureSet textureSet = result.builder.setTexture("").build();
         BufferedImage image = result.images.get(0);
         assertThat(image.getWidth(), is(32));
@@ -85,7 +97,12 @@ public class TextureSetGeneratorTest {
                 newImage(16, 16));
 
         List<String> ids = Arrays.asList("1", "2", "3", "4");
-        List<SpriteTrimmingMode> imageTrimModes = Arrays.asList(SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF);
+
+        List<AtlasImage> atlasImages = new ArrayList<>();
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
 
         List<MappedAnimDesc> animations = new ArrayList<MappedAnimDesc>();
         animations.add(newAnim("anim1", Arrays.asList("1", "2", "3")));
@@ -93,7 +110,7 @@ public class TextureSetGeneratorTest {
 
         MappedAnimIterator iterator = new MappedAnimIterator(animations, ids);
 
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
         BufferedImage image = result.images.get(0);
         assertThat(image.getWidth(), is(32));
         assertThat(image.getHeight(), is(32));
@@ -113,7 +130,9 @@ public class TextureSetGeneratorTest {
             newImage(16, 16));
 
         List<String> ids = Arrays.asList("1", "2");
-        List<SpriteTrimmingMode> imageTrimModes = Arrays.asList(SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF);
+        List<AtlasImage> atlasImages = new ArrayList<>();
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
 
         List<MappedAnimDesc> animations = new ArrayList<MappedAnimDesc>();
         animations.add(newAnim("anim1", Arrays.asList("1")));
@@ -122,7 +141,7 @@ public class TextureSetGeneratorTest {
 
         MappedAnimIterator iterator = new MappedAnimIterator(animations, ids);
 
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, ids, iterator, 0, 0, 0, true, false, null, 16, 16);
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, ids, iterator, 0, 0, 0, true, false, null, 16, 16);
         BufferedImage image0 = result.images.get(0);
         BufferedImage image1 = result.images.get(1);
         assertThat(image0.getWidth(), is(16));
@@ -145,7 +164,11 @@ public class TextureSetGeneratorTest {
                 newImage(11, 11));
 
         List<String> ids = Arrays.asList("1", "2", "3", "4");
-        List<SpriteTrimmingMode> imageTrimModes = Arrays.asList(SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF);
+        List<AtlasImage> atlasImages = new ArrayList<>();
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
 
         List<MappedAnimDesc> animations = new ArrayList<MappedAnimDesc>();
         animations.add(newAnim("anim1", Arrays.asList("1", "2", "3")));
@@ -153,10 +176,10 @@ public class TextureSetGeneratorTest {
 
         MappedAnimIterator iterator = new MappedAnimIterator(animations, ids);
 
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, ids, iterator, 5, 0, 0, true, false, null, 0, 0);
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, ids, iterator, 5, 0, 0, true, false, null, 0, 0);
         BufferedImage image = result.images.get(0);
         assertThat(image.getWidth(), is(32));
-        assertThat(image.getHeight(), is(32));
+        assertThat(image.getHeight(), is(64));
 
         for (UVTransform uv : result.uvTransforms)
         {
@@ -167,11 +190,15 @@ public class TextureSetGeneratorTest {
     }
 
     @Test
-    public void testRotatedAnimations() {
+    public void testRotatedAnimations() throws CompileExceptionError {
         List<BufferedImage> images = Arrays.asList(newImage(64,32), newImage(64,32), newImage(32,64), newImage(32,64));
 
         List<String> ids = Arrays.asList("1", "2", "3", "4");
-        List<SpriteTrimmingMode> imageTrimModes = Arrays.asList(SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF);
+        List<AtlasImage> atlasImages = new ArrayList<>();
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
 
         List<MappedAnimDesc> animations = new ArrayList<MappedAnimDesc>();
         animations.add(newAnim("anim1", Arrays.asList("1","2")));
@@ -179,7 +206,7 @@ public class TextureSetGeneratorTest {
 
         MappedAnimIterator iterator = new MappedAnimIterator(animations, ids);
 
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
 
         TextureSet textureSet = result.builder.setTexture("").build();
 
@@ -195,14 +222,18 @@ public class TextureSetGeneratorTest {
                 newImage(16, 16));
 
         List<String> ids = Arrays.asList("1", "2", "3", "4");
-        List<SpriteTrimmingMode> imageTrimModes = Arrays.asList(SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF);
+        List<AtlasImage> atlasImages = new ArrayList<>();
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
+        atlasImages.add(newAtlasImage(0.5f, 0.5f, SpriteTrimmingMode.SPRITE_TRIM_MODE_OFF));
 
         List<MappedAnimDesc> animations = new ArrayList<MappedAnimDesc>();
         animations.add(newAnim("anim1", Arrays.asList("1", "2", "3")));
 
         MappedAnimIterator iterator = new MappedAnimIterator(animations, ids);
 
-        TextureSetResult result = TextureSetGenerator.generate(images, imageTrimModes, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
+        TextureSetResult result = TextureSetGenerator.generate(images, atlasImages, ids, iterator, 0, 0, 0, true, false, null, 0, 0);
 
         TextureSet textureSet = result.builder.setTexture("").build();
         assertUVTransform(0.0f, 1.0f, 0.5f, -0.5f, getUvTransforms(result.uvTransforms, textureSet, "anim1", 0));

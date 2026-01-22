@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -56,6 +56,14 @@ extern unsigned char RESOURCES_COMPRESSED_ARCD[];
 extern uint32_t RESOURCES_COMPRESSED_ARCD_SIZE;
 extern unsigned char RESOURCES_COMPRESSED_DMANIFEST[];
 extern uint32_t RESOURCES_COMPRESSED_DMANIFEST_SIZE;
+
+// An archive without any live update files
+extern unsigned char RESOURCES_NO_LU_ARCI[];
+extern uint32_t RESOURCES_NO_LU_ARCI_SIZE;
+extern unsigned char RESOURCES_NO_LU_ARCD[];
+extern uint32_t RESOURCES_NO_LU_ARCD_SIZE;
+extern unsigned char RESOURCES_NO_LU_DMANIFEST[];
+extern uint32_t RESOURCES_NO_LU_DMANIFEST_SIZE;
 
 static const uint64_t path_hash[]       = { 0x1db7f0530911b1ce, 0x68b7e06402ee965c, 0x731d3cc48697dfe4, 0x8417331f14a42e4b,  0xb4870d43513879ba,  0xe1f97b41134ff4a6, 0xe7b921ca4d761083 };
 static const char* path_name[]          = { "/archive_data/file4.adc",
@@ -352,7 +360,7 @@ TEST(dmResourceArchive, GetInsertionIndex)
 
 TEST(dmResourceArchive, ManifestHeader)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     dmLiveUpdateDDF::ManifestData* manifest_data;
     dmResource::Result result = dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest);
     ASSERT_EQ(dmResource::RESULT_OK, result);
@@ -364,6 +372,30 @@ TEST(dmResourceArchive, ManifestHeader)
     ASSERT_EQ(dmLiveUpdateDDF::HASH_SHA256, manifest_data->m_Header.m_SignatureHashAlgorithm);
 
     ASSERT_EQ(dmLiveUpdateDDF::SIGN_RSA, manifest_data->m_Header.m_SignatureSignAlgorithm);
+
+    dmResource::DeleteManifest(manifest);
+}
+
+TEST(dmResourceArchive, HasLiveupdateContent_True)
+{
+    dmResource::HManifest manifest = 0;
+    dmResource::Result result = dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest);
+    ASSERT_EQ(dmResource::RESULT_OK, result);
+    ASSERT_EQ(dmResource::MANIFEST_VERSION, manifest->m_DDF->m_Version);
+
+    ASSERT_TRUE(dmResource::HasManifestExcludedEntries(manifest));
+
+    dmResource::DeleteManifest(manifest);
+}
+
+TEST(dmResourceArchive, HasLiveupdateContent_False)
+{
+    dmResource::HManifest manifest = 0;
+    dmResource::Result result = dmResource::LoadManifestFromBuffer(RESOURCES_NO_LU_DMANIFEST, RESOURCES_NO_LU_DMANIFEST_SIZE, &manifest);
+    ASSERT_EQ(dmResource::RESULT_OK, result);
+    ASSERT_EQ(dmResource::MANIFEST_VERSION, manifest->m_DDF->m_Version);
+
+    ASSERT_FALSE(dmResource::HasManifestExcludedEntries(manifest));
 
     dmResource::DeleteManifest(manifest);
 }
@@ -432,7 +464,7 @@ This test is failing intermittenly on Linux. Typical output from a failed test:
 #if !defined(__linux__)
 TEST(dmResourceArchive, ManifestSignatureVerification)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
 
     uint32_t expected_digest_len = dmResource::HashLength(manifest->m_DDFData->m_Header.m_SignatureHashAlgorithm);
@@ -495,7 +527,7 @@ This test is failing intermittenly on Linux. Typical output from a failed test:
 #if !defined(__linux__)
 TEST(dmResourceArchive, ManifestSignatureVerificationLengthFail)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
 
     uint32_t expected_digest_len = dmResource::HashLength(manifest->m_DDFData->m_Header.m_SignatureHashAlgorithm);
@@ -508,9 +540,7 @@ TEST(dmResourceArchive, ManifestSignatureVerificationLengthFail)
     ASSERT_EQ(dmResource::RESULT_FORMAT_ERROR, dmResource::MemCompare(hex_digest, hex_digest_len, expected_digest, expected_digest_len));
 
     free(hex_digest);
-    dmDDF::FreeMessage(manifest->m_DDFData);
-    dmDDF::FreeMessage(manifest->m_DDF);
-    delete manifest;
+    dmResource::DeleteManifest(manifest);
 }
 #endif
 
@@ -524,7 +554,7 @@ This test is failing intermittenly on Linux. Typical output from a failed test:
 #if !defined(__linux__)
 TEST(dmResourceArchive, ManifestSignatureVerificationHashFail)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
 
     uint32_t expected_digest_len = dmResource::HashLength(manifest->m_DDFData->m_Header.m_SignatureHashAlgorithm);
@@ -537,15 +567,13 @@ TEST(dmResourceArchive, ManifestSignatureVerificationHashFail)
     ASSERT_EQ(dmResource::RESULT_SIGNATURE_MISMATCH, dmResource::MemCompare(hex_digest, hex_digest_len, expected_digest, expected_digest_len));
 
     free(hex_digest);
-    dmDDF::FreeMessage(manifest->m_DDFData);
-    dmDDF::FreeMessage(manifest->m_DDF);
-    delete manifest;
+    dmResource::DeleteManifest(manifest);
 }
 #endif
 
 TEST(dmResourceArchive, ManifestSignatureVerificationWrongKey)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
 
     unsigned char* resources_public_wrong = (unsigned char*)malloc(RESOURCES_PUBLIC_SIZE);
@@ -564,7 +592,7 @@ TEST(dmResourceArchive, ManifestSignatureVerificationWrongKey)
 
 TEST(dmResourceArchive, ResourceEntries)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     dmLiveUpdateDDF::ManifestData* manifest_data;
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_DMANIFEST, RESOURCES_DMANIFEST_SIZE, &manifest));
 
@@ -590,7 +618,7 @@ TEST(dmResourceArchive, ResourceEntries)
 
 TEST(dmResourceArchive, ResourceEntries_Compressed)
 {
-    dmResource::HManifest manifest = new dmResource::Manifest();
+    dmResource::HManifest manifest = 0;
     dmLiveUpdateDDF::ManifestData* manifest_data;
     ASSERT_EQ(dmResource::RESULT_OK, dmResource::LoadManifestFromBuffer(RESOURCES_COMPRESSED_DMANIFEST, RESOURCES_COMPRESSED_DMANIFEST_SIZE, &manifest));
 

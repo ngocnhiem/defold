@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-# Copyright 2020-2024 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
 # this file except in compliance with the License.
-# 
+#
 # You may obtain a copy of the License, together with FAQs at
 # https://www.defold.com/license
-# 
+#
 # Unless required by applicable law or agreed to in writing, software distributed
 # under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 # CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -46,7 +46,7 @@ def to_spirv(buffer_name, file_path, profile):
 	elif platform_str.startswith("macos"):
 		platform_str = "arm64-macos"
 
-	exe = '%s/ext/bin/%s/glslc' % (dynamo_home, platform_str)
+	exe = '%s/ext/bin/%s/glslang' % (dynamo_home, platform_str)
 
 	out_path = file_path + '.spv'
 
@@ -79,6 +79,8 @@ if __name__ == '__main__':
 		[to_glsl("glsl_vertex_program", "test_app_graphics.vs"),
 		 to_glsl("glsl_fragment_program", "test_app_graphics.fs"),
 		 to_glsl("glsl_compute_program", "test_app_graphics.cp"),
+		 to_glsl("glsl_fragment_program_ssbo", "test_app_graphics_ssbo.fs"),
 		 to_spirv("spirv_vertex_program", "test_app_graphics.vs", "vert"),
 		 to_spirv("spirv_fragment_program", "test_app_graphics.fs", "frag"),
-		 to_spirv("spirv_compute_program", "test_app_graphics.cp", "compute")])
+		 to_spirv("spirv_compute_program", "test_app_graphics.cp", "compute"),
+		 to_spirv("spirv_fragment_program_ssbo", "test_app_graphics_ssbo.fs", "frag")])

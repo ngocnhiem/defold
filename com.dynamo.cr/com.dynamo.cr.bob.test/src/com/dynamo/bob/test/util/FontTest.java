@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -47,7 +47,6 @@ import com.dynamo.bob.font.Fontc;
 import com.dynamo.bob.font.Fontc.FontResourceResolver;
 import com.dynamo.bob.util.FileUtil;
 import com.dynamo.render.proto.Font.FontDesc;
-import com.dynamo.render.proto.Font.FontMap;
 import com.dynamo.render.proto.Font.GlyphBank;
 import com.dynamo.render.proto.Font.GlyphBank.Glyph;
 
@@ -286,7 +285,10 @@ public class FontTest {
         glyphBank = GlyphBank.newBuilder().mergeFrom(glyphBankCStream).build();
 
         // glyph count
-        int expectedCharCount = 6639; // Taken from font information of DroidSansJapanese.ttf
+        // DroidSansJapanese contains 12585 glyphs in total
+        // JDK 21 can display 6639 glyphs
+        // JDK 25 can display 10792 glyphs, but many of them are zero-width, so we filter them out
+        int expectedCharCount = 6662;
         assertEquals(expectedCharCount, glyphBank.getGlyphsCount());
     }
 
@@ -328,8 +330,8 @@ public class FontTest {
         BufferedInputStream glyphBankCStream = new BufferedInputStream(new FileInputStream(outfile));
         glyphBank = GlyphBank.newBuilder().mergeFrom(glyphBankCStream).build();
 
-        // glyph count
-        int expectedCharCount = 1519; // Taken from font information of Tuffy.ttf
+        // glyph count in font: 1502, but we show a bit more zero-width chars
+        int expectedCharCount = 1541; // Taken from font information of Tuffy.ttf
         assertEquals(expectedCharCount, glyphBank.getGlyphsCount());
     }
 

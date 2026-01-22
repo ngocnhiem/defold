@@ -6,6 +6,8 @@
     -fx-background-color: none;
     -fx-background-insets: 0;
     -fx-background-radius: 0;
+    -fx-text-fill: -df-text-light;
+    -fx-prompt-text-fill: -df-text-dark;
 
     .content {
         -fx-background-color: none;
@@ -49,7 +51,7 @@
         -fx-padding: 4px 8px;
         -fx-cursor: text;
         -fx-background-radius: 0;
-        -fx-background-color: -df-background-light;
+        -fx-background-color: -df-background-input;
     }
 
     &:hover {

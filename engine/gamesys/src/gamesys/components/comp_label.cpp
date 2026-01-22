@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -32,7 +32,8 @@
 #include <dmsdk/dlib/vmath.h>
 #include <graphics/graphics.h>
 #include <render/render.h>
-#include <render/font_renderer.h>
+#include <font/text_layout.h>
+#include <render/font/font_renderer.h>
 #include <gameobject/gameobject_ddf.h>
 
 #include "../resources/res_label.h"
@@ -44,9 +45,10 @@
 #include <gamesys/gamesys_ddf.h>
 #include <dmsdk/gamesys/render_constants.h>
 #include <dmsdk/gamesys/resources/res_material.h>
+#include <dmsdk/gamesys/resources/res_font.h>
 
 DM_PROPERTY_EXTERN(rmtp_Components);
-DM_PROPERTY_U32(rmtp_Label, 0, FrameReset, "# components", &rmtp_Components);
+DM_PROPERTY_U32(rmtp_Label, 0, PROFILE_PROPERTY_FRAME_RESET, "# components", &rmtp_Components);
 
 namespace dmGameSystem
 {
@@ -72,7 +74,7 @@ namespace dmGameSystem
         LabelResource*              m_Resource;
         HComponentRenderConstants   m_RenderConstants;
         MaterialResource*           m_Material;
-        dmRender::HFontMap          m_FontMap;
+        FontResource*               m_Font;
 
         float                       m_Leading;
         float                       m_Tracking;
@@ -141,8 +143,13 @@ namespace dmGameSystem
         return GetMaterialResource(component, resource)->m_Material;
     }
 
+    static inline FontResource* GetFontResource(const LabelComponent* component, const LabelResource* resource) {
+        return component->m_Font ? component->m_Font : resource->m_Font;
+    }
+
     static inline dmRender::HFontMap GetFontMap(const LabelComponent* component, const LabelResource* resource) {
-        return component->m_FontMap ? component->m_FontMap : resource->m_FontMap;
+        FontResource* font = GetFontResource(component, resource);
+        return dmGameSystem::ResFontGetHandle(font);
     }
 
     void ReHash(LabelComponent* component)
@@ -153,11 +160,11 @@ namespace dmGameSystem
         LabelResource* resource = component->m_Resource;
         dmGameSystemDDF::LabelDesc* ddf = resource->m_DDF;
         dmRender::HMaterial material = GetMaterial(component, resource);
-        dmRender::HFontMap font_map = GetFontMap(component, resource);
+        FontResource* font = GetFontResource(component, resource);
 
         dmHashInit32(&state, reverse);
         dmHashUpdateBuffer32(&state, &material, sizeof(material));
-        dmHashUpdateBuffer32(&state, &font_map, sizeof(font_map));
+        dmHashUpdateBuffer32(&state, font, sizeof(font));
         dmHashUpdateBuffer32(&state, &ddf->m_BlendMode, sizeof(ddf->m_BlendMode));
         dmHashUpdateBuffer32(&state, &ddf->m_Color, sizeof(ddf->m_Color));
         dmHashUpdateBuffer32(&state, &ddf->m_Outline, sizeof(ddf->m_Outline));
@@ -283,8 +290,8 @@ namespace dmGameSystem
         if (component.m_Material) {
             dmResource::Release(factory, component.m_Material);
         }
-        if (component.m_FontMap) {
-            dmResource::Release(factory, component.m_FontMap);
+        if (component.m_Font) {
+            dmResource::Release(factory, component.m_Font);
         }
         if (component.m_RenderConstants)
         {
@@ -320,17 +327,7 @@ namespace dmGameSystem
 
             Matrix4 local = CompLabelLocalTransform(c->m_Position, c->m_Rotation, c->m_Scale, c->m_Size, c->m_Pivot);
             Matrix4 world = dmGameObject::GetWorldMatrix(c->m_Instance);
-            Matrix4 w;
-
-            if (dmGameObject::ScaleAlongZ(c->m_Instance))
-            {
-                w = world * local;
-            }
-            else
-            {
-                w = dmTransform::MulNoScaleZ(world, local);
-            }
-
+            Matrix4 w = world * local;
             w = dmVMath::AppendScale(w, c->m_Scale);
 
             Vector4 position = w.getCol3();
@@ -357,6 +354,17 @@ namespace dmGameSystem
     {
         (void)params;
         (void)update_result;
+        return dmGameObject::UPDATE_RESULT_OK;
+    }
+
+    dmGameObject::UpdateResult CompLabelLateUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
+    {
+        DM_PROFILE("LateUpdate");
+        LabelContext* label_context = (LabelContext*)params.m_Context;
+        LabelWorld* world = (LabelWorld*)params.m_World;
+
+        UpdateTransforms(world, label_context->m_Subpixels);
+
         return dmGameObject::UPDATE_RESULT_OK;
     }
 
@@ -557,24 +565,29 @@ namespace dmGameSystem
         InitParametersFromDescription(component, ddf);
     }
 
-    void* CompLabelGetComponent(const dmGameObject::ComponentGetParams& params)
+    dmGameObject::HComponent CompLabelGetComponent(const dmGameObject::ComponentGetParams& params)
     {
         LabelWorld* world = (LabelWorld*)params.m_World;
-        uint32_t index = (uint32_t)*params.m_UserData;
-        return &world->m_Components.Get(index);
+        uint32_t index = (uint32_t)params.m_UserData;
+        return (dmGameObject::HComponent)&world->m_Components.Get(index);
     }
 
-    void CompLabelGetTextMetrics(const LabelComponent* component, struct dmRender::TextMetrics& metrics)
-    {
-        LabelResource* resource = component->m_Resource;
-        dmRender::HFontMap font_map = GetFontMap(component, resource);
-        dmRender::GetTextMetrics(font_map, component->m_Text, component->m_Size.getX(),
-                                    component->m_LineBreak, component->m_Leading, component->m_Tracking, &metrics);
 
-        metrics.m_Width      = metrics.m_Width;
-        metrics.m_Height     = metrics.m_Height;
-        metrics.m_MaxAscent  = metrics.m_MaxAscent;
-        metrics.m_MaxDescent = metrics.m_MaxDescent;
+    // DEPRECATED
+    void CompLabelGetTextMetrics(const LabelComponent* component, dmRender::TextMetrics& metrics)
+    {
+        dmRender::HFontMap font_map = GetFontMap(component, component->m_Resource);
+
+        TextLayoutSettings settings = {0};
+        settings.m_Width = component->m_Size.getX();
+        settings.m_LineBreak = component->m_LineBreak;
+        settings.m_Leading = component->m_Leading;
+        settings.m_Tracking = component->m_Tracking;
+        // legacy options for glyph bank fonts
+        settings.m_Monospace = dmRender::GetFontMapMonospaced(font_map);
+        settings.m_Padding = dmRender::GetFontMapPadding(font_map);
+
+        dmRender::GetTextMetrics(font_map, component->m_Text, &settings, &metrics);
     }
 
     const char* CompLabelGetText(const LabelComponent* component)
@@ -614,7 +627,7 @@ namespace dmGameSystem
         }
         else if (get_property == PROP_FONT)
         {
-            return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), GetFontMap(component, component->m_Resource), out_value);
+            return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), GetFontResource(component, component->m_Resource), out_value);
         }
         else if (get_property == LABEL_PROP_LEADING)
         {
@@ -668,7 +681,7 @@ namespace dmGameSystem
         }
         else if (set_property == PROP_FONT)
         {
-            dmGameObject::PropertyResult res = SetResourceProperty(dmGameObject::GetFactory(params.m_Instance), params.m_Value, FONT_EXT_HASH, (void**)&component->m_FontMap);
+            dmGameObject::PropertyResult res = SetResourceProperty(dmGameObject::GetFactory(params.m_Instance), params.m_Value, FONT_EXT_HASH, (void**)&component->m_Font);
             component->m_ReHash |= res == dmGameObject::PROPERTY_RESULT_OK;
             return res;
         }

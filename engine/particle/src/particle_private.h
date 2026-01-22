@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -16,7 +16,6 @@
 #ifndef DM_PARTICLE_PRIVATE_H
 #define DM_PARTICLE_PRIVATE_H
 
-#include <dlib/configfile.h>
 #include <dlib/index_pool.h>
 #include <dlib/transform.h>
 
@@ -140,8 +139,6 @@ namespace dmParticle
         float                   m_StartDelay;
         /// Particle spawn rate spread, randomized on emitter creation and used for the duration of the emitter.
         float                   m_SpawnRateSpread;
-        /// If the user has been warned that all particles cannot be rendered.
-        uint16_t                m_RenderWarning : 1;
         /// If the user has been warned that the emitters animation could not be fetched
         uint16_t                m_FetchAnimWarning : 1;
         uint16_t                m_LastPositionSet : 1;
@@ -160,7 +157,6 @@ namespace dmParticle
         , m_EmitterStateChangedData()
         , m_PlayTime(0.0f)
         , m_VersionNumber(0)
-        , m_ScaleAlongZ(0)
         {
             m_WorldTransform.SetIdentity();
         }
@@ -179,8 +175,6 @@ namespace dmParticle
         float                   m_PlayTime;
         /// Version number used to check that the handle is still valid.
         uint16_t                m_VersionNumber;
-        /// Whether the scale of the world transform should be used along Z.
-        uint16_t                m_ScaleAlongZ : 1;
     };
 
     /**

@@ -1,4 +1,4 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -21,13 +21,17 @@ import static org.junit.Assert.assertTrue;
 import static org.hamcrest.CoreMatchers.is;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.HashSet;
 
+import com.dynamo.bob.archive.ManifestBuilder;
+import com.dynamo.liveupdate.proto.Manifest;
 import org.junit.Test;
 
 import com.dynamo.graphics.proto.Graphics.TextureImage;
+import com.dynamo.gamesys.proto.TextureSetProto.SpriteGeometry;
 import com.dynamo.gamesys.proto.TextureSetProto.TextureSet;
 import com.dynamo.gamesys.proto.TextureSetProto.TextureSetAnimation;
 import com.google.protobuf.Message;
@@ -44,12 +48,12 @@ public class AtlasBuilderTest extends AbstractProtoBuilderTest {
         src.append("  image: \"/test.png\"");
         src.append("}");
         List<Message> outputs = build("/test.atlas", src.toString());
-        TextureSet textureSet = (TextureSet)outputs.get(0);
+        TextureSet textureSet = getMessage(outputs, TextureSet.class);
         TextureImage textureImage = (TextureImage)outputs.get(1);
         assertNotNull(textureSet);
         assertNotNull(textureImage);
         int expectedSize = (16 * 16 + 8 * 8 + 4 * 4 + 2 * 2 + 1) * 4;
-        assertEquals(expectedSize, textureImage.getAlternatives(0).getData().size());
+        assertEquals(expectedSize, textureImage.getAlternatives(0).getDataSize());
     }
 
     @Test
@@ -80,7 +84,9 @@ public class AtlasBuilderTest extends AbstractProtoBuilderTest {
         assertEquals(textureSet.getPageIndices(1), 1);
 
         int expectedSize = (16 * 16 + 8 * 8 + 4 * 4 + 2 * 2 + 1) * 4 * 2;
-        assertEquals(expectedSize, textureImage1.getAlternatives(0).getData().size());
+
+        TextureImage.Image img = textureImage1.getAlternatives(0);
+        assertEquals(expectedSize, textureImage1.getAlternatives(0).getDataSize());
     }
 
     @Test
@@ -194,6 +200,52 @@ public class AtlasBuilderTest extends AbstractProtoBuilderTest {
 
 
     @Test
+    public void testAtlasRotateImages() throws Exception {
+        addImage("/1.png", 10, 12);
+        addImage("/2.png", 16, 6);
+
+        // We don't allow duplicate files as single frame animations
+        StringBuilder src = new StringBuilder();
+        src.append("extrude_borders: 0\n");
+        src.append("images: {");
+        src.append("  image: \"/1.png\"");
+        src.append("}");
+
+        src.append("images: {");
+        src.append("  image: \"/2.png\"");
+        src.append("}");
+
+        List<Message> outputs = build("/test.atlas", src.toString());
+
+        TextureSet textureSet = (TextureSet)outputs.get(0);
+
+        assertThat(textureSet.getWidth(), is(16));
+        assertThat(textureSet.getHeight(), is(16));
+        assertThat(textureSet.getAnimationsCount(), is(2));
+
+        TextureSetAnimation anim = textureSet.getAnimations(0);
+        assertThat(anim.getId(), is("1"));
+        assertThat(anim.getWidth(), is(10));
+        assertThat(anim.getHeight(), is(12));
+
+        anim = textureSet.getAnimations(1);
+        assertThat(anim.getId(), is("2"));
+        assertThat(anim.getWidth(), is(16)); // The unrotated dimensions
+        assertThat(anim.getHeight(), is(6));
+
+        SpriteGeometry geom = textureSet.getGeometries(0);
+        assertThat(geom.getRotated(), is(false));
+        assertThat(geom.getWidth(), is(10));
+        assertThat(geom.getHeight(), is(12));
+
+        geom = textureSet.getGeometries(1);
+        assertThat(geom.getRotated(), is(true));
+        assertThat(geom.getWidth(), is(16)); // The unrotated dimensions
+        assertThat(geom.getHeight(), is(6));
+    }
+
+
+    @Test
     public void testAtlasFrameIndices() throws Exception {
         addImage("/a/1.png", 16, 16);
         addImage("/a/2.png", 16, 16);
@@ -259,4 +311,45 @@ public class AtlasBuilderTest extends AbstractProtoBuilderTest {
         assertEquals(imageNameHashes, textureSet.getImageNameHashesList());
     }
 
+    @Test
+    public void testHexDigestForAtlas() throws Exception {
+        List<String> names = new ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            StringBuilder line = new StringBuilder();
+            int min = 1;
+            int max = 16;
+            String name = "/" + i + ".png";
+            addImage(name, (int)(Math.random() * (max - min + 1) + min), (int)(Math.random() * (max - min + 1) + min));
+            line.append("images {\n  image: \"");
+            line.append(name);
+            line.append("\"\n}\n");
+            names.add(line.toString());
+        }
+
+        Collections.shuffle(names);
+        StringBuilder src = new StringBuilder();
+        for (String l: names) {
+            src.append(l);
+        }
+        List<Message> outputs1 = build("testHex.atlas", src.toString());
+        TextureSet textureSet1 = getMessage(outputs1, TextureSet.class);
+
+        byte[] hash1 = ManifestBuilder.CryptographicOperations.hash(textureSet1.toByteArray(), Manifest.HashAlgorithm.HASH_SHA1);
+        String hexDigest1 = ManifestBuilder.CryptographicOperations.hexdigest(hash1);
+
+        clean();
+
+        Collections.shuffle(names);
+        StringBuilder src1 = new StringBuilder();
+        for (String l: names) {
+            src1.append(l);
+        }
+        List<Message> outputs2 = build("testHex.atlas", src1.toString());
+        TextureSet textureSet2 = getMessage(outputs2, TextureSet.class);
+
+        byte[] hash2 = ManifestBuilder.CryptographicOperations.hash(textureSet2.toByteArray(), Manifest.HashAlgorithm.HASH_SHA1);
+        String hexDigest2 = ManifestBuilder.CryptographicOperations.hexdigest(hash2);
+
+        assertEquals(hexDigest1, hexDigest2);
+    }
 }

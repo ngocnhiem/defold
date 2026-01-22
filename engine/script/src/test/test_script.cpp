@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -21,10 +21,10 @@
 namespace dmScriptTest
 {
 
-bool RunFile(lua_State* L, const char* filename)
+bool RunFile(lua_State* L, const char* filename, const char* base_dir)
 {
     char path[1024];
-    dmTestUtil::MakeHostPathf(path, sizeof(path), "build/src/test/%s", filename);
+    dmTestUtil::MakeHostPathf(path, sizeof(path), "%s/%s", base_dir, filename);
 
     if (luaL_dofile(L, path) != 0)
     {
@@ -71,7 +71,10 @@ void ScriptTest::SetUp()
         dmResource::NewFactoryParams factory_params;
         m_ResourceFactory = dmResource::NewFactory(&factory_params, ".");
 
-        m_Context = dmScript::NewContext(m_ConfigFile, m_ResourceFactory, true);
+        dmScript::ContextParams context_params = {};
+        context_params.m_ConfigFile = m_ConfigFile;
+        context_params.m_Factory    = m_ResourceFactory;
+        m_Context = dmScript::NewContext(context_params);
         dmScript::Initialize(m_Context);
         L = dmScript::GetLuaState(m_Context);
     }
@@ -121,7 +124,11 @@ void ScriptTest::AppendToLog(const char* log)
 
 bool ScriptTest::RunFile(lua_State* L, const char* filename)
 {
-    return dmScriptTest::RunFile(L, filename);
+    return dmScriptTest::RunFile(L, filename, "build/src/test/");
+}
+bool ScriptTest::RunFile(lua_State* L, const char* filename, const char* base_dir)
+{
+    return dmScriptTest::RunFile(L, filename, base_dir);
 }
 bool ScriptTest::RunString(lua_State* L, const char* script)
 {

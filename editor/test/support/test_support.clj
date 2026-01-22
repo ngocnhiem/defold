@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -82,3 +82,13 @@
    (graph-dependencies (g/now) tgts))
   ([basis tgts]
    (g/dependencies basis tgts)))
+
+(defmacro with-post-ec
+  "Given a symbol that resolves to a function, returns a fn that executes that
+  function in an implicit evaluation-context supplied as the final argument to
+  the function."
+  [fn-sym]
+  {:pre [(symbol? fn-sym)]}
+  `(fn ~(symbol (name fn-sym)) [& ~'args]
+     (g/with-auto-evaluation-context ~'evaluation-context
+       (apply ~fn-sym (conj (vec ~'args) ~'evaluation-context)))))

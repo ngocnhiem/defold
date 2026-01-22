@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -16,18 +16,28 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [editor.fs :as fs]
+            [editor.localization :as localization]
             [editor.progress :as progress]
-            [editor.settings-core :as settings-core])
-  (:import [java.io File InputStream]
+            [editor.resource :as resource]
+            [editor.settings-core :as settings-core]
+            [editor.system :as system]
+            [editor.url :as url]
+            [util.coll :refer [pair]]
+            [util.fn :as fn])
+  (:import [com.dynamo.bob.util LibraryUtil]
+           [com.dynamo.bob.archive EngineVersion]
+           [java.io File InputStream]
            [java.net HttpURLConnection URI]
+           [java.nio.file.attribute FileTime]
            [java.util Base64]
-           [java.util.zip ZipInputStream]
+           [java.util.zip ZipEntry ZipFile ZipInputStream ZipOutputStream]
            [org.apache.commons.codec.digest DigestUtils]
            [org.apache.commons.io FilenameUtils]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:const connect-timeout 2000)
+(def ^:const read-timeout 15000)
 
 (defn parse-library-uris [uri-string]
   (settings-core/parse-setting-value {:type :list :element {:type :url}} uri-string))
@@ -98,17 +108,25 @@
     (io/copy is f)
     f))
 
+(defn- replace-user-info-env-variable [^String user-info-token]
+  (if (and (some? user-info-token)
+           (str/starts-with? user-info-token "__")
+           (str/ends-with? user-info-token "__"))
+    (let [env-key (subs user-info-token 2 (- (count user-info-token) 2))
+          env-value (System/getenv env-key)]
+      (or env-value user-info-token))
+    user-info-token))
+
 (defn- make-basic-auth-headers
   [^String user-info]
-  (let [user-info-parts (str/split user-info #":")
-        username (get user-info-parts 0)
-        password (or (get user-info-parts 1) "")]
-    (if (and (str/starts-with? password "__") (str/ends-with? password "__"))
-      (let [password-env-key (subs password 2 (- (count password) 2))
-            password-env-value (or (System/getenv password-env-key) password)]
-         {"Authorization" (format "Basic %s" (str->b64 (str username ":" password-env-value)))})
-      {"Authorization" (format "Basic %s" (str->b64 user-info))})))
-  
+  (let [[username password] (str/split user-info #":")
+        username (replace-user-info-env-variable username)
+        password (replace-user-info-env-variable password)
+        user-info (cond-> username
+                          password (str ":" password))
+        user-info-b64 (str->b64 user-info)
+        authorization (format "Basic %s" user-info-b64)]
+    {"Authorization" authorization}))
 
 (defn- headers-for-uri [^URI lib-uri]
   (let [user-info (.getUserInfo lib-uri)]
@@ -127,6 +145,7 @@
         (.setRequestProperty http-connection "If-None-Match" tag))
       (.setRequestProperty http-connection "Accept" "application/zip"))
     (.setConnectTimeout connection connect-timeout)
+    (.setReadTimeout connection read-timeout)
     (.connect connection)
     (let [status (parse-status http-connection)
           headers (.getHeaderFields connection)
@@ -136,33 +155,100 @@
        :stream (when (= status :stale) (.getInputStream connection))
        :tag tag})))
 
-(defn- fetch-library! [resolver ^URI uri tag]
+;; In dev builds, we replace patterns such as {{defold.extension.spine.url}}
+;; with JVM property values. This ensures we can use a specific branch of an
+;; extension in the integration tests as we develop new features. If there is a
+;; corresponding system property `defold.extension.spine.path` that points to a
+;; valid directory, we will use the contents of said directory in place of the
+;; library url.
+(def ^:private use-local-extension-dir!
+  (if-not (system/defold-dev?)
+    (constantly nil)
+    (let [local-extension-dirs-by-library-uris
+          (into {}
+                (keep
+                  (fn [[key value]]
+                    (when (re-matches #"defold\.extension\.(.+?).url" key)
+                      (when-some [library-uri (url/try-parse value)]
+                        (let [local-path-key (str (subs key 0 (- (count key) 4)) ".path")
+                              local-path (System/getProperty local-path-key)]
+                          (when (some? local-path)
+                            (let [local-dir (io/file local-path)]
+                              (when (.isDirectory local-dir)
+                                (pair library-uri (.getCanonicalFile local-dir))))))))))
+                (System/getProperties))
+
+          write-local-library-zip!
+          (fn write-local-library-zip! [^File output-file ^File library-repo-dir]
+            {:pre [(or (not (.exists output-file)) (.isFile output-file))
+                   (.isDirectory library-repo-dir)]}
+            (let [library-repo-dir (.getCanonicalFile library-repo-dir)]
+              (with-open [zip-output-stream (ZipOutputStream. (io/output-stream output-file))]
+                (reduce
+                  (fn [_ ^File source-file]
+                    (let [zip-entry-pathname (resource/relative-path library-repo-dir source-file)
+                          zip-entry (doto (ZipEntry. zip-entry-pathname)
+                                      (.setSize (.length source-file))
+                                      (.setLastModifiedTime (FileTime/fromMillis (.lastModified source-file))))]
+                      (.putNextEntry zip-output-stream zip-entry)
+                      (io/copy source-file zip-output-stream)))
+                  nil
+                  (fs/file-walker library-repo-dir false ["build"]))
+                (.finish zip-output-stream))))]
+
+      (fn use-local-extension-dir! [^URI library-uri]
+        (when-some [^File local-extension-dir (local-extension-dirs-by-library-uris library-uri)]
+          (let [name (str "local-" (.getName local-extension-dir))]
+            {:status :stale
+             :tag name
+             :new-file (doto (fs/create-temp-file! name ".zip")
+                         (write-local-library-zip! local-extension-dir))}))))))
+
+(defn- fetch-library-raw! [resolver ^URI uri tag]
   (try
-    (let [response (resolver uri tag)]
-      {:status (:status response)
-       :new-file (when (= (:status response) :stale) (dump-to-temp-file! (:stream response)))
-       :tag (:tag response)})
+    (or (use-local-extension-dir! uri)
+        (let [response (resolver uri tag)]
+          {:status (:status response)
+           :new-file (when (= (:status response) :stale) (dump-to-temp-file! (:stream response)))
+           :tag (:tag response)}))
     (catch Exception e
       {:status :error
        :reason :fetch-failed
        :exception e})))
 
+(def ^:private fetch-library!
+  ;; The tests are creating various new projects inside temporary folders. We
+  ;; can speed things up by caching the fetched artifacts, so they do not have
+  ;; to be downloaded over and over for each new project. This assumes the
+  ;; libraries will not be updated on the server during our process lifetime.
+  ;; True during tests, or when using the :cache-libraries lein profile.
+  (if (Boolean/getBoolean "defold.cache.libraries")
+    (fn/memoize fetch-library-raw!)
+    fetch-library-raw!))
+
 (defn- fetch-library-update! [{:keys [tag uri] :as lib-state} resolver render-progress!]
-  (let [progress (progress/make (str "Fetching " uri))]
+  (let [progress (progress/make (localization/message "progress.fetching" {"uri" uri}))]
     (render-progress! progress)
     ;; tag may not be available ...
     (merge lib-state (fetch-library! resolver uri tag))))
 
+(defn- locate-zip-entry-in-zip
+  [^ZipFile zip file-name]
+  (stream-reduce!
+    (fn [_ ^ZipEntry entry]
+      (let [parts (str/split (FilenameUtils/separatorsToUnix (.getName entry)) #"/")
+            name (last parts)]
+        (when (= file-name name)
+          (reduced {:name name
+                    :path (str/join "/" (butlast parts))
+                    :entry entry}))))
+    nil
+    (.stream zip)))
+
 (defn- locate-zip-entry
-  [zip-file file-name]
-  (with-open [zip (ZipInputStream. (io/input-stream zip-file))]
-    (loop [entry (.getNextEntry zip)]
-      (if entry
-        (let [parts (str/split (FilenameUtils/separatorsToUnix (.getName entry)) #"/")
-              name (last parts)]
-          (if (= file-name name)
-            {:name name :path (str/join "/" (butlast parts))}
-            (recur (.getNextEntry zip))))))))
+  [^File zip-file file-name]
+  (with-open [zip (ZipFile. zip-file)]
+    (locate-zip-entry-in-zip zip file-name)))
 
 (defn library-base-path
   [zip-file]
@@ -171,14 +257,25 @@
 
 (defn- validate-updated-library [lib-state]
   (merge lib-state
-         (try
-           (when-not (library-base-path (:new-file lib-state))
-             {:status :error
-              :reason :missing-game-project})
-           (catch Exception e
-             {:status :error
-              :reason :invalid-zip
-              :exception e}))))
+         (let [^File file (:new-file lib-state)]
+           (try
+             (when (and file (.isFile file))
+               (with-open [zip (ZipFile. file)]
+                 (if-let [{^ZipEntry entry :entry} (locate-zip-entry-in-zip zip "game.project")]
+                   (with-open [r (io/reader (.getInputStream zip entry))]
+                     (let [settings (settings-core/parse-settings r)
+                           min-version (settings-core/get-setting settings ["library" "defold_min_version"])]
+                       (when (LibraryUtil/isCurrentEngineOlderThan min-version)
+                         {:status :error
+                          :reason :defold-min-version
+                          :required min-version
+                          :current (str EngineVersion/version)})))
+                   {:status :error
+                    :reason :missing-game-project})))
+             (catch Exception e
+               {:status :error
+                :reason :invalid-zip
+                :exception e})))))
 
 (defn- purge-all-library-versions! [project-directory lib-uri]
   (let [lib-regexp (library-file-regexp lib-uri)
@@ -210,7 +307,7 @@
   * :new-file to downloaded file if any
   * :tag with etag from resolver"
   [resolver render-progress! lib-states]
-  (progress/mapv
+  (progress/progress-mapv
     (fn [lib-state progress]
       (if (= (:status lib-state) :unknown)
         (fetch-library-update! lib-state resolver
@@ -220,17 +317,20 @@
     render-progress!))
 
 (defn validate-updated-libraries
-  "Validate newly downloaded libraries (:status is :stale).
+      "Validate libraries after fetching updates.
 
-  Will update:
-  :status to :error (with :reason, :exception) if the library is invalid"
-  [lib-states]
-  (mapv
-    (fn [lib-state]
-      (if (= (:status lib-state) :stale)
-        (validate-updated-library lib-state)
-        lib-state))
-    lib-states))
+      Will update:
+      - :status to :error (with :reason, :exception) for invalid zips
+      - :status to :error (with :reason :missing-game-project) when game.project is absent
+      - :status to :error (with :reason :defold-min-version) when the library
+        requires a newer Defold version than the running editor"
+      [lib-states]
+      (mapv
+        (fn [lib-state]
+            (if (= (:status lib-state) :stale)
+              (validate-updated-library lib-state)
+              lib-state))
+        lib-states))
 
 (defn install-validated-libraries!
   "Installs the newly downloaded libraries (:status is still :stale).

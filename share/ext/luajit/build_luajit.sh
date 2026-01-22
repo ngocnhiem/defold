@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Copyright 2020-2024 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
 # this file except in compliance with the License.
-# 
+#
 # You may obtain a copy of the License, together with FAQs at
 # https://www.defold.com/license
-# 
+#
 # Unless required by applicable law or agreed to in writing, software distributed
 # under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 # CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -141,8 +141,9 @@ function cmi_patch() {
 
 
 export CONF_TARGET=$1
+PLATFORM=$1
 
-case $1 in
+case ${PLATFORM} in
 	arm64-ios)
 		export TARGET_SYS=iOS
 		;;
@@ -150,12 +151,12 @@ case $1 in
 		export TARGET_SYS=iOS
 		;;
 	armv7-android)
-		# using insttructions from here: file:///Users/mawe/work/defold-ps4/share/ext/luajit/tmp/doc/install.html
+		# using instructions from here: file:///Users/mawe/work/defold-ps4/share/ext/luajit/tmp/doc/install.html
 		export TARGET_SYS=Android
 		function cmi_make() {
 			local host_platform=`uname | awk '{print tolower($0)}'`
 			export NDKBIN=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${host_platform}-x86_64/bin
-			NDKCROSS=$NDKBIN/arm-linux-androideabi-
+			export NDKCROSS=$NDKBIN/arm-linux-androideabi-
 			make -j8 CROSS=$NDKCROSS \
 					STATIC_CC=${CC} DYNAMIC_CC="${CC} ${CFLAGS}" \
 					TARGET_LD=${CC} TARGET_AR="${AR} rcus" \
@@ -164,7 +165,7 @@ case $1 in
 		}
 		;;
 	arm64-android)
-		# using insttructions from here: file:///Users/mawe/work/defold-ps4/share/ext/luajit/tmp/doc/install.html
+		# using instructions from here: file:///Users/mawe/work/defold-ps4/share/ext/luajit/tmp/doc/install.html
 		export TARGET_SYS=Android
 		function cmi_make() {
 			local host_platform=`uname | awk '{print tolower($0)}'`
@@ -177,49 +178,68 @@ case $1 in
 			make install
 		}
 		;;
-	x86_64-linux)
+	x86_64-linux|arm64-linux)
 		export TARGET_SYS=Linux
 		function cmi_make() {
-					export DEFOLD_ARCH="32"
-					export XCFLAGS="-DLUAJIT_DISABLE_GC64 ${COMMON_XCFLAGS}"
+			export ARCH_FLAGS="--target=x86_64-unknown-linux-gnu"
+			if [ "arm64-linux" == "${PLATFORM}" ]; then
+				ARCH_FLAGS="--target=aarch64-unknown-linux-gnu"
+			# 	XCFLAGS="-DLUAJIT_TARGET=LUAJIT_ARCH_ARM ${XCFLAGS}"
+			fi
 
-					export HOST_CC="clang"
-					export HOST_CFLAGS="${COMMON_XCFLAGS} -I."
-					export HOST_ALDFLAGS=""
-					export TARGET_LDFLAGS=""
+			# export DEFOLD_ARCH="32"
+			# export XCFLAGS="-DLUAJIT_DISABLE_GC64 ${COMMON_XCFLAGS}"
 
-					echo "Building $CONF_TARGET ($DEFOLD_ARCH) with '$XCFLAGS'"
-					set -e
-					make -j8
-					make install
-					mv $PREFIX/bin/$CONF_TARGET/${TARGET_FILE} $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
-					make clean
-					set +e
+			# export HOST_CC="clang"
+			# export HOST_CFLAGS="${COMMON_XCFLAGS} -I."
+			# export HOST_LDFLAGS=""
+			# export TARGET_CFLAGS="${ARCH_FLAGS}"
+			# export TARGET_LDFLAGS="${ARCH_FLAGS}"
 
-					export DEFOLD_ARCH="64"
-					export XCFLAGS=" ${COMMON_XCFLAGS}"
+			# echo "Building $CONF_TARGET ($DEFOLD_ARCH) with '$XCFLAGS'"
+			# set -e
+			# make -j8
+			# make install
+			# mv $PREFIX/bin/$CONF_TARGET/${TARGET_FILE} $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
+			# make clean
+			# set +e
 
-					export HOST_CC="clang"
-					export HOST_CFLAGS="${COMMON_XCFLAGS} -m64 -I."
-					export HOST_ALDFLAGS="-m64"
-					export TARGET_LDFLAGS="-m64"
+			# echo "****************************************************"
+			# file $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
+			# echo "****************************************************"
 
-					echo "Building $CONF_TARGET ($DEFOLD_ARCH) with '$XCFLAGS'"
-					set -e
-					make -j8
-					make install
-					mv $PREFIX/bin/$CONF_TARGET/${TARGET_FILE} $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
-					set +e
+			if [ "arm64-linux" == "${PLATFORM}" ]; then
+				XCFLAGS="-DLUAJIT_TARGET=LUAJIT_ARCH_ARM64 ${XCFLAGS}"
+			fi
+
+			export DEFOLD_ARCH="64"
+			export XCFLAGS="${ARCH_FLAGS} ${COMMON_XCFLAGS}"
+
+			export HOST_CC="clang"
+			export HOST_CFLAGS="${COMMON_XCFLAGS} -m64 -I."
+			export HOST_LDFLAGS="-m64"
+			export TARGET_CFLAGS="-m64 ${ARCH_FLAGS}"
+			export TARGET_LDFLAGS="-m64 ${ARCH_FLAGS}"
+
+			echo "Building $CONF_TARGET ($DEFOLD_ARCH) with '$XCFLAGS' and ${ARCH_FLAGS}"
+			set -e
+			make -j8
+			make install
+			mv $PREFIX/bin/$CONF_TARGET/${TARGET_FILE} $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
+
+			echo "****************************************************"
+			file $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
+			echo "****************************************************"
+
+			# remove symlink. we don't need it, and it doesn't extract under git-bash
+			rm -v $PREFIX/bin/$CONF_TARGET/luajit
+			set +e
 		}
 		;;
 	x86_64-macos)
 		export TARGET_SYS=Darwin
 		function cmi_make() {
 			export MACOSX_DEPLOYMENT_TARGET=${OSX_MIN_SDK_VERSION}
-
-			# Since GC32 mode isn't supported on macOS, in the new version.
-			# We'll just use the old built executable from the previous package
-			# (we need the GC32 for generating 32 bit Lua source for 32 bit platforms: win32, armv7-android)
 
 			export DEFOLD_ARCH="64"
 			export TARGET_CFLAGS=""
@@ -229,12 +249,8 @@ case $1 in
 			make -j8
 			make install
 			mv $PREFIX/bin/$CONF_TARGET/${TARGET_FILE} $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
-			set +e
-
-			# grab our old 32 bit executable and store it in the host package
-			set -e
-			tar xvf ${DIR}/luajit-2.1.0-beta3-x86_64-macos.tar.gz
-			cp -v bin/x86_64-macos/luajit-32 $PREFIX/bin/$CONF_TARGET/luajit-32
+			# remove symlink. we don't need it, and it doesn't extract under git-bash
+			rm -v $PREFIX/bin/$CONF_TARGET/luajit
 			set +e
 		}
 		;;
@@ -251,12 +267,8 @@ case $1 in
 			make -j8
 			make install
 			mv $PREFIX/bin/$CONF_TARGET/${TARGET_FILE} $PREFIX/bin/$CONF_TARGET/luajit-${DEFOLD_ARCH}
-			set +e
-
-			# grab our old 32 bit executable and store it in the host package
-			set -e
-			tar xvf ${DIR}/luajit-2.1.0-beta3-x86_64-macos.tar.gz
-			cp -v bin/x86_64-macos/luajit-32 $PREFIX/bin/$CONF_TARGET/luajit-32
+			# remove symlink. we don't need it, and it doesn't extract under git-bash
+			rm -v $PREFIX/bin/$CONF_TARGET/luajit
 			set +e
 		}
 		;;

@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -20,6 +20,7 @@
             [editor.types :as types]
             [schema.core :as s])
   (:import [editor.types AABB Camera Frustum Rect Region]
+           [javafx.scene Cursor]
            [javax.vecmath AxisAngle4d Matrix3d Matrix4d Point2d Point3d Quat4d Tuple2d Tuple3d Tuple4d Vector3d Vector4d]))
 
 (set! *warn-on-reflection* true)
@@ -349,9 +350,10 @@
 
 (defn- dolly-orthographic [camera delta]
   (let [dolly-fn (fn [fov]
-                   (max 0.01 (+ (or fov 0)
-                                (* (or fov 1)
-                                   delta))))]
+                   (min 1000000.0
+                        (max 0.01 (+ (or fov 0)
+                                     (* (or fov 1)
+                                        delta)))))]
     (-> camera
         (update :fov-x dolly-fn)
         (update :fov-y dolly-fn))))
@@ -384,11 +386,22 @@
     (assoc (camera-move camera (.x delta) (.y delta) (.z delta))
       :focus-point (doto focus (.add delta)))))
 
+(defn pan-at-pointer-position
+  "Pans the camera so that the focus point is at the same position as it was before `dolly`."
+  [^Camera camera ^Camera prev-camera ^Region viewport [^double x ^double y]]
+  (let [focus ^Vector4d (:focus-point camera)
+        focus-point-3d (Point3d. (.x focus) (.y focus) (.z focus))
+        point (camera-project camera viewport focus-point-3d)
+        prev-point (camera-project prev-camera viewport focus-point-3d)
+        world (camera-unproject camera viewport x y (.z point))
+        delta (camera-unproject prev-camera viewport x y (.z prev-point))]
+    (.sub delta world)
+    (assoc (camera-move camera (.x delta) (.y delta) (.z delta))
+           :focus-point (doto focus (.add delta)))))
+
 (defn tumble
-  [^Camera camera last-x last-y evt-x evt-y]
+  [^Camera camera dx dy]
   (let [rate 0.005
-        dx (- last-x evt-x)
-        dy (- last-y evt-y)
         focus ^Vector4d (:focus-point camera)
         delta ^Vector4d (doto (Vector4d. ^Point3d (:position camera))
                           (.sub focus))
@@ -402,7 +415,7 @@
                     (.set r)
                     (.transpose))
         q2 ^Quat4d (doto (Quat4d.)
-                     (.set (AxisAngle4d. 1.0  0.0  0.0 (* dy rate))))
+                     (.set (AxisAngle4d. 1.0 0.0 0.0 (* dy rate))))
         y-axis ^Vector4d (doto (Vector4d.))
         q1 ^Quat4d (doto (Quat4d.))]
     (.mul q-delta inv-r q-delta)
@@ -430,6 +443,7 @@
    [:primary   false false true  false] :track
    [:primary   false true  true  false] :dolly
    [:secondary false false true  false] :dolly
+   [:secondary false false false false] :track
    [:middle    false false false false] :track})
 
 (defn camera-movement
@@ -512,7 +526,7 @@
     :perspective (camera-perspective-frame-aabb camera aabb)))
 
 (defn camera-orthographic-realign ^Camera
-  [^Camera camera ^Region viewport ^AABB aabb]
+  [^Camera camera]
   (assert (= :orthographic (:type camera)))
   (let [focus ^Vector4d (:focus-point camera)
         delta ^Vector4d (doto (Vector4d. ^Point3d (:position camera))
@@ -611,60 +625,105 @@
         (set-extents fov-x fov-y z-near z-far)
         filter-fn)))
 
-(defn handle-input [self action user-data]
-  (let [viewport                   (g/node-value self :viewport)
-        movements-enabled          (g/node-value self :movements-enabled)
-        ui-state                   (or (g/user-data self ::ui-state) {:movement :idle})
-        {:keys [last-x last-y]}    ui-state
-        {:keys [x y type delta-y]} action
-        movement                   (if (= type :mouse-pressed)
-                                     (get movements-enabled (camera-movement action) :idle)
-                                     (:movement ui-state))
-        camera                     (g/node-value self :camera)
-        filter-fn                  (or (:filter-fn camera) identity)
-        camera                     (cond-> camera
-                                     (and (= type :scroll)
-                                          (contains? movements-enabled :dolly))
-                                     (dolly (* -0.002 delta-y))
+(defn mode-2d? [camera]
+  (and (= 1.0 (some-> camera camera-view-matrix (.getElement 2 2)))
+       (= :orthographic (:type camera))))
 
-                                     (and (= type :mouse-moved)
-                                          (not (= :idle movement)))
-                                     (cond->
-                                       (= :dolly movement)
-                                       (dolly (* -0.002 (- y last-y)))
-                                       (= :track movement)
-                                       (track viewport last-x last-y x y)
-                                       (= :tumble movement)
-                                       (tumble last-x last-y x y))
+(defn significant-drag?
+  [current-position previous-position]
+  (let [threshold 3]
+    (->> (map (comp abs -) current-position previous-position)
+         (apply max)
+         (< threshold))))
 
-                                     true
-                                     filter-fn)]
+(defn handle-input [self action _user-data]
+  (let [viewport (g/node-value self :viewport)
+        movements-enabled (g/node-value self :movements-enabled)
+        ui-state (or (g/user-data self ::ui-state) {:movement :idle})
+        {:keys [last-x last-y initial-x initial-y]} ui-state
+        {:keys [x y type delta-y alt button]} action
+        is-secondary (= button :secondary)
+        movement (if (= type :mouse-pressed)
+                   (get movements-enabled (camera-movement action) :idle)
+                   (:movement ui-state))
+        camera (g/node-value self :camera)
+        is-significant-drag (or (not= (:button action) :secondary)
+                                (and initial-x
+                                     initial-y
+                                     (significant-drag? [x y] [initial-x initial-y])))
+        is-mode-2d (mode-2d? camera)
+        filter-fn (:filter-fn camera)
+        camera (cond-> camera
+                 (and (= type :scroll)
+                      (contains? movements-enabled :dolly))
+                 (cond->
+                   :always
+                   (dolly (* -0.002 delta-y))
+                   (or (and is-mode-2d (not alt))
+                       (and (not is-mode-2d) alt))
+                   (pan-at-pointer-position camera viewport [x y]))
+
+                 (and (= type :mouse-moved)
+                      (not (= :idle movement)))
+                 (cond->
+                   (= :dolly movement)
+                   (dolly (* -0.002 (- y last-y)))
+                   (and (= :track movement)
+                        is-significant-drag)
+                   (track viewport last-x last-y x y)
+                   (= :tumble movement)
+                   (tumble (- last-x x) (- last-y y)))
+
+                 filter-fn
+                 filter-fn)]
     (g/set-property! self :local-camera camera)
     (case type
       :scroll (if (contains? movements-enabled :dolly) nil action)
       :mouse-pressed (do
-                       (g/user-data-swap! self ::ui-state assoc :last-x x :last-y y :movement movement)
-                       (if (= movement :idle) action nil))
+                       (g/user-data-swap! self ::ui-state assoc
+                                          :last-x x
+                                          :last-y y
+                                          :initial-x x
+                                          :initial-y y
+                                          :movement movement)
+                       (if (or (= movement :idle) is-secondary)
+                         action
+                         (do (when is-significant-drag (g/set-property! self :cursor-type :pan))
+                             nil)))
       :mouse-released (do
-                        (g/user-data-swap! self ::ui-state assoc :last-x nil :last-y nil :movement :idle)
-                        (if (= movement :idle) action nil))
+                        (g/user-data-swap! self ::ui-state assoc
+                                           :last-x nil
+                                           :last-y nil
+                                           :initial-x nil
+                                           :initial-y nil
+                                           :movement :idle)
+                        (g/set-property! self :cursor-type :default)
+                        (if (or (= movement :idle)
+                                (and is-secondary (not is-significant-drag)))
+                          action
+                          nil))
       :mouse-moved (if (not (= :idle movement))
                      (do
                        (g/user-data-swap! self ::ui-state assoc :last-x x :last-y y)
-                       nil)
+                       (when is-significant-drag (g/set-property! self :cursor-type :pan))
+                       (if is-secondary action nil))
                      action)
       action)))
 
 (g/defnode CameraController
   (property name g/Keyword (default :local-camera))
   (property local-camera Camera)
+  (property cached-3d-camera Camera)
+  (property animating g/Bool)
   (property movements-enabled g/Any (default #{:dolly :track :tumble}))
+  (property cursor-type g/Keyword)
 
   (input scene-aabb AABB)
   (input viewport Region)
 
   (output viewport Region (gu/passthrough viewport))
   (output camera Camera :cached produce-camera)
+  (output cursor-type g/Keyword (gu/passthrough cursor-type))
 
   (output input-handler Runnable :cached (g/constantly handle-input)))
 

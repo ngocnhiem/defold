@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -23,28 +23,23 @@
             [editor.fs :as fs]
             [editor.game-project :as game-project]
             [editor.math :as math]
-            [editor.progress :as progress]
             [editor.protobuf :as protobuf]
             [editor.resource :as resource]
+            [editor.resource-node :as resource-node]
             [editor.settings-core :as settings-core]
             [editor.workspace :as workspace]
             [integration.test-util :refer [with-loaded-project] :as test-util]
             [support.test-support :refer [with-clean-system]]
             [util.murmur :as murmur])
-  (:import [com.dynamo.gameobject.proto GameObject$CollectionDesc GameObject$PrototypeDesc]
-           [com.dynamo.gamesys.proto GameSystem$CollectionProxyDesc]
-           [com.dynamo.gamesys.proto TextureSetProto$TextureSet]
-           [com.dynamo.render.proto Font$FontMap Font$GlyphBank]
-           [com.dynamo.particle.proto Particle$ParticleFX]
-           [com.dynamo.gamesys.proto Sound$SoundDesc]
-           [com.dynamo.rig.proto Rig$RigScene Rig$Skeleton Rig$AnimationSet Rig$MeshSet]
-           [com.dynamo.gamesys.proto ModelProto$Model]
-           [com.dynamo.gamesys.proto Physics$CollisionObjectDesc]
-           [com.dynamo.gamesys.proto Label$LabelDesc]
+  (:import [com.dynamo.bob.util TextureUtil]
+           [com.dynamo.gameobject.proto GameObject$CollectionDesc GameObject$PrototypeDesc]
+           [com.dynamo.gamesys.proto GameSystem$CollectionProxyDesc Gui$SceneDesc Label$LabelDesc ModelProto$Model Physics$CollisionObjectDesc Sound$SoundDesc TextureSetProto$TextureSet]
            [com.dynamo.lua.proto Lua$LuaModule]
-           [com.dynamo.gamesys.proto Gui$SceneDesc]
+           [com.dynamo.particle.proto Particle$ParticleFX]
+           [com.dynamo.render.proto Font$FontMap Font$GlyphBank]
+           [com.dynamo.rig.proto Rig$AnimationSet Rig$MeshSet Rig$RigScene Rig$Skeleton]
            [java.io ByteArrayOutputStream File]
-           [org.apache.commons.io FilenameUtils IOUtils]))
+           [org.apache.commons.io IOUtils]))
 
 (def project-path "test/resources/build_project/SideScroller")
 
@@ -64,13 +59,13 @@
                         "collectionc" GameObject$CollectionDesc})
 
 (defn- target [path targets]
-  (let [ext (FilenameUtils/getExtension path)
+  (let [ext (resource/filename->type-ext path)
         pb-class (get target-pb-classes ext)]
     (when (nil? pb-class)
       (throw (ex-info (str "No target-pb-classes entry for extension \"" ext "\", path \"" path "\".")
                       {:ext ext
                        :path path})))
-    (protobuf/bytes->map pb-class (get targets path))))
+    (protobuf/bytes->map-with-defaults pb-class (get targets path))))
 
 (defn- approx? [as bs]
   (every? #(< % 0.00001)
@@ -129,7 +124,7 @@
                 :test-fn (fn [pb targets]
                            (is (= {:color [1.0 1.0 1.0 1.0],
                                    :line-break false,
-                                   :scale [0.0 0.0 0.0 0.0], ; Default from legacy field added by editor.protobuf/field-desc-default. Not in actual Label$LabelDesc.
+                                   :scale [1.0 1.0 1.0 1.0], ; Default from legacy field added by editor.protobuf/field-desc-default. Not in actual Label$LabelDesc.
                                    :blend-mode :blend-mode-alpha,
                                    :leading 1.0,
                                    :font "/builtins/fonts/default.fontc",
@@ -207,7 +202,7 @@
 (defn- run-pb-case [case content-by-source content-by-target]
   (testing (str "Testing " (:label case))
            (let [pb         (some->> (get content-by-source (:path case))
-                              (protobuf/bytes->map (:pb-class case)))
+                                     (protobuf/bytes->map-with-defaults (:pb-class case)))
                  test-fn    (:test-fn case)
                  res-fields [:sound]]
              (when test-fn
@@ -239,7 +234,7 @@
            ~'resource-node     (test-util/resource-node ~'project ~path)
            evaluation-context# (g/make-evaluation-context)
            old-artifact-map#   (workspace/artifact-map ~'workspace)
-           ~'build-results     (build/build-project! ~'project ~'resource-node evaluation-context# nil old-artifact-map# progress/null-render-progress!)
+           ~'build-results     (build/build-project! ~'project ~'resource-node old-artifact-map# nil evaluation-context#)
            ~'build-artifacts   (:artifacts ~'build-results)
            ~'_                 (when-not (contains? ~'build-results :error)
                                  (workspace/artifact-map! ~'workspace (:artifact-map ~'build-results))
@@ -287,14 +282,28 @@
 (defn- project-build [project resource-node evaluation-context]
   (let [workspace (project/workspace project)
         old-artifact-map (workspace/artifact-map workspace)
-        build-results (build/build-project! project resource-node evaluation-context nil old-artifact-map progress/null-render-progress!)]
+        build-results (build/build-project! project resource-node old-artifact-map nil evaluation-context)]
     (when-not (contains? build-results :error)
       (workspace/artifact-map! workspace (:artifact-map build-results))
       (workspace/etags! workspace (:etags build-results)))
     build-results))
 
 (defn- project-build-artifacts [project resource-node evaluation-context]
-  (:artifacts (project-build project resource-node evaluation-context)))
+  (let [build-results (project-build project resource-node evaluation-context)
+        error-value (:error build-results)]
+    (if (nil? error-value)
+      (:artifacts build-results)
+      (let [resource (resource-node/resource resource-node)
+            proj-path (resource/proj-path resource)
+            error-message (some :message (tree-seq :causes :causes error-value))]
+        (throw
+          (ex-info
+            (format "Failed to build '%s': %s"
+                    proj-path
+                    error-message)
+            {:resource-node resource-node
+             :resource resource
+             :error-value error-value}))))))
 
 (deftest merge-gos
   (testing "Verify equivalent game objects are merged"
@@ -330,8 +339,8 @@
                                                 (when (or (= "t.texturesetc" (resource/ext resource)) (= "a.texturesetc" (resource/ext resource)))
                                                   [(resource/proj-path resource)
                                                    (:texture
-                                                     (protobuf/bytes->map TextureSetProto$TextureSet
-                                                                          (content-bytes artifact)))])))
+                                                     (protobuf/bytes->map-with-defaults TextureSetProto$TextureSet
+                                                                                        (content-bytes artifact)))])))
                                         build-artifacts)]
 
       (is (= 16 (count textures-by-texture-set)))
@@ -398,11 +407,11 @@
   (testing "Verify raw sound components (.wav or .ogg) are converted to embedded sounds (.sound)"
     (with-build-results "/main/raw_sound.go"
       (let [content    (get content-by-source path)
-            desc       (protobuf/bytes->map GameObject$PrototypeDesc content)
+            desc       (protobuf/bytes->map-with-defaults GameObject$PrototypeDesc content)
             sound-path (get-in desc [:components 0 :component])
-            ext        (FilenameUtils/getExtension sound-path)]
+            ext        (resource/filename->type-ext sound-path)]
         (is (= ext "soundc"))
-        (let [sound-desc (protobuf/bytes->map Sound$SoundDesc (content-by-target sound-path))]
+        (let [sound-desc (protobuf/bytes->map-with-defaults Sound$SoundDesc (content-by-target sound-path))]
           (is (contains? content-by-target (:sound sound-desc))))))))
 
 (defn- first-source [node label]
@@ -455,7 +464,7 @@
   (io/file (workspace/build-path workspace) proj-path))
 
 (defn- abs-project-path [workspace proj-path]
-  (io/file (workspace/project-path workspace) proj-path))
+  (io/file (workspace/project-directory workspace) proj-path))
 
 (defn mtime [^File f]
   (.lastModified f))
@@ -476,23 +485,35 @@
             build-results     (project-build project resource-node (g/make-evaluation-context))]
         (is (instance? internal.graph.error_values.ErrorValue (:error build-results)))))))
 
+(deftest build-cubemap
+  (testing "Building cubemap"
+    (with-build-results "/cubemap/cubemap.cubemap"
+      (let [content (get content-by-source "/cubemap/cubemap.cubemap")
+            desc (protobuf/pb->map-with-defaults (TextureUtil/textureResourceBytesToTextureImage content))
+            first-alternative (first (:alternatives desc))]
+        (is (= 6 (:count desc)))
+        (is (= :type-cubemap (:type desc)))
+        (is (= 6 (count (:mip-map-size-compressed first-alternative))))
+        ;; six sides, where each side is 2x2 RGBA
+        (is (= (* 6 2 2 4) (:data-size first-alternative)))))))
+
 (deftest build-font
   (testing "Building TTF font"
     (with-build-results "/fonts/score.font"
       (let [content (get content-by-source "/fonts/score.font")
-            desc (protobuf/bytes->map Font$FontMap content)
+            desc (protobuf/bytes->map-with-defaults Font$FontMap content)
             glyph-bank-build-path (workspace/build-path workspace (:glyph-bank desc))
             glyph-bank-bytes (content-bytes {:resource glyph-bank-build-path})
-            glyph-bank (protobuf/bytes->map Font$GlyphBank glyph-bank-bytes)]
+            glyph-bank (protobuf/bytes->map-with-defaults Font$GlyphBank glyph-bank-bytes)]
         (is (= 1024 (:cache-width glyph-bank)))
         (is (= 256 (:cache-height glyph-bank))))))
   (testing "Building BMFont"
     (with-build-results "/fonts/gradient.font"
       (let [content (get content-by-source "/fonts/gradient.font")
-            desc (protobuf/bytes->map Font$FontMap content)
+            desc (protobuf/bytes->map-with-defaults Font$FontMap content)
             glyph-bank-build-path (workspace/build-path workspace (:glyph-bank desc))
             glyph-bank-bytes (content-bytes {:resource glyph-bank-build-path})
-            glyph-bank (protobuf/bytes->map Font$GlyphBank glyph-bank-bytes)]
+            glyph-bank (protobuf/bytes->map-with-defaults Font$GlyphBank glyph-bank-bytes)]
         (is (= 1024 (:cache-width glyph-bank)))
         (is (= 512 (:cache-height glyph-bank)))))))
 
@@ -513,9 +534,9 @@
   (with-build-results "/script/props.collection"
     (doseq [[res-path pb decl-path] [["/script/props.script" Lua$LuaModule [:properties]]
                                      ["/script/props.go" GameObject$PrototypeDesc [:components 0 :property-decls]]
-                                     ["/script/props.collection" GameObject$CollectionDesc [:instances 0 :component-properties 0 :property-decls]]]]
+                                     ["/script/props.collection" GameObject$CollectionDesc [:instances 1 :component-properties 0 :property-decls]]]]
       (let [content (get content-by-source res-path)
-            desc (protobuf/bytes->map pb content)
+            desc (protobuf/bytes->map-with-defaults pb content)
             decl (get-in desc decl-path)]
         (is (not-empty (:number-entries decl)))
         (is (not-empty (:hash-entries decl)))
@@ -528,11 +549,11 @@
         (is (not-empty (:hash-values decl)))
         (is (not-empty (:string-values decl)))))
     (let [collection-content (get content-by-source "/script/props.collection")
-          collection-desc (protobuf/bytes->map GameObject$CollectionDesc collection-content)
+          collection-desc (protobuf/bytes->map-with-defaults GameObject$CollectionDesc collection-content)
           instance-map (into {} (map (juxt :id identity) (:instances collection-desc)))
           embedded-props-target (:prototype (instance-map "/embedded_props"))
           embedded-content (content-by-target embedded-props-target)
-          embedded-desc (protobuf/bytes->map GameObject$PrototypeDesc embedded-content)
+          embedded-desc (protobuf/bytes->map-with-defaults GameObject$PrototypeDesc embedded-content)
           decl (get-in embedded-desc [:components 0 :property-decls])]
       (is (not-empty (:number-entries decl)))
       (is (not-empty (:hash-entries decl)))
@@ -545,9 +566,9 @@
       (is (not-empty (:hash-values decl)))
       (is (not-empty (:string-values decl)))))
   (with-build-results "/script/sub_props.collection"
-    (doseq [[res-path pb decl-path] [["/script/sub_props.collection" GameObject$CollectionDesc [:instances 0 :component-properties 0 :property-decls]]]]
+    (doseq [[res-path pb decl-path] [["/script/sub_props.collection" GameObject$CollectionDesc [:instances 1 :component-properties 0 :property-decls]]]]
       (let [content (get content-by-source res-path)
-            desc (protobuf/bytes->map pb content)
+            desc (protobuf/bytes->map-with-defaults pb content)
             decl (get-in desc decl-path)]
         (is (not-empty (:number-entries decl)))
         (is (not-empty (:hash-entries decl)))
@@ -562,9 +583,9 @@
     ;; Sub-collections should not be built separately
     (is (not (contains? content-by-source "/script/props.collection"))))
   (with-build-results "/script/sub_sub_props.collection"
-    (doseq [[res-path pb decl-path] [["/script/sub_sub_props.collection" GameObject$CollectionDesc [:instances 0 :component-properties 0 :property-decls]]]]
+    (doseq [[res-path pb decl-path] [["/script/sub_sub_props.collection" GameObject$CollectionDesc [:instances 1 :component-properties 0 :property-decls]]]]
       (let [content (get content-by-source res-path)
-            desc (protobuf/bytes->map pb content)
+            desc (protobuf/bytes->map-with-defaults pb content)
             decl (get-in desc decl-path)]
         (is (not-empty (:number-entries decl)))
         (is (not-empty (:hash-entries decl)))
@@ -582,7 +603,7 @@
 (deftest build-script-properties-override-values
   (with-build-results "/script/override.collection"
     (are [path pb-class val-path expected] (let [content (get content-by-source path)
-                                                 desc (protobuf/bytes->map pb-class content)
+                                                 desc (protobuf/bytes->map-with-defaults pb-class content)
                                                  float-values (get-in desc val-path)]
                                              (= [expected] float-values))
       "/script/override.script"      Lua$LuaModule             [:properties :float-values] 1.0
@@ -590,10 +611,10 @@
       "/script/override.collection"  GameObject$CollectionDesc [:instances 0 :component-properties 0 :property-decls :float-values] 3.0))
   (with-build-results "/script/override_parent.collection"
     (are [path pb-class val-path expected] (let [content (get content-by-source path)
-                                                 desc (protobuf/bytes->map pb-class content)
+                                                 desc (protobuf/bytes->map-with-defaults pb-class content)
                                                  float-values (get-in desc val-path)]
                                              (= [expected] float-values))
-      "/script/override_parent.collection" GameObject$CollectionDesc [:instances 0 :component-properties 0 :property-decls :float-values] 4.0)))
+      "/script/override_parent.collection" GameObject$CollectionDesc [:instances 1 :component-properties 0 :property-decls :float-values] 4.0)))
 
 (deftest build-gui-templates
   ;; Reads from test_project rather than build_project
@@ -604,13 +625,13 @@
           content-by-source (into {} (map #(do [(resource/proj-path (:resource (:resource %))) (content-bytes %)]) build-artifacts))
           content-by-target (into {} (map #(do [(resource/proj-path (:resource %)) (content-bytes %)]) build-artifacts))
           content           (get content-by-source path)
-          desc              (protobuf/pb->map (Gui$SceneDesc/parseFrom content))]
+          desc              (protobuf/pb->map-with-defaults (Gui$SceneDesc/parseFrom content))]
       (is (= ["box" "pie" "sub_scene/sub_box" "box1" "text"] (mapv :id (:nodes desc))))
       (let [sub (get-in desc [:nodes 2])]
         (is (= "layer" (:layer sub)))
         (is (= 0.5 (:alpha sub)))
         (is (= [1.0 1.0 1.0 1.0] (:scale sub)))
-        (is (= [0.0 0.0 0.0 1.0] (:rotation sub)))
+        (is (= [0.0 0.0 0.0 0.0] (:rotation sub)))
         (is (= [1100.0 640.0 0.0 1.0] (:position sub))))
       (is (contains? content-by-source "/graphics/atlas.atlas"))
       (is (contains? content-by-source "/fonts/big_score.font"))
@@ -635,7 +656,7 @@
                        "/main/blob.tilemap"
                        "/collisionobject/tile_map.collisionobject"
                        "/collisionobject/convex_shape.collisionobject"]
-          exp-exts    ["vpc" "fpc" "texturec"]]
+          exp-exts    ["spc" "texturec"]]
       (when (contains? build-results :error)
          (log-errors (:error build-results)))
       (is (not (contains? build-results :error)))
@@ -817,23 +838,30 @@
       (let [br (project-build project game-project (g/make-evaluation-context))]
         (is (not (contains? br :error))))
       (testing "Removing an unreferenced collisionobject should not break the build"
-        (let [f (File. (workspace/project-path workspace) "knight.collisionobject")]
+        (let [f (File. (workspace/project-directory workspace) "knight.collisionobject")]
           (fs/delete-file! f)
           (workspace/resource-sync! workspace))
         (let [br (project-build project game-project (g/make-evaluation-context))]
           (is (not (contains? br :error))))))))
 
 (deftest inexact-path-casing-produces-build-error
-  (with-loaded-project project-path
+  (with-loaded-project "test/resources/inexact_path_casing_project"
     (let [game-project-node (test-util/resource-node project "/game.project")
-          atlas-node (test-util/resource-node project "/background/background.atlas")
-          atlas-image-node (ffirst (g/sources-of atlas-node :image-resources))
-          image-resource (g/node-value atlas-image-node :image)
-          workspace (resource/workspace image-resource)
-          uppercase-image-path (string/upper-case (resource/proj-path image-resource))
-          uppercase-image-resource (workspace/resolve-workspace-resource workspace uppercase-image-path)]
-      (g/set-property! atlas-image-node :image uppercase-image-resource)
-      (let [build-error (:error (project-build project game-project-node (g/make-evaluation-context)))
-            error-message (some :message (tree-seq :causes :causes build-error))]
-        (is (g/error? build-error))
-        (is (= (str "The file '" uppercase-image-path "' could not be found.") error-message))))))
+          build-error (:error (project-build project game-project-node (g/make-evaluation-context)))
+          error-message (some :message (tree-seq :causes :causes build-error))]
+      (is (g/error? build-error))
+      (is (= "The file '/MAIN/BUTTON_CLOUDY.png' could not be found." error-message)))))
+
+(deftest build-process-detects-cyclic-lua-dependencies
+  (with-loaded-project "test/resources/build_cyclic_lua_project"
+    (g/with-auto-evaluation-context evaluation-context
+      (is (= "Dependency cycle detected: '/main/1.lua' -> '/main/2.lua' -> '/main/1.lua'."
+             (->> (build/build-project! project
+                                        (test-util/resource-node project "/game.project")
+                                        (workspace/artifact-map workspace)
+                                        nil
+                                        evaluation-context)
+                  :error
+                  (tree-seq :causes :causes)
+                  (keep :message)
+                  first))))))

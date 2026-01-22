@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -27,8 +27,9 @@
             [editor.graph-util :as gu]
             [editor.resource :as resource]
             [editor.resource-node :as resource-node]
-            [util.coll :as coll])
-  (:import [editor.resource ZipResource]))
+            [util.coll :as coll]))
+
+(set! *warn-on-reflection* true)
 
 (defn print-plan [plan]
   (let [resource-info (fn [r] (pr-str r))
@@ -58,9 +59,6 @@
     (doseq [[node new] (:redirect plan)]
       (println "REDIRECTING:" (resource-node-info node) "TO:" (resource-info new))))
   plan)
-
-(defn- stateful? [resource]
-  (not (:stateless? (resource/resource-type resource))))
 
 (defn- merge-resource-change-plans [& plans]
   (apply merge-with into plans))
@@ -117,20 +115,25 @@
     ;; than simply adding new nodes for the introduced resources.
     (replace-resources-plan plan-info non-moved-added true)))
 
-(defn- resource-may-linger-on-disk? [resource]
-  (instance? ZipResource resource))
-
 (defn- resource-removed-plan [{:keys [removed]} {:keys [move-source-paths resource->old-node]}]
-  ;; Ideally, for stateless (external) resources, we should only have to invalidate-outputs
-  ;; and the next attempt to access the data will cause an appropriate "file not found" error.
-  ;; But since the .zip file that hosts ZipResources may remain cached on disk, those have
-  ;; to be explicitly marked deleted as well. Note that marking a node as deleted will
-  ;; implicitly invalidate its cached outputs.
-  (let [non-moved-removed (remove (comp move-source-paths resource/proj-path) removed)
-        {loadable-removed true stateless-removed false} (group-by stateful? non-moved-removed)
-        {stateless-lingering true stateless-external false} (group-by resource-may-linger-on-disk? stateless-removed)]
-    {:mark-deleted (mapv resource->old-node (concat loadable-removed stateless-lingering))
-     :invalidate-outputs (mapv resource->old-node stateless-external)}))
+  ;; You might think that we should only have to invalidate-outputs for
+  ;; stateless (external) resources, and the next attempt to access the data
+  ;; would cause an appropriate "file not found" error. However, we actually
+  ;; want the node to be marked defective, as we specifically check for this in
+  ;; some places. For example, double-clicking a build error will navigate to
+  ;; the referencing resource rather than the missing resource when the missing
+  ;; resource node is marked defective with a :file-not-found error type.
+  ;;
+  ;; Marking stateless nodes as defective when their resources are deleted is
+  ;; also consistent with what happens to them when we load the project.
+  ;;
+  ;; The additional complexities around ZipResources detailed in the comment in
+  ;; the resource-changed-plan function below also apply.
+  ;;
+  ;; Note that marking a node as deleted will implicitly invalidate its cached
+  ;; outputs, so no need to emit :invalidate-outputs instructions here.
+  (let [non-moved-removed (remove (comp move-source-paths resource/proj-path) removed)]
+    {:mark-deleted (mapv resource->old-node non-moved-removed)}))
 
 (defn- resource-changed-plan [{:keys [changed]}
                               {:keys [move-source-paths
@@ -145,7 +148,7 @@
   ;; one that has the same file - thus, we must update the :resource field of the
   ;; node. Just like a redirect.
   (let [non-moved-changed (remove (comp (some-fn move-source-paths move-target-paths) resource/proj-path) changed)
-        {loadable-changed true stateless-changed false} (group-by stateful? non-moved-changed)
+        {loadable-changed true stateless-changed false} (group-by resource/stateful? non-moved-changed)
         {stateless-swapped true stateless-changed false} (group-by resource-swapped? stateless-changed)]
     (merge-resource-change-plans
       (replace-resources-plan plan-info loadable-changed false)
@@ -180,7 +183,7 @@
 
 (defmethod resource-moved-case-plan [:removed :changed] [_ move-pairs {:keys [resource->old-node]}]
   ;; We don't have to do the resource->changed-resource translation because move target always comes from new snapshot.
-  (let [{loadable-targets-changed true stateless-targets-changed false} (group-by stateful? (map second move-pairs))
+  (let [{loadable-targets-changed true stateless-targets-changed false} (group-by resource/stateful? (map second move-pairs))
         ;; Transfer overrides from old source nodes to the new target node, and from the old loadable target nodes.
         ;; We don't need to bother with stateless targets as those nodes are not replaced.
         transfer-overrides (into (mapv (fn [[source target]] [target (resource->old-node source)]) move-pairs)
@@ -199,7 +202,7 @@
 (defmethod resource-moved-case-plan [:changed :added] [_ move-pairs {:keys [resource->old-node resource-swapped? resource->changed-resource]}]
   ;; Just like in resource-changed-plan, we must handle the case of the actual resource value being updated
   ;; for stateless resources. I.e. redirect instead of invalidate-outputs.
-  (let [{loadable-sources-changed true stateless-sources-changed false} (group-by stateful? (map (comp resource->changed-resource first) move-pairs))
+  (let [{loadable-sources-changed true stateless-sources-changed false} (group-by resource/stateful? (map (comp resource->changed-resource first) move-pairs))
         new (concat loadable-sources-changed (map second move-pairs))
         transfer-overrides (into (mapv (fn [source] [source (resource->old-node source)]) loadable-sources-changed)
                                  (keep (fn [[_ target]] (when-let [old-target-node (resource->old-node target)] [target old-target-node])))
@@ -219,8 +222,8 @@
 (defmethod resource-moved-case-plan [:changed :changed] [_ move-pairs {:keys [resource->old-node resource-swapped? resource->changed-resource]}]
   ;; Just like in resource-changed-plan, we must handle the case of the actual resource value being updated
   ;; for stateless resources. I.e. redirect instead of invalidate-outputs.
-  (let [{loadable-sources-changed true stateless-sources-changed false} (group-by stateful? (map (comp resource->changed-resource first) move-pairs))
-        {loadable-targets-changed true stateless-targets-changed false} (group-by stateful? (map (comp resource->changed-resource second) move-pairs))
+  (let [{loadable-sources-changed true stateless-sources-changed false} (group-by resource/stateful? (map (comp resource->changed-resource first) move-pairs))
+        {loadable-targets-changed true stateless-targets-changed false} (group-by resource/stateful? (map (comp resource->changed-resource second) move-pairs))
         new (concat loadable-sources-changed loadable-targets-changed)
         transfer-overrides (into (mapv (fn [source] [source (resource->old-node source)]) loadable-sources-changed)
                                  (mapv (fn [target] [target (resource->old-node target)]) loadable-targets-changed))
@@ -268,8 +271,17 @@
                   (resource-moved-case-plan case move-pairs plan-info))
                 move-cases))))
 
-(defn resource-change-plan [old-nodes-by-path old-node->old-disk-sha256 {:keys [added removed changed moved] :as changes}]
-  (let [basis (g/now)
+(defn- exclude-extension-changes [moved]
+  ;; It's possible to add an extension to file when renaming it, e.g.,
+  ;; /foo -> /foo.lua
+  ;; We should not redirect such nodes, because different resource extensions
+  ;; might imply different resource node types
+  (filterv #(= (resource/type-ext (first %)) (resource/type-ext (second %))) moved))
+
+(defn resource-change-plan [old-nodes-by-path old-node->old-disk-sha256 changes]
+  (let [changes (update changes :moved exclude-extension-changes)
+        {:keys [added removed changed moved]} changes
+        basis (g/now)
         move-sources (map first moved)
         move-targets (map second moved)
         move-source-paths (into #{} (map resource/proj-path) move-sources)

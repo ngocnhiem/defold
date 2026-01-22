@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -33,7 +33,7 @@ using namespace dmVMath;
 class ScriptTest : public jc_test_base_class
 {
 protected:
-    virtual void SetUp()
+    void SetUp() override
     {
         m_UpdateContext.m_DT = 1.0f / 60.0f;
 
@@ -44,8 +44,12 @@ protected:
 
         m_Factory = dmResource::NewFactory(&params, m_Path);
         ASSERT_NE((dmResource::HFactory)0, m_Factory);
-        m_ScriptContext = dmScript::NewContext(0, m_Factory, true);
+
+        dmScript::ContextParams script_context_params = {};
+        script_context_params.m_Factory = m_Factory;
+        m_ScriptContext = dmScript::NewContext(script_context_params);
         dmScript::Initialize(m_ScriptContext);
+
         m_Register = dmGameObject::NewRegister();
         dmGameObject::Initialize(m_Register, m_ScriptContext);
         m_ModuleContext.m_ScriptContexts.SetCapacity(1);
@@ -69,7 +73,7 @@ protected:
         assert(result == dmMessage::RESULT_OK);
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         dmMessage::DeleteSocket(m_Socket);
         dmGameObject::DeleteCollection(m_Collection);

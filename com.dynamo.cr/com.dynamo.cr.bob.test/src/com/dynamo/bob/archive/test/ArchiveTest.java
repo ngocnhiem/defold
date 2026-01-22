@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -24,7 +24,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,7 +46,6 @@ import com.dynamo.bob.pipeline.graph.ResourceNode;
 import com.dynamo.bob.pipeline.graph.ResourceGraph;
 
 import com.dynamo.liveupdate.proto.Manifest.HashAlgorithm;
-import com.dynamo.liveupdate.proto.Manifest.ResourceEntryFlag;
 
 public class ArchiveTest {
 
@@ -55,11 +53,12 @@ public class ArchiveTest {
     private File outputDarc;
     private File outputIndex;
     private File outputData;
-    private Path resourcePackDir;
 
     private ManifestBuilder manifestBuilder;
 
     private ResourceGraph resourceGraph;
+
+    private Project project;
 
     private String createDummyFile(String dir, String filepath, byte[] data) throws IOException {
         File tmp = new File(Paths.get(FilenameUtils.concat(dir, filepath)).toString());
@@ -106,15 +105,14 @@ public class ArchiveTest {
 
     @Before
     public void setUp() throws Exception {
-        resourceGraph = new ResourceGraph(new Project(new DefaultFileSystem()));
+        project = new Project(new DefaultFileSystem());
+        resourceGraph = new ResourceGraph(project);
 
         contentRoot = Files.createTempDirectory(null).toFile().getAbsolutePath();
         outputDarc = Files.createTempFile("tmp.darc", "").toFile();
 
         outputIndex = Files.createTempFile("tmp.defold", "arci").toFile();
         outputData = Files.createTempFile("tmp.defold", "arcd").toFile();
-
-        resourcePackDir = Files.createTempDirectory("tmp.defold.resourcepack_");
 
         manifestBuilder = new ManifestBuilder();
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_SHA1);
@@ -133,7 +131,7 @@ public class ArchiveTest {
     public void testBuilderAndReader() throws IOException, CompileExceptionError
     {
         // Create
-        ArchiveBuilder ab = new ArchiveBuilder(contentRoot, manifestBuilder, 4);
+        ArchiveBuilder ab = new ArchiveBuilder(contentRoot, manifestBuilder, 4, project);
         ab.add(createDummyFile(contentRoot, "a.txt", "abc123".getBytes()));
         ab.add(createDummyFile(contentRoot, "b.txt", "apaBEPAc e p a".getBytes()));
         ab.add(createDummyFile(contentRoot, "c.txt", "åäöåäöasd".getBytes()));
@@ -143,7 +141,7 @@ public class ArchiveTest {
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
         outFileIndex.setLength(0);
         outFileData.setLength(0);
-        ab.write(outFileIndex, outFileData, resourcePackDir, new ArrayList<String>());
+        ab.write(outFileIndex, outFileData, new ArrayList<String>());
         outFileIndex.close();
         outFileData.close();
 
@@ -157,7 +155,7 @@ public class ArchiveTest {
     public void testEntriesOrder() throws IOException, CompileExceptionError {
 
         // Create
-        ArchiveBuilder ab = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder ab = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
         ab.add(FilenameUtils.separatorsToSystem(createDummyFile(contentRoot, "main/a.txt", "abc123".getBytes())), true, false);
         ab.add(FilenameUtils.separatorsToSystem(createDummyFile(contentRoot, "main2/a.txt", "apaBEPAc e p a".getBytes())), true, false);
         ab.add(FilenameUtils.separatorsToSystem(createDummyFile(contentRoot, "a.txt", "åäöåäöasd".getBytes())), true, false);
@@ -167,7 +165,7 @@ public class ArchiveTest {
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
         outFileIndex.setLength(0);
         outFileData.setLength(0);
-        ab.write(outFileIndex, outFileData, resourcePackDir, new ArrayList<String>());
+        ab.write(outFileIndex, outFileData, new ArrayList<String>());
         outFileIndex.close();
         outFileData.close();
 
@@ -195,7 +193,7 @@ public class ArchiveTest {
 
     @Test
     public void testArchiveIndexAlignment() throws IOException, CompileExceptionError {
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
         for (int i = 1; i < 50; ++i) {
             String filename = "dummy" + Integer.toString(i);
             String content  = "dummy" + Integer.toString(i);
@@ -206,7 +204,7 @@ public class ArchiveTest {
             RandomAccessFile archiveData = new RandomAccessFile(outputData, "rw");
             archiveIndex.setLength(0);
             archiveData.setLength(0);
-            instance.write(archiveIndex, archiveData, resourcePackDir, new ArrayList<String>());
+            instance.write(archiveIndex, archiveData, new ArrayList<String>());
             archiveIndex.close();
             archiveData.close();
 
@@ -233,7 +231,7 @@ public class ArchiveTest {
     public void testLoadResourceData() throws Exception {
         byte[] content = "Hello, world".getBytes();
         String filepath = FilenameUtils.separatorsToSystem(createDummyFile(contentRoot, "resource.tmp", content));
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         byte[] actual = instance.loadResourceData(filepath);
 
@@ -243,7 +241,7 @@ public class ArchiveTest {
     @Test
     public void testCompressResourceData() throws Exception {
         byte[] content = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".getBytes();
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         byte[] expected = { 31, 65, 1, 0, 75, 80, 65, 65, 65, 65, 65 };
         byte[] actual = instance.compressResourceData(content);
@@ -253,7 +251,7 @@ public class ArchiveTest {
 
     @Test
     public void testShouldUseCompressedResourceData() throws Exception {
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         byte[] original = { 10, 10, 10, 10, 10 };
         byte[] compressed = { 10, 10, 10, 10 };
@@ -275,7 +273,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
@@ -287,7 +285,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(2, instance.getArchiveEntrySize());
         assertEquals("/main.collectionproxyc", instance.getArchiveEntry(0).getRelativeFilename());    // 987bcab01b929eb2c07877b224215c92
@@ -301,7 +299,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
@@ -315,7 +313,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(4, instance.getArchiveEntrySize());
         assertEquals("/level1.collectionproxyc", instance.getArchiveEntry(0).getRelativeFilename());  // 617905b1d0e858ca35230357710cf5f2
@@ -331,7 +329,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
@@ -345,7 +343,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(4, instance.getArchiveEntrySize());
         assertEquals("/shared.goc", instance.getArchiveEntry(0).getRelativeFilename());
@@ -361,7 +359,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
@@ -375,7 +373,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(4, instance.getArchiveEntrySize());
         assertEquals("/level1.collectionproxyc", instance.getArchiveEntry(0).getRelativeFilename());  // 617905b1d0e858ca35230357710cf5f2
@@ -391,7 +389,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
         ResourceNode collectionproxy1 = addEntry("level1.collectionproxyc", "beta", instance, collection1);
@@ -404,7 +402,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(4, instance.getArchiveEntrySize());
         assertEquals("/level1.collectionproxyc", instance.getArchiveEntry(0).getRelativeFilename());  // 617905b1d0e858ca35230357710cf5f2
@@ -421,7 +419,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
         ResourceNode collectionproxy1 = addEntry("level1.collectionproxyc", "beta", instance, collection1);
@@ -436,7 +434,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(4, instance.getArchiveEntrySize());
         assertEquals("/level1.collectionproxyc", instance.getArchiveEntry(0).getRelativeFilename());  // 617905b1d0e858ca35230357710cf5f2
@@ -452,7 +450,7 @@ public class ArchiveTest {
         manifestBuilder.setResourceHashAlgorithm(HashAlgorithm.HASH_MD5);
         manifestBuilder.setResourceGraph(resourceGraph);
 
-        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4);
+        ArchiveBuilder instance = new ArchiveBuilder(FilenameUtils.separatorsToSystem(contentRoot), manifestBuilder, 4, project);
 
         ResourceNode root = resourceGraph.getRootNode();
         ResourceNode collection1 = addEntry("main.collectionc", "alpha", instance, root);
@@ -466,7 +464,7 @@ public class ArchiveTest {
         // Test
         RandomAccessFile outFileIndex = new RandomAccessFile(outputIndex, "rw");
         RandomAccessFile outFileData = new RandomAccessFile(outputData, "rw");
-        instance.write(outFileIndex, outFileData, resourcePackDir, excludedResources);
+        instance.write(outFileIndex, outFileData, excludedResources);
 
         assertEquals(2, instance.getArchiveEntrySize());
         assertEquals("/level1.collectionproxyc", instance.getArchiveEntry(0).getRelativeFilename());  // 617905b1d0e858ca35230357710cf5f2

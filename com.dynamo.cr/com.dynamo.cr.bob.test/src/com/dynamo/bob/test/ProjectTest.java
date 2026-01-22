@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -122,6 +122,7 @@ public class ProjectTest {
         libraryUrls.add(new URL("http://localhost:8081/test_lib2.zip"));
         libraryUrls.add(new URL("http://" + BASIC_AUTH + "@localhost:8081/test_lib5.zip"));
         libraryUrls.add(new URL("http://" + BASIC_AUTH_ENV_TOKEN + "@localhost:8081/test_lib6.zip"));
+        libraryUrls.add(new URL("http://localhost:8081/test.zip"));
 
         fileSystem = new MockFileSystem();
         project = new MockProject(fileSystem, Files.createTempDirectory("defold_").toString(), "build/default");
@@ -217,7 +218,7 @@ public class ProjectTest {
         System.out.printf("testMountPointFindSources start");
         project.resolveLibUrls(new NullProgress());
         project.mount(new ClassLoaderResourceScanner());
-        project.findSources(".", null);
+        project.setInputs(Arrays.asList("test_lib2/file2.in", "test_lib1/file1.in", "test_lib6/file6.in", "test_lib5/file5.in"));
         List<TaskResult> results = build("build");
         assertFalse(results.isEmpty());
         for (TaskResult result : results) {
@@ -254,7 +255,7 @@ public class ProjectTest {
         results = filterBuiltins(results);
 
         assertFalse(results.isEmpty());
-        assertEquals(6, results.size());
+        assertEquals(7, results.size());
         System.out.printf("end");
     }
 
@@ -282,6 +283,30 @@ public class ProjectTest {
         assertTrue(results.contains("testdir1"));
         assertTrue(results.contains("testdir2"));
         System.out.printf("end");
+    }
+
+    @Test
+    public void testAllResourcePathsCacheLibrary() throws Exception {
+        project.resolveLibUrls(new NullProgress());
+        project.mount(new ClassLoaderResourceScanner());
+        project.setInputs(Arrays.asList("test/file.in", "builtins/cp_test.in"));
+        List<TaskResult> results = build("resolve", "build");
+        assertEquals(2, results.size());
+        for (TaskResult result : results) {
+            assertTrue(result.isOk());
+        }
+
+        ArrayList<String> pathResults = new ArrayList<String>();
+        project.findResourcePaths("/test_non", pathResults);
+        assertEquals(0, pathResults.size());
+
+        ArrayList<String> pathResults1 = new ArrayList<String>();
+        project.findResourcePaths("/test/file.in", pathResults1);
+        assertEquals(1, pathResults1.size());
+
+        ArrayList<String> pathResults2 = new ArrayList<String>();
+        project.findResourcePaths("/test", pathResults2);
+        assertEquals(1, pathResults2.size());
     }
 
     private class FileHandler extends ResourceHandler {

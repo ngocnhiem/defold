@@ -1,12 +1,12 @@
-;; Copyright 2020-2024 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
 ;; this file except in compliance with the License.
-;; 
+;;
 ;; You may obtain a copy of the License, together with FAQs at
 ;; https://www.defold.com/license
-;; 
+;;
 ;; Unless required by applicable law or agreed to in writing, software distributed
 ;; under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 ;; CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -24,20 +24,24 @@ ordinary paths."
             [editor.dialogs :as dialogs]
             [editor.fs :as fs]
             [editor.library :as library]
+            [editor.localization :as localization]
             [editor.notifications :as notifications]
             [editor.prefs :as prefs]
             [editor.progress :as progress]
+            [editor.protobuf :as protobuf]
             [editor.resource :as resource]
             [editor.resource-watch :as resource-watch]
             [editor.ui :as ui]
             [editor.url :as url]
             [editor.util :as util]
-            [internal.cache :as c]
+            [internal.java :as java]
             [internal.util :as iutil]
             [schema.core :as s]
             [service.log :as log]
-            [util.coll :refer [pair]]
-            [util.digest :as digest])
+            [util.coll :as coll :refer [pair]]
+            [util.digest :as digest]
+            [util.eduction :as e]
+            [util.fn :as fn])
   (:import [clojure.lang DynamicClassLoader]
            [editor.resource FileResource]
            [com.dynamo.bob Platform]
@@ -48,22 +52,19 @@ ordinary paths."
 
 (set! *warn-on-reflection* true)
 
-;; Class loader used when loading editor extensions from libraries.
-;; It's important to use the same class loader, so the type signatures match.
-(def ^DynamicClassLoader class-loader (DynamicClassLoader. (.getContextClassLoader (Thread/currentThread))))
-
-(defn load-class! [class-name]
-  (Class/forName class-name true class-loader))
-
 (def build-dir "/build/default/")
+(def build-html5-dir "/build/default_html5/")
 (def plugins-dir "/build/plugins/")
 
-(defn project-path
+;; SDK api
+(def load-class! java/load-class!)
+
+(defn project-directory
+  "Returns a File representing the canonical path of the project directory."
   (^File [workspace]
-   (g/with-auto-evaluation-context evaluation-context
-     (project-path workspace evaluation-context)))
-  (^File [workspace evaluation-context]
-   (io/as-file (g/node-value workspace :root evaluation-context))))
+   (resource/project-directory (g/unsafe-basis) workspace))
+  (^File [basis workspace]
+   (resource/project-directory basis workspace)))
 
 (defn code-preprocessors
   ([workspace]
@@ -79,28 +80,34 @@ ordinary paths."
   ([workspace evaluation-context]
    (g/node-value workspace :notifications evaluation-context)))
 
+(defn localization [workspace evaluation-context]
+  (g/node-value workspace :localization evaluation-context))
+
 (defn- skip-first-char [path]
   (subs path 1))
 
 (defn build-path
   (^File [workspace]
-   (io/file (project-path workspace) (skip-first-char build-dir)))
+   (io/file (project-directory workspace) (skip-first-char build-dir)))
   (^File [workspace build-resource-path]
    (io/file (build-path workspace) (skip-first-char build-resource-path))))
 
+(defn build-html5-path
+  (^File [workspace]
+   (io/file (project-directory workspace) (skip-first-char build-html5-dir))))
+
 (defn plugin-path
   (^File [workspace]
-   (io/file (project-path workspace) (skip-first-char plugins-dir)))
+   (io/file (project-directory workspace) (skip-first-char plugins-dir)))
   (^File [workspace path]
-   (io/file (project-path workspace) (str (skip-first-char plugins-dir) (skip-first-char path)))))
+   (io/file (project-directory workspace) (str (skip-first-char plugins-dir) (skip-first-char path)))))
 
 (defn as-proj-path
   (^String [workspace file-or-path]
-   (g/with-auto-evaluation-context evaluation-context
-     (as-proj-path workspace file-or-path evaluation-context)))
-  (^String [workspace file-or-path evaluation-context]
+   (as-proj-path (g/now) workspace file-or-path))
+  (^String [basis workspace file-or-path]
    (let [file (io/as-file file-or-path)
-         project-directory (project-path workspace evaluation-context)]
+         project-directory (project-directory basis workspace)]
      (when (fs/below-directory? file project-directory)
        (resource/file->proj-path project-directory file)))))
 
@@ -124,6 +131,7 @@ ordinary paths."
   (resource-hash [this] (resource/resource-hash resource))
   (openable? [this] false)
   (editable? [this] false)
+  (loaded? [this] false)
 
   io/IOFactory
   (make-input-stream [this opts] (io/make-input-stream (File. (resource/abs-path this)) opts))
@@ -134,14 +142,46 @@ ordinary paths."
   io/Coercions
   (as-file [this] (File. (resource/abs-path this))))
 
+(defmethod print-method BuildResource [build-resource ^java.io.Writer w]
+  ;; Avoid evaluating resource-type, since it requires a live system. As a
+  ;; result, the file extension will be taken from the source-resource, and our
+  ;; :build-ext will be ignored.
+  (let [source-resource (:resource build-resource)]
+    (->> (or (resource/proj-path source-resource)
+             (let [prefix (or (:prefix build-resource) "")
+                   suffix (format "%x" (resource/resource-hash source-resource))
+                   source-ext (resource/ext source-resource)]
+               (format "/%s_generated_%s.%s" prefix suffix source-ext)))
+         (pr-str)
+         (format "{:BuildResource %s}")
+         (.write w))))
+
 (def build-resource? (partial instance? BuildResource))
 
+(defn source-resource? [value]
+  (and (resource/resource? value)
+       (not (build-resource? value))))
+
 (defn make-build-resource
-  ([resource]
-   (make-build-resource resource nil))
-  ([resource prefix]
-   (assert (resource/resource? resource))
-   (BuildResource. resource prefix)))
+  ([source-resource]
+   (make-build-resource source-resource nil))
+  ([source-resource prefix]
+   {:pre [(source-resource? source-resource)]}
+   (BuildResource. source-resource prefix)))
+
+(defn counterpart-build-resource
+  "Given a BuildResource, returns its editable or non-editable counterpart if
+  applicable. We use this during build target fusion to ensure embedded
+  resources from editable resources are fused with the equivalent embedded
+  resources from non-editable resources. Returns nil if the BuildResource has no
+  counterpart applicable to build target fusion."
+  [build-resource]
+  {:pre [(build-resource? build-resource)]}
+  (let [source-resource (:resource build-resource)]
+    (assert (source-resource? source-resource))
+    (when (resource/memory-resource? source-resource)
+      (assoc build-resource
+        :resource (resource/counterpart-memory-resource source-resource)))))
 
 (defn sort-resource-tree [{:keys [children] :as tree}]
   (let [sorted-children (->> children
@@ -154,9 +194,9 @@ ordinary paths."
                              vec)]
     (assoc tree :children sorted-children)))
 
-(g/defnk produce-resource-tree [_node-id root resource-snapshot editable-proj-path?]
+(g/defnk produce-resource-tree [_node-id root resource-snapshot editable-proj-path? unloaded-proj-path?]
   (sort-resource-tree
-    (resource/make-file-resource _node-id root (io/as-file root) (:resources resource-snapshot) editable-proj-path?)))
+    (resource/make-file-resource _node-id root (io/as-file root) (:resources resource-snapshot) editable-proj-path? unloaded-proj-path?)))
 
 (g/defnk produce-resource-list [resource-tree]
   (vec (sort-by resource/proj-path util/natural-order (resource/resource-seq resource-tree))))
@@ -198,6 +238,9 @@ ordinary paths."
 (def ^:private editable-resource-type-map-update-fn (make-editable-resource-type-map-update-fn true))
 (def ^:private non-editable-resource-type-map-update-fn (make-editable-resource-type-map-update-fn false))
 
+(defn- default-search-value-fn [node-id _resource evaluation-context]
+  (g/node-value node-id :save-value evaluation-context))
+
 (defn register-resource-type
   "Register new resource type to be handled by the editor
 
@@ -206,8 +249,7 @@ ordinary paths."
             or a coll of strings
 
   Optional kv-args:
-    :node-type          a loaded resource node type; defaults to
-                        editor.placeholder-resource/PlaceholderResourceNode
+    :node-type          a loaded resource node type
     :textual?           whether the resource is textual, default false. This
                         flag affects search in files availability for the
                         resource type and lf/crlf handling on save
@@ -226,14 +268,30 @@ ordinary paths."
     :read-fn            a fn from clojure.java.io/reader-able object (e.g.
                         a resource or a Reader) to a data structure
                         representation of the resource (a source value)
-    :read-raw-fn        similar to :read-fn, but used during sanitization
-    :sanitize-fn        if present, will be applied to read data (from
-                        :read-raw-fn or, if absent, from :read-fn) on loading to
-                        transform the loaded data
     :write-fn           a fn from a data representation of the resource
-                        (a save value) to string
+                        (a save-value) to string
+    :source-value-fn    a fn from a save-value to whatever you want to cache as
+                        the source-value for the resource type. When not
+                        specified, the save-value will be the source-value.
+    :search-value-fn    a fn from node-id, resource and an evaluation-context to
+                        a search-value that can be accepted by the :search-fn in
+                        order to find a matching substring inside the resource.
+                        If not provided, the nodes :save-value will be used.
+    :search-fn          a multi-arity fn used to search the resource for a
+                        matching substring. The first arity should accept a
+                        search string and return a value that can be used by the
+                        second arity to perform the search (typically a regex
+                        Pattern). The second arity should accept a search-value
+                        returned from the :search-value-fn and the value
+                        returned by the first arity, and return a sequence of
+                        match-infos. Each match-info should have a :match-type
+                        and details about the match unique to that :match-type.
+                        This can be used to select the matching sub-region when
+                        the match is opened in an editor view.
     :icon               classpath path to an icon image or project resource path
                         string; default \"icons/32/Icons_29-AT-Unknown.png\"
+    :icon-class         either :design, :script or :property, controls the
+                        resource icon color in UI
     :view-types         vector of alternative views that can be used for
                         resources of the resource type, e.g. :code, :scene,
                         :cljfx-form-view, :text, :html or :default.
@@ -251,31 +309,44 @@ ordinary paths."
                         resource type that is utilized by the automated tests.
                         Must include a :type field that classifies the method of
                         registration for the tests.
-    :label              label for a resource type when shown in the editor
+    :label              label for a resource type when shown in the editor,
+                        either a string or a MessagePattern instance
     :stateless?         whether or not the node stores any state that needs to
                         be reloaded if the resource is modified externally. When
                         true, we can simply invalidate its outputs without
                         replacing the node in the graph. Defaults to true if
                         there is no :load-fn.
+    :lazy-loaded        whether or not we should defer loading of the node until
+                        it is opened in the editor. Currently only supported by
+                        code editor resource nodes, and only for file types that
+                        do not interact with any other nodes in the graph.
+    :allow-unloaded-use Allow references to .defunload:ed resources of this type
+                        from loaded resources. Basically, this is a declaration
+                        that the associated :node-type is well-behaved when
+                        referenced despite its :load-fn never have been invoked.
+                        This involves producing valid build-targets, scene data,
+                        or whatever might be required by the referencing nodes.
     :auto-connect-save-data?    whether changes to the resource are saved
                                 to disc (this can also be enabled in load-fn)
                                 when there is a :write-fn, default true"
-  [workspace & {:keys [textual? language editable ext build-ext node-type load-fn dependencies-fn read-raw-fn sanitize-fn read-fn write-fn icon view-types view-opts tags tag-opts template test-info label stateless? auto-connect-save-data?]}]
+  [workspace & {:keys [textual? language editable ext build-ext node-type load-fn dependencies-fn search-fn search-value-fn source-value-fn read-fn write-fn icon icon-class view-types view-opts tags tag-opts template test-info label stateless? lazy-loaded allow-unloaded-use auto-connect-save-data?]}]
+  {:pre [(or (nil? icon-class) (resource/icon-class->style-class icon-class))]}
   (let [editable (if (nil? editable) true (boolean editable))
         textual (true? textual?)
         resource-type {:textual? textual
                        :language (when textual (or language "plaintext"))
                        :editable editable
                        :editor-openable (some? (some editor-openable-view-type? view-types))
-                       :build-ext (if (nil? build-ext) (str ext "c") build-ext)
                        :node-type node-type
                        :load-fn load-fn
                        :dependencies-fn dependencies-fn
                        :write-fn write-fn
                        :read-fn read-fn
-                       :read-raw-fn (or read-raw-fn read-fn)
-                       :sanitize-fn sanitize-fn
+                       :search-fn search-fn
+                       :search-value-fn (or search-value-fn default-search-value-fn)
+                       :source-value-fn source-value-fn
                        :icon icon
+                       :icon-class icon-class
                        :view-types (mapv (partial get-view-type workspace) view-types)
                        :view-opts view-opts
                        :tags tags
@@ -284,31 +355,28 @@ ordinary paths."
                        :test-info test-info
                        :label label
                        :stateless? (if (nil? stateless?) (nil? load-fn) stateless?)
+                       :lazy-loaded (boolean lazy-loaded)
+                       :allow-unloaded-use (boolean allow-unloaded-use)
                        :auto-connect-save-data? (and editable
                                                      (some? write-fn)
                                                      (not (false? auto-connect-save-data?)))}
         resource-types-by-ext (if (string? ext)
                                 (let [ext (string/lower-case ext)]
-                                  {ext (assoc resource-type :ext ext)})
+                                  {ext (assoc resource-type :ext ext :build-ext (or build-ext (str ext "c")))})
                                 (into {}
                                       (map (fn [ext]
                                              (let [ext (string/lower-case ext)]
-                                               (pair ext (assoc resource-type :ext ext)))))
+                                               (pair ext (assoc resource-type :ext ext :build-ext (or build-ext (str ext "c")))))))
                                       ext))]
     (concat
       (g/update-property workspace :resource-types editable-resource-type-map-update-fn resource-types-by-ext)
       (g/update-property workspace :resource-types-non-editable non-editable-resource-type-map-update-fn resource-types-by-ext))))
 
-(defn- editability->output-label [editability]
-  (case editability
-    :editable :resource-types
-    :non-editable :resource-types-non-editable))
-
 (defn get-resource-type-map
   ([workspace]
-   (g/node-value workspace :resource-types))
+   (resource/resource-types-by-type-ext (g/unsafe-basis) workspace :editable))
   ([workspace editability]
-   (g/node-value workspace (editability->output-label editability))))
+   (resource/resource-types-by-type-ext (g/unsafe-basis) workspace editability)))
 
 (defn get-resource-type
   ([workspace ext]
@@ -316,7 +384,7 @@ ordinary paths."
   ([workspace editability ext]
    (get (get-resource-type-map workspace editability) ext)))
 
-(defn make-embedded-resource [workspace editability ext data]
+(defn make-memory-resource [workspace editability ext data]
   (let [resource-type-map (get-resource-type-map workspace editability)]
     (if-some [resource-type (resource-type-map ext)]
       (resource/make-memory-resource workspace resource-type data)
@@ -325,6 +393,18 @@ ordinary paths."
                       {:type ext
                        :registered-types (into (sorted-set)
                                                (keys resource-type-map))})))))
+
+(defn make-placeholder-resource
+  ([workspace ext]
+   (make-memory-resource workspace :editable ext nil))
+  ([workspace editability ext]
+   (make-memory-resource workspace editability ext nil)))
+
+(defn make-placeholder-build-resource
+  ([workspace ext]
+   (make-build-resource (make-placeholder-resource workspace :editable ext)))
+  ([workspace editability ext]
+   (make-build-resource (make-placeholder-resource workspace editability ext))))
 
 (defn resource-icon [resource]
   (when resource
@@ -339,22 +419,28 @@ ordinary paths."
 
 (defn file-resource
   ([workspace path-or-file]
-   (let [evaluation-context (g/make-evaluation-context {:basis (g/now) :cache c/null-cache})]
-     (file-resource workspace path-or-file evaluation-context)))
-  ([workspace path-or-file evaluation-context]
-   (let [root (g/node-value workspace :root evaluation-context)
-         editable-proj-path? (g/node-value workspace :editable-proj-path? evaluation-context)
-         f (if (instance? File path-or-file)
-             path-or-file
-             (File. (str root path-or-file)))]
-     (resource/make-file-resource workspace root f [] editable-proj-path?))))
+   (file-resource (g/now) workspace path-or-file))
+  ([basis workspace path-or-file]
+   (let [workspace-node (g/node-by-id basis workspace)
+         project-path (g/raw-property-value* basis workspace-node :root)
+         editable-proj-path? (g/raw-property-value* basis workspace-node :editable-proj-path?)
+         unloaded-proj-path? (g/raw-property-value* basis workspace-node :unloaded-proj-path?)
+         file (if (instance? File path-or-file)
+                path-or-file
+                (File. (str project-path path-or-file)))]
+     (resource/make-file-resource workspace project-path file [] editable-proj-path? unloaded-proj-path?))))
 
 (defn find-resource
   ([workspace proj-path]
    (g/with-auto-evaluation-context evaluation-context
      (find-resource workspace proj-path evaluation-context)))
   ([workspace proj-path evaluation-context]
-   (get (g/node-value workspace :resource-map evaluation-context) proj-path)))
+   ;; This is frequently called from property setters, where we don't have a
+   ;; cache. In that case, manually cache the evaluated value in the
+   ;; :tx-data-context atom of the evaluation-context, since this persists
+   ;; throughout the transaction.
+   (let [resources-by-proj-path (g/tx-cached-node-value! workspace :resource-map evaluation-context)]
+     (get resources-by-proj-path proj-path))))
 
 (defn resolve-workspace-resource
   ([workspace path]
@@ -362,12 +448,33 @@ ordinary paths."
      (g/with-auto-evaluation-context evaluation-context
        (or
          (find-resource workspace path evaluation-context)
-         (file-resource workspace path evaluation-context)))))
+         (file-resource (:basis evaluation-context) workspace path)))))
   ([workspace path evaluation-context]
    (when (not-empty path)
      (or
        (find-resource workspace path evaluation-context)
-       (file-resource workspace path evaluation-context)))))
+       (file-resource (:basis evaluation-context) workspace path)))))
+
+(defn make-proj-path->resource-fn [workspace evaluation-context]
+  (let [basis (:basis evaluation-context)
+        workspace-node (g/node-by-id basis workspace)
+        project-path (g/raw-property-value* basis workspace-node :root)
+        editable-proj-path? (g/raw-property-value* basis workspace-node :editable-proj-path?)
+        unloaded-proj-path? (g/raw-property-value* basis workspace-node :unloaded-proj-path?)
+        resources-by-proj-path (g/tx-cached-node-value! workspace :resource-map evaluation-context)
+
+        make-missing-file-resource
+        (fn/memoize
+          (fn make-missing-file-resource [proj-path]
+            (let [file (io/file (str project-path proj-path))]
+              (resource/make-file-resource workspace project-path file [] editable-proj-path? unloaded-proj-path?))))]
+
+    (assert (not (g/error? resources-by-proj-path)))
+    (assert (map? resources-by-proj-path))
+    (fn proj-path->resource [proj-path]
+      (when-not (coll/empty? proj-path)
+        (or (resources-by-proj-path proj-path)
+            (make-missing-file-resource proj-path))))))
 
 (defn- absolute-path [^String path]
   (.startsWith path "/"))
@@ -379,34 +486,64 @@ ordinary paths."
      rel-path
      (str base "/" rel-path))))
 
-(defn resolve-resource [base-resource path]
-  (when-not (empty? path)
-    (let [workspace (:workspace base-resource)
-          path  (if (absolute-path path)
-                  path
-                  (resource/file->proj-path (project-path workspace)
-                                            (.getCanonicalFile (io/file (.getParentFile (io/file base-resource))
-                                                                        path))))]
-      (resolve-workspace-resource workspace path))))
+(defn resolve-resource
+  ([base-resource path]
+   (g/with-auto-evaluation-context evaluation-context
+     (resolve-resource base-resource path evaluation-context)))
+  ([base-resource path evaluation-context]
+   (when-not (empty? path)
+     (let [basis (:basis evaluation-context)
+           workspace (:workspace base-resource)
+           path  (if (absolute-path path)
+                   path
+                   (resource/file->proj-path (project-directory basis workspace)
+                                             (.getCanonicalFile (io/file (.getParentFile (io/file base-resource))
+                                                                         path))))]
+       (resolve-workspace-resource workspace path evaluation-context)))))
 
-(defn- template-path [resource-type]
-  (or (:template resource-type)
-      (some->> resource-type :ext (str "templates/template."))))
+(def ^:private default-user-resource-path "/templates/default.")
+(def ^:private java-resource-path "templates/template.")
 
-(defn- get-template-resource [workspace resource-type]
-  (let [path (template-path resource-type)
-        java-resource (when path (io/resource path))
-        editor-resource (when path (find-resource workspace path))]
-    (or java-resource editor-resource)))
-  
-(defn has-template? [workspace resource-type]
-  (let [resource (get-template-resource workspace resource-type)]
-    (not= resource nil)))
+(defn- get-template-resource [workspace resource-type evaluation-context]
+  (when resource-type
+    (let [resource-path (:template resource-type)
+          ext (:ext resource-type)]
+      (or
+        ;; default user resource
+        (find-resource workspace (str default-user-resource-path ext) evaluation-context)
+        ;; editor resource provided from extensions
+        (when resource-path (find-resource workspace resource-path evaluation-context))
+        ;; java resource
+        (io/resource (str java-resource-path ext))))))
 
-(defn template [workspace resource-type]
-  (when-let [resource (get-template-resource workspace resource-type)]
-    (with-open [f (io/reader resource)]
-      (slurp f))))
+(defn has-template?
+  ([workspace resource-type]
+   (g/with-auto-evaluation-context evaluation-context
+     (has-template? workspace resource-type evaluation-context)))
+  ([workspace resource-type evaluation-context]
+   (some? (get-template-resource workspace resource-type evaluation-context))))
+
+(defn template
+  ([workspace resource-type]
+   (g/with-auto-evaluation-context evaluation-context
+     (template workspace resource-type evaluation-context)))
+  ([workspace resource-type evaluation-context]
+   (when-let [resource (get-template-resource workspace resource-type evaluation-context)]
+     (let [{:keys [read-fn write-fn]} resource-type]
+       (if (and read-fn write-fn)
+         ;; Sanitize the template.
+         (write-fn
+           (with-open [reader (io/reader resource)]
+             (read-fn reader)))
+
+         ;; Just read the file as-is.
+         (with-open [reader (io/reader resource)]
+           (slurp reader)))))))
+
+(defn replace-template-name
+  ^String [^String template ^String name]
+  (let [escaped-name (protobuf/escape-string name)]
+    (string/replace template "{{NAME}}" escaped-name)))
 
 (defn- update-dependency-notifications! [workspace lib-states]
   (let [{:keys [error missing]} (->> lib-states
@@ -416,41 +553,67 @@ ordinary paths."
                                                  (= status :error) (pair :error uri)
                                                  (nil? file) (pair :missing uri)))))
                                      (iutil/group-into {} [] key val))
-        notifications (notifications workspace)]
+        notifications (notifications workspace)
+        min-version-states (into [] (filter #(= :defold-min-version (:reason %))) lib-states)
+        failing-uris (into #{} (map :uri) min-version-states)]
+    ;; Single min-version notification (only first error).
+    (if-let [{:keys [uri required current]} (first min-version-states)]
+      (notifications/show!
+        notifications
+        {:id ::dependencies-min-version
+         :type :error
+         :message (localization/message
+                    "notification.fetch-libraries.min-version.error"
+                    {"uri" (str uri)
+                     "required" (str required)
+                     "current" (str current)})
+         :actions [{:message (localization/message "notification.fetch-libraries.dependencies-error.action.open-game-project")
+                    :on-action #(ui/execute-command
+                                  (ui/contexts (ui/main-scene) true)
+                                  :file.open
+                                  "/game.project")}]})
+      (notifications/close! notifications ::dependencies-min-version))
     (if (pos? (count missing))
       (notifications/show!
         notifications
         {:id ::dependencies-missing
          :type :warning
-         :text (format "The following dependencies are missing:\n%s\nThe project might not work without them.\nTo download, connect to the internet and fetch libraries."
-                       (string/join "\n" (map dialogs/indent-with-bullet missing)))
-         :actions [{:text "Fetch Libraries"
+         :message (localization/message
+                    "notification.fetch-libraries.dependencies-missing.warning"
+                    {"dependencies" (coll/join-to-string "\n" (e/map dialogs/indent-with-bullet missing))})
+         :actions [{:message (localization/message "notification.fetch-libraries.dependencies-changed.action.fetch")
                     :on-action #(ui/execute-command
-                                  (ui/contexts (ui/main-scene))
-                                  :fetch-libraries
+                                  (ui/contexts (ui/main-scene) true)
+                                  :project.fetch-libraries
                                   nil)}]})
       (notifications/close! notifications ::dependencies-missing))
-    (if (pos? (count error))
-      (notifications/show!
-        notifications
-        {:id ::dependencies-error
-         :type :error
-         :text (format "Couldn't install following dependencies:\n%s"
-                       (string/join "\n" (map dialogs/indent-with-bullet error)))
-         :actions [{:text "Open game.project"
-                    :on-action #(ui/execute-command
-                                  (ui/contexts (ui/main-scene))
-                                  :open
-                                  {:resources [(find-resource workspace "/game.project")]})}]})
-      (notifications/close! notifications ::dependencies-error))))
+    (let [other-errors (into [] (remove failing-uris) (or error []))]
+      (if (pos? (count other-errors))
+        (notifications/show!
+          notifications
+          {:id ::dependencies-error
+           :type :error
+           :message (localization/message
+                      "notification.fetch-libraries.dependencies-error.error"
+                      {"dependencies" (coll/join-to-string "\n" (e/map dialogs/indent-with-bullet other-errors))})
+           :actions [{:message (localization/message "notification.fetch-libraries.dependencies-error.action.open-game-project")
+                      :on-action #(ui/execute-command
+                                    (ui/contexts (ui/main-scene) true)
+                                    :file.open
+                                    "/game.project")}]})
+        (notifications/close! notifications ::dependencies-error)))))
 
 (defn set-project-dependencies! [workspace lib-states]
   (g/set-property! workspace :dependencies lib-states)
   (update-dependency-notifications! workspace lib-states)
   lib-states)
 
-(defn dependencies [workspace]
-  (g/node-value workspace :dependency-uris))
+(defn dependencies
+  ([workspace]
+   (g/with-auto-evaluation-context evaluation-context
+     (dependencies workspace evaluation-context)))
+  ([workspace evaluation-context]
+   (g/node-value workspace :dependency-uris evaluation-context)))
 
 (defn dependencies-reachable? [dependencies]
   (let [hosts (into #{} (map url/strip-path) dependencies)]
@@ -470,35 +633,35 @@ ordinary paths."
   (= "clj" (resource/ext resource)))
 
 (defn- load-clojure-plugin! [workspace resource]
-  (log/info :msg (str "Loading plugin " (resource/path resource)))
+  (when-not (Boolean/getBoolean "defold.tests")
+    (log/info :message (str "Loading plugin " (resource/path resource))))
   (try
     (if-let [plugin-fn (load-string (slurp resource))]
       (do
         (plugin-fn workspace)
-        (log/info :msg (str "Loaded plugin " (resource/path resource))))
-      (log/error :msg (str "Unable to load plugin " (resource/path resource))))
+        (when-not (Boolean/getBoolean "defold.tests")
+          (log/info :message (str "Loaded plugin " (resource/path resource)))))
+      (log/error :message (str "Unable to load plugin " (resource/path resource))))
     (catch Exception e
-      (log/error :msg (str "Exception while loading plugin: " (.getMessage e))
+      (log/error :message (str "Exception while loading plugin: " (.getMessage e))
                  :exception e)
       (ui/run-later
         (dialogs/make-info-dialog
-          {:title "Unable to Load Plugin"
+          (g/with-auto-evaluation-context evaluation-context
+            (localization workspace evaluation-context))
+          {:title (localization/message "dialog.plugin-load-error.title")
            :icon :icon/triangle-error
            :always-on-top true
-           :header (format "The editor plugin '%s' is not compatible with this version of the editor. Please edit your project dependencies to refer to a suitable version." (resource/proj-path resource))}))
+           :header (localization/message "dialog.plugin-load-error.header" {"plugin" (resource/proj-path resource)})}))
       false)))
 
-(defn- load-clojure-editor-plugins! [workspace added]
+(defn load-clojure-editor-plugins! [workspace added]
   (->> added
        (filterv is-plugin-clojure-file?)
        ;; FIXME: hack for extension-spine: spineguiext.clj requires spineext.clj
        ;;        that needs to be loaded first
        (sort-by resource/proj-path util/natural-order)
        (run! #(load-clojure-plugin! workspace %))))
-
-(defn- load-java-editor-plugins! [workspace]
-  (let [code-preprocessors (code-preprocessors workspace)]
-    (code.preprocessors/reload-lua-preprocessors! code-preprocessors class-loader)))
 
 ; Determine if the extension has plugins, if so, it needs to be extracted
 
@@ -510,18 +673,20 @@ ordinary paths."
   [resource]
   (some #(= "ext.manifest" (resource/resource-name %)) (resource/children resource)))
 
-(defn- find-parent [resource]
+(defn- find-parent [resource evaluation-context]
   (let [parent-path (resource/parent-proj-path (resource/proj-path resource))]
-    (find-resource (resource/workspace resource) (str parent-path))))
+    (find-resource (resource/workspace resource) (str parent-path) evaluation-context)))
 
-(defn- is-extension-file? [resource]
+(defn- is-extension-file? [resource evaluation-context]
   (or (extension-root? resource)
-      (some-> (find-parent resource) recur)))
+      (some-> (find-parent resource evaluation-context)
+              (recur evaluation-context))))
 
-(defn- is-plugin-file? [resource]
+(defn- is-plugin-file? [resource evaluation-context]
   (and
+    (= :file (resource/source-type resource))
     (string/includes? (resource/proj-path resource) "/plugins/")
-    (is-extension-file? resource)))
+    (is-extension-file? resource evaluation-context)))
 
 (defn- shared-library? [resource]
   (contains? #{"dylib" "dll" "so"} (resource/ext resource)))
@@ -534,7 +699,7 @@ ordinary paths."
     (System/setProperty propertyname newvalue)))
 
 (defn- register-jar-file! [jar-file]
-  (.addURL ^DynamicClassLoader class-loader (io/as-url jar-file)))
+  (.addURL ^DynamicClassLoader java/class-loader (io/as-url jar-file)))
 
 (defn- native-library-parent-dir-allowed? [parent-dir-name]
     (->> (Platform/getHostPlatform)
@@ -613,27 +778,25 @@ ordinary paths."
             (filter #(= :file (resource/source-type %)))
             (:tree (resource/load-zip-resources workspace plugin-file))))))
 
-(defn- unpack-editor-plugins! [workspace changed]
+(defn unpack-editor-plugins! [workspace changed]
   ; Used for unpacking the .jar files and shared libraries (.so, .dylib, .dll) to disc
   ; TODO: Handle removed plugins (e.g. a dependency was removed)
-  (let [{plugin-zips true resources false} (->> changed
-                                                (filter is-plugin-file?)
-                                                (group-by plugin-zip?))]
-    (->> plugin-zips
-         (into []
-               (comp
-                 (map find-parent)
-                 (distinct)
-                 (mapcat resource/children)
-                 (filter plugin-zip?)))
-         (sort-by plugin-zip-priority)
-         (run! #(unpack-plugin-zip! workspace %)))
-    (run! #(unpack-resource! workspace %) resources)))
+  (g/let-ec [[plugin-zips resources]
+             (->> changed
+                  (filter #(is-plugin-file? % evaluation-context))
+                  (coll/separate-by plugin-zip?))
 
-(defn reload-plugins! [workspace touched-resources]
-  (unpack-editor-plugins! workspace touched-resources)
-  (load-java-editor-plugins! workspace)
-  (load-clojure-editor-plugins! workspace touched-resources))
+             plugin-zips
+             (->> plugin-zips
+                  (into []
+                        (comp
+                          (map #(find-parent % evaluation-context))
+                          (distinct)
+                          (mapcat resource/children)
+                          (filter plugin-zip?)))
+                  (sort-by plugin-zip-priority))]
+    (run! #(unpack-plugin-zip! workspace %) plugin-zips)
+    (run! #(unpack-resource! workspace %) resources)))
 
 (defn- sync-snapshot-errors-notifications! [workspace old-errors new-errors]
   (when (or old-errors new-errors)
@@ -641,7 +804,8 @@ ordinary paths."
               (into #{}
                     (comp
                       (filter #(= :collision (:type %)))
-                      (mapcat :collisions))
+                      (mapcat :collisions)
+                      (filter #(re-matches #"^/[^/]*$" (key %))))
                     errors))
             (collision-notification-id [resource-path]
               [::resource-collision-notification resource-path])]
@@ -657,12 +821,13 @@ ordinary paths."
             notifications-node
             {:type :warning
              :id (collision-notification-id resource-path)
-             :text (str "Folder '" resource-path "' is shadowing a folder with the same name"
+             :message (localization/message
                         (case source
-                          :library (str " in a project dependency: " (:library status))
-                          :builtins " in builtins"
-                          :directory ""
-                          ""))}))))))
+                          :library "notification.resource-collision.library.warning"
+                          :builtins "notification.resource-collision.builtins.warning"
+                          "notification.resource-collision.directory.warning")
+                        {"resource" resource-path
+                         "library" (:library status)})}))))))
 
 (defn resource-sync!
   ([workspace]
@@ -670,15 +835,15 @@ ordinary paths."
   ([workspace moved-files]
    (resource-sync! workspace moved-files progress/null-render-progress!))
   ([workspace moved-files render-progress!]
-   (let [snapshot-info (make-snapshot-info workspace (project-path workspace) (dependencies workspace) (snapshot-cache workspace))
+   (let [snapshot-info (make-snapshot-info workspace (project-directory workspace) (dependencies workspace) (snapshot-cache workspace))
          {new-snapshot :snapshot new-map :map new-snapshot-cache :snapshot-cache} snapshot-info]
      (update-snapshot-cache! workspace new-snapshot-cache)
      (resource-sync! workspace moved-files render-progress! new-snapshot new-map)))
   ([workspace moved-files render-progress! new-snapshot new-map]
-   (let [project-path (project-path workspace)
+   (let [project-directory (project-directory workspace)
          moved-proj-paths (keep (fn [[src tgt]]
-                                  (let [src-path (resource/file->proj-path project-path src)
-                                        tgt-path (resource/file->proj-path project-path tgt)]
+                                  (let [src-path (resource/file->proj-path project-directory src)
+                                        tgt-path (resource/file->proj-path project-directory tgt)]
                                     (assert (some? src-path) (str "project does not contain source " (pr-str src)))
                                     (assert (some? tgt-path) (str "project does not contain target " (pr-str tgt)))
                                     (when (not= src-path tgt-path)
@@ -735,13 +900,9 @@ ordinary paths."
                                            (set (map resource/proj-path (:added changes)))))) ; no move-source is in :added
          (try
            (let [listeners @(g/node-value workspace :resource-listeners)
-                 total-progress-size (transduce (map first) + 0 listeners)
-                 added (:added changes)
-                 changed (:changed changes)
-                 all-changed (set/union added changed)]
-             (reload-plugins! workspace all-changed)
+                 total-progress-size (transduce (map first) + 0 listeners)]
              (loop [listeners listeners
-                    parent-progress (progress/make "" total-progress-size)]
+                    parent-progress (progress/make localization/empty-message total-progress-size)]
                (when-some [[progress-span listener] (first listeners)]
                  (resource/handle-changes listener changes-with-moved
                                           (progress/nest-render-progress render-progress! parent-progress progress-span))
@@ -752,12 +913,12 @@ ordinary paths."
      changes)))
 
 (defn fetch-and-validate-libraries [workspace library-uris render-fn]
-  (->> (library/current-library-state (project-path workspace) library-uris)
+  (->> (library/current-library-state (project-directory workspace) library-uris)
        (library/fetch-library-updates library/default-http-resolver render-fn)
        (library/validate-updated-libraries)))
 
 (defn install-validated-libraries! [workspace lib-states]
-  (let [new-lib-states (library/install-validated-libraries! (project-path workspace) lib-states)]
+  (let [new-lib-states (library/install-validated-libraries! (project-directory workspace) lib-states)]
     (set-project-dependencies! workspace new-lib-states)))
 
 (defn add-resource-listener! [workspace progress-span listener]
@@ -780,28 +941,54 @@ ordinary paths."
 (g/defnode Workspace
   (property root g/Str)
   (property dependencies Dependencies)
-  (property opened-files g/Any (default (atom #{})))
-  (property resource-snapshot g/Any)
-  (property resource-listeners g/Any (default (atom [])))
+  (property opened-files g/Any)
+  (property resource-snapshot g/Any (default resource-watch/empty-snapshot))
+  (property resource-listeners g/Any)
   (property disk-sha256s-by-node-id g/Any (default {}))
-  (property view-types g/Any)
+  (property view-types g/Any (default {:default {:id :default}}))
   (property resource-types g/Any)
   (property resource-types-non-editable g/Any)
   (property snapshot-cache g/Any (default {}))
   (property build-settings g/Any)
   (property editable-proj-path? g/Any)
+  (property unloaded-proj-path? g/Any)
+  (property resource-kind-extensions g/Any (default {:atlas ["atlas" "tilesource"]}))
+  (property node-attachments g/Any (default {}))
+  (property localization g/Any)
 
   (input code-preprocessors g/NodeID :cascade-delete)
   (input notifications g/NodeID :cascade-delete)
 
   (output dependency-uris g/Any (g/fnk [dependencies] (mapv :uri dependencies)))
+  (output dependencies g/Any (g/fnk [dependencies] dependencies))
   (output resource-tree FileResource :cached produce-resource-tree)
   (output resource-list g/Any :cached produce-resource-list)
   (output resource-map g/Any :cached produce-resource-map))
 
+(defn node-attachments [basis workspace]
+  (g/raw-property-value basis workspace :node-attachments))
+
+;; SDK api
+(defn register-resource-kind-extension [workspace resource-kind extension]
+  (g/update-property
+    workspace :resource-kind-extensions
+    (fn [extensions-by-resource-kind]
+      (if-some [extensions (extensions-by-resource-kind resource-kind)]
+        (if (neg? (coll/index-of extensions extension))
+          (assoc extensions-by-resource-kind resource-kind (conj extensions extension))
+          extensions-by-resource-kind) ; Already registered, return unaltered.
+        (throw (IllegalArgumentException. (str "Unsupported resource-kind:" resource-kind)))))))
+
+(defn resource-kind-extensions [workspace resource-kind evaluation-context]
+  ;; TODO: This is often abused inside production functions, but this data
+  ;; should really be passed through graph connections.
+  (let [extensions-by-resource-kind (g/node-value workspace :resource-kind-extensions evaluation-context)]
+    (or (extensions-by-resource-kind resource-kind)
+        (throw (IllegalArgumentException. (str "Unsupported resource-kind:" resource-kind))))))
+
 (defn make-build-settings
   [prefs]
-  {:compress-textures? (prefs/get-prefs prefs "general-enable-texture-compression" false)})
+  {:compress-textures? (prefs/get prefs [:build :texture-compression])})
 
 (defn update-build-settings!
   [workspace prefs]
@@ -882,21 +1069,31 @@ ordinary paths."
                   false))
               non-editable-directory-proj-paths)))
 
-(defn make-workspace [graph project-path build-settings workspace-config]
-  (let [editable-proj-path? (if-some [non-editable-directory-proj-paths (not-empty (:non-editable-directories workspace-config))]
+(defn has-non-editable-directories?
+  ([workspace]
+   (has-non-editable-directories? (g/now) workspace))
+  ([basis workspace]
+   (not= fn/constantly-true
+         (g/raw-property-value basis workspace :editable-proj-path?))))
+
+(defn make-workspace [graph project-path build-settings workspace-config localization]
+  (let [project-directory (.getCanonicalFile (io/file project-path))
+        unloaded-proj-path? (resource/defunload-pred project-directory)
+        editable-proj-path? (if-some [non-editable-directory-proj-paths (not-empty (:non-editable-directories workspace-config))]
                               (make-editable-proj-path-predicate non-editable-directory-proj-paths)
-                              (constantly true))]
+                              fn/constantly-true)]
     (first
       (g/tx-nodes-added
         (g/transact
           (g/make-nodes graph
             [workspace [Workspace
-                        :root (.getCanonicalPath (io/file project-path))
-                        :resource-snapshot (resource-watch/empty-snapshot)
-                        :view-types {:default {:id :default}}
+                        :root (.getPath project-directory)
+                        :opened-files (atom #{})
                         :resource-listeners (atom [])
                         :build-settings build-settings
-                        :editable-proj-path? editable-proj-path?]
+                        :editable-proj-path? editable-proj-path?
+                        :unloaded-proj-path? unloaded-proj-path?
+                        :localization localization]
              code-preprocessors code.preprocessors/CodePreprocessorsNode
              notifications notifications/NotificationsNode]
             (concat
@@ -906,22 +1103,24 @@ ordinary paths."
 (defn set-disk-sha256 [workspace node-id disk-sha256]
   {:pre [(g/node-id? workspace)
          (g/node-id? node-id)
-         (digest/sha256-hex? disk-sha256)]}
+         (or (nil? disk-sha256) (digest/sha256-hex? disk-sha256))]}
   (g/update-property workspace :disk-sha256s-by-node-id assoc node-id disk-sha256))
 
 (defn merge-disk-sha256s [workspace disk-sha256s-by-node-id]
   {:pre [(g/node-id? workspace)
          (map? disk-sha256s-by-node-id)
          (every? g/node-id? (keys disk-sha256s-by-node-id))
-         (every? digest/sha256-hex? (vals disk-sha256s-by-node-id))]}
-  (g/update-property workspace :disk-sha256s-by-node-id merge disk-sha256s-by-node-id))
+         (every? #(or (nil? %) (digest/sha256-hex? %)) (vals disk-sha256s-by-node-id))]}
+  (when-not (coll/empty? disk-sha256s-by-node-id)
+    (g/update-property workspace :disk-sha256s-by-node-id into disk-sha256s-by-node-id)))
 
 (defn register-view-type
   "Register a new view type that can be used by resources
 
   Required kv-args:
     :id       keyword identifying the view type
-    :label    a label for the view type shown in the editor
+    :label    a label for the view type shown in the editor, localization
+              MessagePattern or a string
 
   Optional kv-args:
     :make-view-fn          fn of graph, parent (AnchorPane), resource node and
@@ -936,7 +1135,7 @@ ordinary paths."
                            - all opts from resource-type's :view-opts
                            - any extra opts passed from the code
                            if not present, the resource will be opened in
-                           an external editor
+                           the OS-associated application
     :make-preview-fn       fn of graph, resource node, opts, width and height
                            that should return a node id with :image output (with
                            value of type Image); opts is a map with:

@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -142,9 +142,9 @@ Result MemCompare(const uint8_t* digest, uint32_t len, const uint8_t* expected_d
 }
 
 // TODO: Test this...
-uint32_t GetCanonicalPathFromBase(const char* base_dir, const char* relative_dir, char* buf)
+uint32_t GetCanonicalPathFromBase(const char* base_dir, const char* relative_dir, char* buf, uint32_t buf_len)
 {
-    dmSnPrintf(buf, RESOURCE_PATH_MAX, "%s/%s", base_dir, relative_dir);
+    dmSnPrintf(buf, buf_len, "%s/%s", base_dir, relative_dir);
 
     char* source = buf;
     char* dest = buf;
@@ -162,9 +162,9 @@ uint32_t GetCanonicalPathFromBase(const char* base_dir, const char* relative_dir
     return (uint32_t)(dest - buf);
 }
 
-uint32_t GetCanonicalPath(const char* relative_dir, char* buf)
+uint32_t GetCanonicalPath(const char* relative_dir, char* buf, uint32_t buf_len)
 {
-    return GetCanonicalPathFromBase("", relative_dir, buf);
+    return GetCanonicalPathFromBase("", relative_dir, buf, buf_len);
 }
 
 

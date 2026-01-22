@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -22,7 +22,7 @@
 
 namespace dmPlatform
 {
-    struct Window
+    struct dmWindow
     {
         WindowParams m_CreateParams;
         uint32_t     m_WindowWidth;
@@ -36,8 +36,8 @@ namespace dmPlatform
 
     HWindow NewWindow()
     {
-        Window* wnd = new Window();
-        memset(wnd, 0, sizeof(Window));
+        dmWindow* wnd = new dmWindow();
+        memset(wnd, 0, sizeof(dmWindow));
         return wnd;
     }
 
@@ -78,12 +78,32 @@ namespace dmPlatform
         return window->m_WindowHeight;
     }
 
+    bool GetSafeArea(HWindow window, SafeArea* out)
+    {
+        const uint32_t width = GetWindowWidth(window);
+        const uint32_t height = GetWindowHeight(window);
+
+        out->m_X = 0;
+        out->m_Y = 0;
+        out->m_Width = width;
+        out->m_Height = height;
+        out->m_InsetLeft = 0;
+        out->m_InsetTop = 0;
+        out->m_InsetRight = 0;
+        out->m_InsetBottom = 0;
+
+        return true;
+    }
+
     uint32_t GetWindowStateParam(HWindow window, WindowState state)
     {
-        if (state == WINDOW_STATE_OPENED)
+        switch(state)
         {
-            return window->m_WindowOpened;
+            case WINDOW_STATE_OPENED: return window->m_WindowOpened;
+            case WINDOW_STATE_FSAA_SAMPLES: return window->m_CreateParams.m_Samples;
+            default:break;
         }
+
         return 0;
     }
 
@@ -91,6 +111,9 @@ namespace dmPlatform
     {
         return 1.0f;
     }
+
+    void SetWindowTitle(HWindow window, const char* title)
+    {}
 
     void SetWindowSize(HWindow window, uint32_t width, uint32_t height)
     {
@@ -103,6 +126,12 @@ namespace dmPlatform
         }
     }
 
+    void SetWindowPosition(HWindow window, int32_t x, int32_t y)
+    {}
+
+    void ShowWindow(HWindow window)
+    {}
+
     void SetSwapInterval(HWindow window, uint32_t swap_interval)
     {}
 
@@ -110,6 +139,9 @@ namespace dmPlatform
     {}
 
     void PollEvents(HWindow window)
+    {}
+
+    void SwapBuffers(HWindow window)
     {}
 
     void SetDeviceState(HWindow window, DeviceState state, bool op1)
@@ -164,6 +196,7 @@ namespace dmPlatform
                 dmLogWarning("Unable to set device state (%d), unknown state.", (int) state);
                 break;
         }
+        return false;
     }
 
     int32_t TriggerCloseCallback(HWindow window)
@@ -175,6 +208,7 @@ namespace dmPlatform
         return 0;
     }
 
+    const int PLATFORM_KEY_START           = 0;
     const int PLATFORM_JOYSTICK_LAST       = 0;
     const int PLATFORM_KEY_ESC             = 1;
     const int PLATFORM_KEY_F1              = 2;
@@ -245,4 +279,21 @@ namespace dmPlatform
     const int PLATFORM_MOUSE_BUTTON_6      = 8;
     const int PLATFORM_MOUSE_BUTTON_7      = 9;
     const int PLATFORM_MOUSE_BUTTON_8      = 10;
+
+    const int PLATFORM_JOYSTICK_1          = 0;
+    const int PLATFORM_JOYSTICK_2          = 1;
+    const int PLATFORM_JOYSTICK_3          = 2;
+    const int PLATFORM_JOYSTICK_4          = 3;
+    const int PLATFORM_JOYSTICK_5          = 4;
+    const int PLATFORM_JOYSTICK_6          = 5;
+    const int PLATFORM_JOYSTICK_7          = 6;
+    const int PLATFORM_JOYSTICK_8          = 7;
+    const int PLATFORM_JOYSTICK_9          = 8;
+    const int PLATFORM_JOYSTICK_10         = 9;
+    const int PLATFORM_JOYSTICK_11         = 10;
+    const int PLATFORM_JOYSTICK_12         = 11;
+    const int PLATFORM_JOYSTICK_13         = 12;
+    const int PLATFORM_JOYSTICK_14         = 13;
+    const int PLATFORM_JOYSTICK_15         = 14;
+    const int PLATFORM_JOYSTICK_16         = 15;
 }

@@ -1,12 +1,12 @@
-// Copyright 2020-2024 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
 // this file except in compliance with the License.
-// 
+//
 // You may obtain a copy of the License, together with FAQs at
 // https://www.defold.com/license
-// 
+//
 // Unless required by applicable law or agreed to in writing, software distributed
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -53,9 +53,10 @@ static const luaL_reg META_TABLE[] =
 class ScriptMsgTest : public jc_test_base_class
 {
 protected:
-    virtual void SetUp()
+    void SetUp() override
     {
-        m_ScriptContext = dmScript::NewContext(0, 0, true);
+        dmScript::ContextParams script_context_params = {};
+        m_ScriptContext = dmScript::NewContext(script_context_params);
         dmScript::Initialize(m_ScriptContext);
         L = dmScript::GetLuaState(m_ScriptContext);
 
@@ -76,7 +77,7 @@ protected:
         assert(top == lua_gettop(L));
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         lua_pushnil(L);
         dmScript::SetInstance(L);
@@ -388,13 +389,37 @@ TEST_F(ScriptMsgTest, TestURLToString)
     ASSERT_EQ(dmMessage::RESULT_OK, dmMessage::NewSocket("socket", &socket));
     ASSERT_EQ(dmMessage::RESULT_OK, dmMessage::NewSocket("very_very_very_very_very_very_very_very_very_very_very_very_socket", &overflow_socket));
     ASSERT_TRUE(dmScriptTest::RunString(L,
-        "local url = msg.url()\n"
-        "print(tostring(url))\n"
-        "url = msg.url(\"socket\", \"path\", \"test\")\n"
-        "print(tostring(url))\n"
-        "-- overflow\n"
-        "url = msg.url(\"very_very_very_very_very_very_very_very_very_very_very_very_socket\", \"path\", \"test\")\n"
-        "print(tostring(url))\n"
+        "test_msg_fn = function (url, expected)\n"
+        "    local s = tostring(url)\n"
+        "    local e = string.format('url: [%s]', expected)\n"
+        "    if s ~= e then\n"
+        "        print('Expected url:', e)\n"
+        "        print('     but got:', s)\n"
+        "        assert(false)\n"
+        "    else\n"
+        "        print(s)\n"
+        "    end\n"
+        "end\n"
+        "test_msg_regex_fn = function (url, pattern)\n"
+        "    local s = tostring(url)\n"
+        "    local e = string.format('url: [%s]', pattern)\n"
+        "    if string.match(s, e) == nil then\n"
+        "        print('Expected url:', e)\n"
+        "        print('     but got:', s)\n"
+        "        assert(false)\n"
+        "    else\n"
+        "        print(s)\n"
+        "    end\n"
+        "end\n"
+        "test_msg_regex_fn(msg.url(), 'default_socket:<unknown:[0-9]*>#<unknown:[0-9]*>')\n"
+        "test_msg_fn(msg.url('socket', 'path', 'test'), 'socket:path#test')\n"
+        "\n" // test the per part concatenation
+        "local long_s = string.rep('x', 300)\n"
+        "test_msg_fn(msg.url(long_s, 'path', 'test'), long_s .. ':path#test')\n"
+        "\n"
+        // Test the length limit of the stack allocator (currently max 512 chars)
+        // Here the 300+300 won't fit into the allocator, so it'll be 300 + unknown string + "#test"
+        "test_msg_fn(msg.url(long_s, long_s, 'test'), long_s .. ':' .. '<unknown:10406604193357003573>#test')\n"
         ));
     ASSERT_EQ(dmMessage::RESULT_OK, dmMessage::DeleteSocket(socket));
     ASSERT_EQ(dmMessage::RESULT_OK, dmMessage::DeleteSocket(overflow_socket));
@@ -402,9 +427,9 @@ TEST_F(ScriptMsgTest, TestURLToString)
     ASSERT_TRUE(dmScriptTest::RunString(L,
         "local url = msg.url()\n"
         "-- the socket doesn't exist yet\n"
-        "url = msg.url(\"socket_not_exist\", \"path\", \"test\")\n"
-        "print(tostring(url))\n"
-        "assert(url.socket == hash(\"socket_not_exist\"))\n"
+        "url = msg.url('socket_not_exist', 'path', 'test')\n"
+        "test_msg_fn(url, 'socket_not_exist:path#test')\n"
+        "assert(url.socket == hash('socket_not_exist'))\n"
         ));
 
     ASSERT_EQ(top, lua_gettop(L));
@@ -725,7 +750,7 @@ TEST_F(ScriptMsgTest, TestURLCreateBeforeSocket)
 
 TEST_F(ScriptMsgTest, TestPerf)
 {
-    uint64_t time = dmTime::GetTime();
+    uint64_t time = dmTime::GetMonotonicTime();
     uint32_t count = 10000;
     char program[256];
     dmSnPrintf(program, 256,
@@ -735,7 +760,7 @@ TEST_F(ScriptMsgTest, TestPerf)
         "end\n",
         count);
     ASSERT_TRUE(dmScriptTest::RunString(L, program));
-    time = dmTime::GetTime() - time;
+    time = dmTime::GetMonotonicTime() - time;
     printf("Time per post: %.4f\n", time / (double)count);
 }
 
@@ -756,6 +781,8 @@ TEST_F(ScriptMsgTest, TestPostDeletedSocket)
 
 int main(int argc, char **argv)
 {
+    dmHashEnableReverseHash(true);
+
     TestMainPlatformInit();
     dmLog::LogParams params;
     dmLog::LogInitialize(&params);
