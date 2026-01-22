@@ -40,15 +40,13 @@
             [util.eduction :as e]
             [util.fn :as fn]
             [util.path :as path])
-  (:import [com.defold.control LazyTreeItem]
+  (:import [com.defold.control ExtendedTreeViewSkin LazyTreeItem]
            [editor.resource FileResource]
            [java.io File]
            [java.nio.file Path Paths]
-           [javafx.scene.input Clipboard ClipboardContent]
-           [javafx.scene.input DragEvent MouseEvent TransferMode]
            [javafx.scene Node]
            [javafx.scene.control SelectionMode TreeCell TreeItem TreeView]
-           [javafx.scene.input KeyCode KeyEvent MouseEvent]
+           [javafx.scene.input Clipboard ClipboardContent DragEvent KeyCode KeyEvent MouseEvent TransferMode]
            [javafx.stage Stage]
            [org.apache.commons.io FilenameUtils]))
 
@@ -215,7 +213,7 @@
          (.clearSelection)
          (.select tree-item))
        (when scroll?
-         (ui/scroll-to-item! tree-view tree-item))))))
+         (ui/scroll-tree-view-to-center-item! tree-view (.getRow tree-view tree-item)))))))
 
 (defn delete? [selection]
   (and (disk-availability/available?)
@@ -693,11 +691,10 @@
         (auto-expand (.getChildren root) selected-ids)
         (let [count (.getExpandedItemCount tree-view)
               selected-indices (filterv #(selected-ids (tree-item->id (.getTreeItem tree-view %))) (range count))]
-          (when (not (empty? selected-indices))
-            (ui/select-indices! tree-view selected-indices))
-          (when-not (= old-tree-view-ids selected-ids)
-            (when-some [first-item (first (.getSelectedItems selection-model))]
-              (ui/scroll-to-item! tree-view first-item))))))))
+          (when (not (coll/empty? selected-indices))
+            (ui/select-indices! tree-view selected-indices)
+            (when-not (= old-tree-view-ids selected-ids)
+              (ui/scroll-tree-view-to-encompass-selection! tree-view))))))))
 
 (defn- update-tree-view-selection!
   [^TreeView tree-view selected-ids old-tree-view-ids]
@@ -780,14 +777,6 @@
     (when-let [^TreeCell cell (target (.getTarget e))]
       (when (and (not (.isEmpty cell))
                  (.hasFiles db))
-       ;; Auto scrolling
-       (let [view (.getTreeView cell)
-             view-y (.getY (.sceneToLocal view (.getSceneX e) (.getSceneY e)))
-             height (.getHeight (.getBoundsInLocal view))]
-         (when (< view-y 15)
-           (.scrollTo view (dec (.getIndex cell))))
-         (when (> view-y (- height 15))
-           (.scrollTo view (inc (.getIndex cell)))))
        (let [tgt-resource (-> cell (.getTreeItem) (.getValue))]
          (when (allow-resource-move? tgt-resource (.getFiles db))
            ;; Allow move only if the drag source was also the tree view.
@@ -897,9 +886,11 @@
        :on-drag-dropped #(error-reporting/catch-all! (drag-dropped % localization))})
     (doto tree-view
       (.setShowRoot false)
+      (.setSkin (ExtendedTreeViewSkin. tree-view))
       (ui/customize-tree-view! {:double-click-expand? true})
       (ui/bind-double-click! :file.open-selected)
       (ui/bind-key-commands! {"Enter" :file.open-selected})
+      (.addEventFilter DragEvent/DRAG_OVER (ui/event-handler e (ui/handle-tree-view-scroll-on-drag! tree-view e)))
       (.setEventDispatcher
         (ui/event-dispatcher event tail
            ;; by default, TreeView handles F2 as an edit operation. We override
