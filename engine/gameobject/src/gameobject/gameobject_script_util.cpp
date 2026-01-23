@@ -14,6 +14,7 @@
 
 #include "gameobject.h"
 #include "gameobject_private.h"
+#include "gameobject_props.h"
 #include <stdint.h>
 #include <ddf/ddf.h>
 #include <resource/resource.h>
@@ -84,6 +85,7 @@ namespace dmGameObject
 
     int LuaToPropertyOptions(lua_State* L, int index, PropertyOptions* property_options, dmhash_t property_id, bool* index_requested)
     {
+        /*
         luaL_checktype(L, index, LUA_TTABLE);
         lua_pushvalue(L, index);
 
@@ -122,12 +124,14 @@ namespace dmGameObject
         lua_pop(L, 1);
 
         lua_pop(L, 1);
+        */
 
         return 0;
     }
 
     int CheckGetPropertyResult(lua_State* L, const char* module_name, dmGameObject::PropertyResult result, const PropertyDesc& property_desc, dmhash_t property_id, const dmMessage::URL& target, const dmGameObject::PropertyOptions& property_options, bool index_requested)
     {
+        /*
         DM_HASH_REVERSE_MEM(hash_ctx, 512);
         switch (result)
         {
@@ -189,6 +193,7 @@ namespace dmGameObject
             // Should never happen, programmer error
             return luaL_error(L, "%s.get failed with error code %d", module_name, result);
         }
+        */
         return 0;
     }
 
@@ -196,6 +201,7 @@ namespace dmGameObject
     {
         DM_HASH_REVERSE_MEM(hash_ctx, 512);
 
+        /*
         switch (result)
         {
             case dmGameObject::PROPERTY_RESULT_OK:
@@ -252,6 +258,7 @@ namespace dmGameObject
                 // Should never happen, programmer error
                 return luaL_error(L, "go.set failed with error code %d", result);
         }
+        */
 
         return 0;
     }

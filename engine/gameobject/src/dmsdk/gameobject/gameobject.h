@@ -95,6 +95,13 @@ namespace dmGameObject
     typedef struct PropertyContainer* HPropertyContainer;
 
     /*#
+     * Handle to a list of property options
+     * @typedef
+     * @name HPropertyOptions
+     */
+    typedef struct PropertyOptions* HPropertyOptions;
+
+    /*#
      * Opaque handle to component instance
      * @typedef
      * @name HComponent
@@ -318,29 +325,6 @@ namespace dmGameObject
     {
         PROP_VALUE_ARRAY = 0,
         PROP_VALUE_HASHTABLE = 1,
-    };
-
-    /*# Property Options
-     *
-     * Parameters variant that holds key or index for a propertys data structure.
-     *
-     * @struct
-     * @name PropertyOptions
-     * @member m_Index [type:int32_t] The index of the property to set, only applicable if property is array.
-     * @member m_Key [type:dmhash_t] The key of the property to set, only applicable if property is hashtable.
-     * @member m_HasKey [type:uint8_t] A flag if structure contain m_Key value (it can't contain both)
-     */
-    struct PropertyOptions
-    {
-        union
-        {
-            dmhash_t m_Key;
-            int32_t m_Index;
-        };
-
-        uint8_t m_HasKey : 1;
-
-        PropertyOptions();
     };
 
     /*# property variant
@@ -881,6 +865,12 @@ namespace dmGameObject
      * @param path_hash [type:dmhash_t] resource path hash
      */
     void AddDynamicResourceHash(HCollection collection, dmhash_t path_hash);
+
+    uint32_t GetPropertyOptionsCount(HPropertyOptions options);
+
+    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, int index, int32_t* result);
+
+    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, int index, dmhash_t* result);
 
     // These functions are used for profiling functionality
 

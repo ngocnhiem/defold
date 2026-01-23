@@ -632,10 +632,14 @@ namespace dmGameObject
         }
 
         dmGameObject::PropertyOptions property_options;
-        property_options.m_Index = 0;
-        property_options.m_HasKey = 0;
+        // property_options.m_Index = 0;
+        // property_options.m_HasKey = 0;
         bool index_requested = false;
 
+        // TODO
+        return 0;
+
+        /*
         // Options table
         if (lua_gettop(L) > 2)
         {
@@ -674,6 +678,7 @@ namespace dmGameObject
         }
 
         return CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, property_options, index_requested);
+        */
     }
 
     /*# sets a named property of the specified game object or component, or a material constant
@@ -774,6 +779,7 @@ namespace dmGameObject
             }
         }
 
+        /*
         if (lua_istable(L, 3))
         {
             lua_pushvalue(L, 3);
@@ -822,6 +828,7 @@ namespace dmGameObject
 
             return dmGameObject::HandleGoSetResult(L, result, property_id, target_instance, target, property_options);
         }
+        */
 
         return 0;
     }
@@ -1787,7 +1794,7 @@ namespace dmGameObject
             return luaL_error(L, "Could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
 
         dmGameObject::PropertyOptions opt;
-        opt.m_Index = 0;
+        //opt.m_Index = 0;
 
         dmGameObject::PropertyResult res = dmGameObject::CancelAnimations(collection, target_instance, target.m_Fragment, property_id);
 
