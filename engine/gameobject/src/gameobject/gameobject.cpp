@@ -3783,22 +3783,31 @@ namespace dmGameObject
         return PROPERTY_RESULT_OK;
     }
 
-    bool AddPropertyOptionsKey(PropertyOptions* options, dmhash_t key)
+    static inline PropertyOption* NextPropertyOption(PropertyOptions* options)
     {
         if (options->m_OptionsCount >= MAX_PROPERTY_OPTIONS_COUNT)
+            return 0;
+        return &options->m_Options[options->m_OptionsCount++];
+    }
+
+    bool AddPropertyOptionsKey(PropertyOptions* options, dmhash_t key)
+    {
+        PropertyOption* option = NextPropertyOption(options);
+        if (!option)
             return false;
-        options->m_Options[options->m_OptionsCount].m_Key = key;
-        options->m_Options[options->m_OptionsCount].m_HasKey = 1;
-        options->m_OptionsCount++;
+        option->m_Key = key;
+        option->m_HasKey = 1;
+        return true;
     }
 
     bool AddPropertyOptionsIndex(PropertyOptions* options, int32_t index)
     {
-        if (options->m_OptionsCount >= MAX_PROPERTY_OPTIONS_COUNT)
+        PropertyOption* option = NextPropertyOption(options);
+        if (!option)
             return false;
-        options->m_Options[options->m_OptionsCount].m_Index = index;
-        options->m_Options[options->m_OptionsCount].m_HasKey = 0;
-        options->m_OptionsCount++;
+        option->m_Index = index;
+        option->m_HasKey = 0;
+        return true;
     }
 
     // Recreate the instance at the given index with a new prototype.

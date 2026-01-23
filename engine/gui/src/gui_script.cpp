@@ -726,6 +726,7 @@ namespace dmGui
             return 1;
         }
 
+        /*
         dmGameObject::PropertyOptions property_options = {};
         bool index_requested = false;
 
@@ -779,6 +780,8 @@ namespace dmGui
         }
 
         return dmGameObject::CheckGetPropertyResult(L, "gui", property_res, property_desc, property_id, target, property_options, index_requested);
+        */
+        return 0;
     }
 
     /*# sets the named property of a specified gui node
