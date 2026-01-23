@@ -726,14 +726,16 @@ namespace dmGui
             return 1;
         }
 
-        /*
         dmGameObject::PropertyOptions property_options = {};
+        dmGameObject::PropertyOption option = {};
         bool index_requested = false;
 
         if (lua_gettop(L) >= 3)
         {
-            dmGameObject::LuaToPropertyOptions(L, 3, &property_options, property_id, &index_requested);
+            dmGameObject::LuaToPropertyOption(L, 3, &option, &index_requested);
         }
+
+        AddPropertyOption(&property_options, option);
 
         dmMessage::URL target = {};
         dmGameObject::PropertyDesc property_desc;
@@ -763,7 +765,8 @@ namespace dmGui
 
             for (int i = 1; i < array_size; ++i)
             {
-                property_options.m_Index = i;
+                SetPropertyOptionsByIndex(&property_options, 0, i);
+
                 property_res = dmGui::GetMaterialProperty(scene, hnode, property_id, property_desc, &property_options) ?
                         dmGameObject::PROPERTY_RESULT_OK : dmGameObject::PROPERTY_RESULT_NOT_FOUND;
 
@@ -780,8 +783,6 @@ namespace dmGui
         }
 
         return dmGameObject::CheckGetPropertyResult(L, "gui", property_res, property_desc, property_id, target, property_options, index_requested);
-        */
-        return 0;
     }
 
     /*# sets the named property of a specified gui node
@@ -901,14 +902,17 @@ namespace dmGui
         }
 
         dmGameObject::PropertyOptions property_options = {};
+        dmGameObject::PropertyOption option = {};
+
         if (lua_gettop(L) > 3)
         {
-            int options_result = LuaToPropertyOptions(L, 4, &property_options, property_hash, 0);
+            int options_result = LuaToPropertyOption(L, 4, &option, 0);
             if (options_result != 0)
             {
                 return options_result;
             }
         }
+        AddPropertyOption(&property_options, option);
 
         if (dmScript::IsURL(L, 1))
         {

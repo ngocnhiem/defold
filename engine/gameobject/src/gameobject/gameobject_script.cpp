@@ -632,19 +632,18 @@ namespace dmGameObject
         }
 
         dmGameObject::PropertyOptions property_options;
-        // property_options.m_Index = 0;
-        // property_options.m_HasKey = 0;
+        dmGameObject::PropertyOption option = {};
+
         bool index_requested = false;
 
-        // TODO
-        return 0;
-
-        /*
         // Options table
         if (lua_gettop(L) > 2)
         {
-            dmGameObject::LuaToPropertyOptions(L, 3, &property_options, property_id, &index_requested);
+            dmGameObject::LuaToPropertyOption(L, 3, &option, &index_requested);
         }
+
+        AddPropertyOption(&property_options, option);
+
         dmGameObject::PropertyDesc property_desc;
         dmGameObject::PropertyResult result = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, property_options, property_desc);
 
@@ -664,7 +663,7 @@ namespace dmGameObject
             // Get the rest of the array elements and check each result individually
             for (int i = 1; i < property_desc.m_ArrayLength; ++i)
             {
-                property_options.m_Index = i;
+                SetPropertyOptionsByIndex(&property_options, 0, i);
                 result                   = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, property_options, property_desc);
                 handle_go_get_result     = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, property_options, index_requested);
                 if (handle_go_get_result != 1)
@@ -678,7 +677,6 @@ namespace dmGameObject
         }
 
         return CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, property_options, index_requested);
-        */
     }
 
     /*# sets a named property of the specified game object or component, or a material constant
@@ -769,17 +767,20 @@ namespace dmGameObject
             return luaL_error(L, "could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
         }
 
-        dmGameObject::PropertyOptions property_options = {};
+        dmGameObject::PropertyOptions property_options;
+        dmGameObject::PropertyOption option = {};
+
         if (lua_gettop(L) > 3)
         {
-            int options_result = LuaToPropertyOptions(L, 4, &property_options, property_id, 0);
+            int options_result = LuaToPropertyOption(L, 4, &option, 0);
             if (options_result != 0)
             {
                 return options_result;
             }
         }
 
-        /*
+        AddPropertyOption(&property_options, option);
+
         if (lua_istable(L, 3))
         {
             lua_pushvalue(L, 3);
@@ -801,7 +802,7 @@ namespace dmGameObject
                 dmGameObject::PropertyVar property_var;
                 dmGameObject::PropertyResult result = dmGameObject::LuaToVar(L, -1, property_var);
 
-                property_options.m_Index = table_index_lua - 1;
+                SetPropertyOptionsByIndex(&property_options, 0, table_index_lua - 1);
 
                 if (result == PROPERTY_RESULT_OK)
                 {
@@ -828,7 +829,6 @@ namespace dmGameObject
 
             return dmGameObject::HandleGoSetResult(L, result, property_id, target_instance, target, property_options);
         }
-        */
 
         return 0;
     }

@@ -81,6 +81,8 @@ namespace dmGameObject
 
     bool AddPropertyOptionsKey(PropertyOptions* options, dmhash_t key);
     bool AddPropertyOptionsIndex(PropertyOptions* options, int32_t index);
+    bool AddPropertyOption(PropertyOptions* options, PropertyOption option);
+    bool SetPropertyOptionsByIndex(PropertyOptions* options, uint32_t index, int32_t value);
 
     HProperties NewProperties(const NewPropertiesParams& params);
     void DeleteProperties(HProperties properties);

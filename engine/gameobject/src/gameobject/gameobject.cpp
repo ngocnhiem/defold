@@ -3972,6 +3972,52 @@ namespace dmGameObject
         return true;
     }
 
+    bool AddPropertyOption(PropertyOptions* options, PropertyOption option)
+    {
+        PropertyOption* opt = NextPropertyOption(options);
+        if (!opt)
+            return false;
+        *opt = option;
+        return true;
+    }
+
+    bool SetPropertyOptionsByIndex(PropertyOptions* options, uint32_t index, int32_t value)
+    {
+        if (index >= options->m_OptionsCount)
+            return false;
+        PropertyOption* option = &options->m_Options[index];
+        option->m_Index = value;
+        option->m_HasKey = 0;
+        return true;
+    }
+
+    uint32_t GetPropertyOptionsCount(HPropertyOptions options)
+    {
+        if (!options)
+            return 0;
+        return options->m_OptionsCount;
+    }
+
+    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, int index, int32_t* result)
+    {
+        if (!options || index >= options->m_OptionsCount)
+            return PROPERTY_RESULT_NOT_FOUND;
+        if (!options->m_Options[index].m_HasKey)
+            return PROPERTY_RESULT_TYPE_MISMATCH;
+        *result = options->m_Options[index].m_Index;
+        return PROPERTY_RESULT_OK;
+    }
+
+    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, int index, dmhash_t* result)
+    {
+        if (!options || index >= options->m_OptionsCount)
+            return PROPERTY_RESULT_NOT_FOUND;
+        if (!options->m_Options[index].m_HasKey)
+            return PROPERTY_RESULT_TYPE_MISMATCH;
+        *result = options->m_Options[index].m_Key;
+        return PROPERTY_RESULT_OK;
+    }
+
     PropertyResult SetPropertyFromHash(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmhash_t value)
     {
         PropertyOptions options;
