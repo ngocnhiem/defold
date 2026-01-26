@@ -1300,7 +1300,7 @@
   (active? [app-view evaluation-context]
            (active-scene-view app-view evaluation-context))
   (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
-  (run [app-view] (some-> (active-scene-view app-view) 
+  (run [app-view] (some-> (active-scene-view app-view)
                           (realign-camera true))))
 
 (handler/defhandler :scene.set-camera-type :global
@@ -1333,7 +1333,7 @@
   (active? [app-view evaluation-context]
            (active-scene-view app-view evaluation-context))
   (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
-  (run [app-view] (some-> (active-scene-view app-view) 
+  (run [app-view] (some-> (active-scene-view app-view)
                           (realign-camera true)))
   (state [app-view evaluation-context]
          (camera-2d? (active-scene-view app-view evaluation-context)
@@ -1564,57 +1564,62 @@
   (active? [selection] (selection->movable selection))
   (run [selection] (nudge! (selection->movable selection) 10.0 0.0 0.0)))
 
+(def camera-speed 0.1)
+
 (handler/defhandler :scene.camera-move-forward :workbench
   (active? [app-view evaluation-context]
-           (active-scene-view app-view evaluation-context))
-  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
+    (active-scene-view app-view evaluation-context))
+  (enabled? [app-view evaluation-context]
+    (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
-       (when-some [view (active-scene-view app-view)]
-         (let [camera-node (view->camera view)
-               current-camera (g/node-value camera-node :local-camera)
-               forward (c/camera-forward-vector current-camera)
-               offset (doto (Vector3d. forward) (.scale 10.0))
-               new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-           (set-camera! camera-node current-camera new-camera false)))))
+    (when-some [view (active-scene-view app-view)]
+      (let [camera-node (view->camera view)
+            current-camera (g/node-value camera-node :local-camera)
+            forward (c/camera-forward-vector current-camera)
+            offset (doto (Vector3d. forward) (.scale camera-speed))
+            new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+        (set-camera! camera-node current-camera new-camera false)))))
 
 (handler/defhandler :scene.camera-move-backward :workbench
   (active? [app-view evaluation-context]
-           (active-scene-view app-view evaluation-context))
+    (active-scene-view app-view evaluation-context))
   (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
-       (when-some [view (active-scene-view app-view)]
-         (let [camera-node (view->camera view)
-               current-camera (g/node-value camera-node :local-camera)
-               forward (c/camera-forward-vector current-camera)
-               offset (doto (Vector3d. forward) (.scale -10.0))
-               new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-           (set-camera! camera-node current-camera new-camera false)))))
+    (when-some [view (active-scene-view app-view)]
+      (let [camera-node (view->camera view)
+            current-camera (g/node-value camera-node :local-camera)
+            forward (c/camera-forward-vector current-camera)
+            offset (doto (Vector3d. forward) (.scale (- camera-speed)))
+            new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+        (set-camera! camera-node current-camera new-camera false)))))
 
 (handler/defhandler :scene.camera-move-left :workbench
   (active? [app-view evaluation-context]
-           (active-scene-view app-view evaluation-context))
-  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
+    (active-scene-view app-view evaluation-context))
+  (enabled? [app-view evaluation-context]
+    (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
-       (when-some [view (active-scene-view app-view)]
-         (let [camera-node (view->camera view)
-               current-camera (g/node-value camera-node :local-camera)
-               right (c/camera-right-vector current-camera)
-               offset (doto (Vector3d. right) (.scale -10.0))
-               new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-           (set-camera! camera-node current-camera new-camera false)))))
+    (when-some [view (active-scene-view app-view)]
+      (let [camera-node (view->camera view)
+            current-camera (g/node-value camera-node :local-camera)
+            right (c/camera-right-vector current-camera)
+            offset (doto (Vector3d. right) (.scale (- camera-speed)))
+            new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+        (set-camera! camera-node current-camera new-camera false)))))
 
 (handler/defhandler :scene.camera-move-right :workbench
   (active? [app-view evaluation-context]
-           (active-scene-view app-view evaluation-context))
-  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
+    (active-scene-view app-view evaluation-context))
+  (enabled? [app-view evaluation-context]
+    (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
-       (when-some [view (active-scene-view app-view)]
-         (let [camera-node (view->camera view)
-               current-camera (g/node-value camera-node :local-camera)
-               right (c/camera-right-vector current-camera)
-               offset (doto (Vector3d. right) (.scale 10.0))
-               new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-           (set-camera! camera-node current-camera new-camera false)))))
+    (when-some [view (active-scene-view app-view)]
+      (let [camera-node (view->camera view)
+            current-camera (g/node-value camera-node :local-camera)
+            right (c/camera-right-vector current-camera)
+            offset (doto (Vector3d. right) (.scale camera-speed))
+            new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+        (set-camera! camera-node current-camera new-camera false)))))
 
 (defn- handle-key-pressed! [^KeyEvent event]
   ;; Always interpret UP/DOWN/LEFT/RIGHT as move commands because otherwise they

@@ -697,8 +697,8 @@
                                           :movement movement)
                        (if (or (= movement :idle) is-secondary)
                          action
-                         (do (when is-significant-drag 
-                               (g/set-property! self :cursor-type 
+                         (do (when is-significant-drag
+                               (g/set-property! self :cursor-type
                                                 (if is-mode-2d :pan :none)))
                              nil)))
       :mouse-released (do
@@ -716,7 +716,7 @@
       :mouse-moved (if (not (= :idle movement))
                      (do (g/user-data-swap! self ::ui-state assoc :last-x x :last-y y)
                          (when is-significant-drag
-                           (g/set-property! self :cursor-type 
+                           (g/set-property! self :cursor-type
                                             (if is-mode-2d :pan :none)))
                          (if is-secondary action nil))
                      action)
