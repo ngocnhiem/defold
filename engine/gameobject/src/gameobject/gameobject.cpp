@@ -4002,7 +4002,7 @@ namespace dmGameObject
     {
         if (!options || index >= options->m_OptionsCount)
             return PROPERTY_RESULT_NOT_FOUND;
-        if (!options->m_Options[index].m_HasKey)
+        if (options->m_Options[index].m_HasKey)
             return PROPERTY_RESULT_TYPE_MISMATCH;
         *result = options->m_Options[index].m_Index;
         return PROPERTY_RESULT_OK;
