@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -21,9 +21,12 @@
 #include <dmsdk/dlib/dstrings.h>
 
 #include "render/render.h"
-#include "render/font_renderer.h"
 #include "render/render_private.h"
 #include "render/render_script.h"
+#include "render/font/font_renderer.h"
+#include "render/font/font_glyphbank.h"
+#include "font/font.h"
+#include <dmsdk/font/fontcollection.h>
 
 #include "render/render_ddf.h"
 
@@ -51,34 +54,55 @@ namespace
     }
 }
 
-static dmRender::FontGlyph* GetGlyph(uint32_t utf8, void* user_ctx)
+static dmRenderDDF::GlyphBank* CreateGlyphBank(uint32_t max_ascent, uint32_t max_descent, uint32_t glyph_count)
 {
-    dmRender::FontGlyph* glyphs = (dmRender::FontGlyph*)user_ctx;
-    return &glyphs[utf8];
+    dmRenderDDF::GlyphBank* bank = new dmRenderDDF::GlyphBank;
+    memset(bank, 0, sizeof(*bank));
+
+    bank->m_Glyphs.m_Count = glyph_count;
+    bank->m_Glyphs.m_Data = new dmRenderDDF::GlyphBank::Glyph[glyph_count];
+
+    memset(bank->m_Glyphs.m_Data, 0, sizeof(dmRenderDDF::GlyphBank::Glyph) * glyph_count);
+    for (uint32_t i = 0; i < glyph_count; ++i)
+    {
+        bank->m_Glyphs[i].m_Character = i;
+        bank->m_Glyphs[i].m_Width = 1;
+        bank->m_Glyphs[i].m_LeftBearing = 1;
+        bank->m_Glyphs[i].m_Advance = 2;
+        bank->m_Glyphs[i].m_Ascent = 2;
+        bank->m_Glyphs[i].m_Descent = 1;
+    }
+
+    bank->m_MaxAscent = max_ascent;
+    bank->m_MaxDescent = max_descent;
+
+    return bank;
 }
 
-static void* GetGlyphData(uint32_t codepoint, void* user_ctx, uint32_t* out_size, uint32_t* out_compression, uint32_t* out_width, uint32_t* out_height, uint32_t* out_channels)
+static void DestroyGlyphBank(dmRenderDDF::GlyphBank* bank)
 {
-    return 0;
+    delete[] bank->m_Glyphs.m_Data;
+    delete bank;
 }
 
 class dmRenderScriptTest : public jc_test_base_class
 {
 protected:
-    dmPlatform::HWindow          m_Window;
-    dmScript::HContext           m_ScriptContext;
-    dmRender::HRenderContext     m_Context;
-    dmGraphics::HContext         m_GraphicsContext;
-    dmRender::HFontMap           m_SystemFontMap;
-    dmRender::HMaterial          m_FontMaterial;
-    dmRender::FontGlyph          m_Glyphs[128];
+    dmPlatform::HWindow         m_Window;
+    dmScript::HContext          m_ScriptContext;
+    dmRender::HRenderContext    m_Context;
+    dmGraphics::HContext        m_GraphicsContext;
+    dmRender::HFontMap          m_SystemFontMap;
+    dmRender::HMaterial         m_FontMaterial;
+    dmRenderDDF::GlyphBank*     m_GlyphBank;
+    HFont                       m_Font;
 
     dmGraphics::HProgram m_FontProgram;
     dmGraphics::HProgram m_ComputeProgram;
 
     dmRender::HComputeProgram m_Compute;
 
-    virtual void SetUp()
+    void SetUp() override
     {
         dmGraphics::InstallAdapter();
 
@@ -102,23 +126,20 @@ protected:
         m_ScriptContext = dmScript::NewContext(script_context_params);
         dmScript::Initialize(m_ScriptContext);
 
+        m_GlyphBank = CreateGlyphBank(1, 1, 128);
+        m_Font = CreateGlyphBankFont("test.glyph_bankc", m_GlyphBank);
+
+        HFontCollection font_collection = FontCollectionCreate();
+        FontCollectionAddFont(font_collection, m_Font);
+
         dmRender::FontMapParams font_map_params;
         font_map_params.m_CacheWidth = 128;
         font_map_params.m_CacheHeight = 128;
         font_map_params.m_CacheCellWidth = 8;
         font_map_params.m_CacheCellHeight = 8;
-        font_map_params.m_GetGlyph = GetGlyph;
-        font_map_params.m_GetGlyphData = GetGlyphData;
+        font_map_params.m_FontCollection = font_collection;
 
         m_SystemFontMap = dmRender::NewFontMap(m_Context, m_GraphicsContext, font_map_params);
-
-        memset(m_Glyphs, 0, sizeof(m_Glyphs));
-        for (uint32_t i = 0; i < DM_ARRAY_SIZE(m_Glyphs); ++i)
-        {
-            m_Glyphs[i].m_Width = 1;
-            m_Glyphs[i].m_Character = i;
-        }
-        dmRender::SetFontMapUserData(m_SystemFontMap, m_Glyphs);
 
         dmRender::RenderContextParams params;
         params.m_ScriptContext = m_ScriptContext;
@@ -150,16 +171,20 @@ protected:
         m_Compute = dmRender::NewComputeProgram(m_Context, m_ComputeProgram);
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         dmGraphics::DeleteProgram(m_GraphicsContext, m_FontProgram);
         dmGraphics::DeleteProgram(m_GraphicsContext, m_ComputeProgram);
         dmRender::DeleteMaterial(m_Context, m_FontMaterial);
         dmRender::DeleteComputeProgram(m_Context, m_Compute);
 
-        dmGraphics::CloseWindow(m_GraphicsContext);
         dmRender::DeleteRenderContext(m_Context, 0);
         dmRender::DeleteFontMap(m_SystemFontMap);
+
+        FontDestroy(m_Font);
+        DestroyGlyphBank(m_GlyphBank);
+
+        dmGraphics::CloseWindow(m_GraphicsContext);
         dmGraphics::DeleteContext(m_GraphicsContext);
         dmPlatform::CloseWindow(m_Window);
         dmPlatform::DeleteWindow(m_Window);
@@ -1232,16 +1257,25 @@ TEST_F(dmRenderScriptTest, TestAssetHandlesValidRenderTarget)
     const char* script =
         "function init(self)\n"
         "   self.my_rt = render.render_target({[graphics.BUFFER_TYPE_COLOR0_BIT] = { format = graphics.TEXTURE_FORMAT_RGBA, width = 128, height = 128 }})\n"
+        "   self.counter = 0\n"
         "end\n"
         "function update(self)\n"
-        "    render.enable_texture(0, self.my_rt)\n"
-        "    render.set_render_target(self.my_rt)\n"
+        "    self.counter = self.counter + 1"
+        "    if self.counter == 1 then"
+        "       render.enable_texture(0, self.my_rt)\n"
+        "       render.set_render_target(self.my_rt)\n"
+        "    end"
+        "    if self.counter == 2 then"
+        "       render.delete_render_target(self.my_rt)\n"
+        "       self.my_rt = nil\n"
+        "    end\n"
         "end\n";
 
     dmRender::HRenderScript render_script                  = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
     dmRender::HRenderScriptInstance render_script_instance = dmRender::NewRenderScriptInstance(m_Context, render_script);
 
     ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(render_script_instance));
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::UpdateRenderScriptInstance(render_script_instance, 0.0f));
     ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::UpdateRenderScriptInstance(render_script_instance, 0.0f));
 
     dmRender::DeleteRenderScriptInstance(render_script_instance);
@@ -1494,6 +1528,7 @@ TEST_F(dmRenderScriptTest, TestRenderCameraGetSetInfo)
 
     dmRender::DeleteRenderScriptInstance(render_script_instance);
     dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, camera);
 }
 
 TEST_F(dmRenderScriptTest, TestRenderResourceTable)
@@ -1627,6 +1662,371 @@ TEST_F(dmRenderScriptTest, TestRenderResourceTable)
 
     dmRender::DeleteRenderScriptInstance(render_script_instance);
     dmRender::DeleteRenderScript(m_Context, render_script);
+}
+
+TEST_F(dmRenderScriptTest, TestCameraScreenToWorldPerspective)
+{
+    // Create a perspective camera with known parameters
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("test_go");
+    cam_url.m_Fragment = dmHashString64("camera");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+    data.m_Fov                      = 90.0f;
+    data.m_NearZ                    = 1.0f;
+    data.m_FarZ                     = 100.0f;
+    data.m_AspectRatio              = 2.0f; // match window (20/10)
+    data.m_OrthographicZoom         = 1.0f;
+    data.m_OrthographicProjection   = 0;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    // Update camera transform: identity rotation, position at (25, 0, 0)
+    dmVMath::Point3 pos(25.0f, 0.0f, 0.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cams = camera.get_cameras()\n"
+        "    assert(#cams == 1)\n"
+        "    local cam = cams[1]\n"
+        "    local cx = render.get_window_width() / 2\n"
+        "    local cy = render.get_window_height() / 2\n"
+        "    local p = camera.screen_to_world(vmath.vector3(cx, cy, 5), cam)\n"
+        "    assert_near(p.x, 25)\n"
+        "    assert_near(p.y, 0)\n"
+        "    assert_near(p.z, -5)\n"
+        "    local pn = camera.screen_xy_to_world(cx, cy, cam)\n"
+        "    assert_near(pn.x, 25)\n"
+        "    assert_near(pn.y, 0)\n"
+        "    assert_near(pn.z, -camera.get_near_z(cam))\n"
+        "end\n";
+
+    dmRender::HRenderScript                  render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance          inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
+}
+
+TEST_F(dmRenderScriptTest, TestCameraWorldToScreenPerspective)
+{
+    // Perspective camera
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("test_go");
+    cam_url.m_Fragment = dmHashString64("camera");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+    data.m_Fov                      = 90.0f;
+    data.m_NearZ                    = 1.0f;
+    data.m_FarZ                     = 100.0f;
+    data.m_AspectRatio              = 2.0f; // 20/10
+    data.m_OrthographicProjection   = 0;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    dmVMath::Point3 pos(25.0f, 0.0f, 0.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cams = camera.get_cameras()\n"
+        "    assert(#cams == 1)\n"
+        "    local cam = cams[1]\n"
+        "    local cx = render.get_window_width() / 2\n"
+        "    local cy = render.get_window_height() / 2\n"
+        "    -- world at center pixel with depth 5\n"
+        "    local s = camera.world_to_screen(vmath.vector3(25, 0, -5), cam)\n"
+        "    assert_near(s.x, cx)\n"
+        "    assert_near(s.y, cy)\n"
+        "    assert_near(s.z, 5)\n"
+        "    -- near plane center maps back to (cx,cy,near_z)\n"
+        "    local pn = camera.screen_xy_to_world(cx, cy, cam)\n"
+        "    local sn = camera.world_to_screen(pn, cam)\n"
+        "    assert_near(sn.x, cx)\n"
+        "    assert_near(sn.y, cy)\n"
+        "    assert_near(sn.z, camera.get_near_z(cam))\n"
+        "end\n";
+
+    dmRender::HRenderScript         render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
+}
+
+TEST_F(dmRenderScriptTest, TestCameraWorldToScreenOrthographic)
+{
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("test_go");
+    cam_url.m_Fragment = dmHashString64("camera");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+    data.m_NearZ                    = 1.0f;
+    data.m_FarZ                     = 100.0f;
+    data.m_AspectRatio              = 2.0f;
+    data.m_OrthographicProjection   = 1;
+    data.m_OrthographicZoom         = 1.0f;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    dmVMath::Point3 pos(0.0f, 0.0f, 0.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cams = camera.get_cameras()\n"
+        "    assert(#cams == 1)\n"
+        "    local cam = cams[1]\n"
+        "    local cx = render.get_window_width() / 2\n"
+        "    local cy = render.get_window_height() / 2\n"
+        "    local s = camera.world_to_screen(vmath.vector3(0, 0, -camera.get_near_z(cam)), cam)\n"
+        "    assert_near(s.x, cx)\n"
+        "    assert_near(s.y, cy)\n"
+        "    assert_near(s.z, camera.get_near_z(cam))\n"
+        "end\n";
+
+    dmRender::HRenderScript         render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
+}
+
+TEST_F(dmRenderScriptTest, TestCameraScreenWorldRoundtrip)
+{
+    // Perspective camera
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("test_go");
+    cam_url.m_Fragment = dmHashString64("camera");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+    data.m_Fov                      = 60.0f;
+    data.m_NearZ                    = 0.5f;
+    data.m_FarZ                     = 250.0f;
+    data.m_AspectRatio              = 2.0f;
+    data.m_OrthographicProjection   = 0;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    dmVMath::Point3 pos(4.0f, 3.0f, 2.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cam = camera.get_cameras()[1]\n"
+        "    local x, y, z = 8, 3, 7\n"
+        "    local w = camera.screen_to_world(vmath.vector3(x,y,z), cam)\n"
+        "    local s = camera.world_to_screen(w, cam)\n"
+        "    assert_near(s.x, x)\n"
+        "    assert_near(s.y, y)\n"
+        "    assert_near(s.z, z)\n"
+        "end\n";
+
+    dmRender::HRenderScript         render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
+}
+TEST_F(dmRenderScriptTest, TestCameraScreenToWorldOrthographic)
+{
+    // Create an orthographic camera with near=1, far=100
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("test_go");
+    cam_url.m_Fragment = dmHashString64("camera");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+    data.m_Fov                      = 60.0f; // ignored in ortho
+    data.m_NearZ                    = 1.0f;
+    data.m_FarZ                     = 100.0f;
+    data.m_AspectRatio              = 2.0f;
+    data.m_OrthographicZoom         = 1.0f;
+    data.m_OrthographicProjection   = 1;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    // Update matrices with identity transform at origin
+    dmVMath::Point3 pos(0.0f, 0.0f, 0.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cams = camera.get_cameras()\n"
+        "    assert(#cams == 1)\n"
+        "    local cam = cams[1]\n"
+        "    local cx = render.get_window_width() / 2\n"
+        "    local cy = render.get_window_height() / 2\n"
+        "    local pn = camera.screen_to_world(vmath.vector3(cx, cy, camera.get_near_z(cam)), cam)\n"
+        "    assert_near(pn.x, 0)\n"
+        "    assert_near(pn.y, 0)\n"
+        "    assert_near(pn.z, -camera.get_near_z(cam))\n"
+        "    local pf = camera.screen_to_world(vmath.vector3(cx, cy, camera.get_far_z(cam)), cam)\n"
+        "    assert_near(pf.x, 0)\n"
+        "    assert_near(pf.y, 0)\n"
+        "    assert_near(pf.z, -camera.get_far_z(cam))\n"
+        "    local p0 = camera.screen_xy_to_world(cx, cy, cam)\n"
+        "    assert_near(p0.x, 0)\n"
+        "    assert_near(p0.y, 0)\n"
+        "    assert_near(p0.z, -camera.get_near_z(cam))\n"
+        "end\n";
+
+    dmRender::HRenderScript                  render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance          inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
+}
+
+TEST_F(dmRenderScriptTest, TestCameraScreenToWorldViewport)
+{
+    // Orthographic camera with viewport covering left half of the window
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("test_go");
+    cam_url.m_Fragment = dmHashString64("camera");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 0.5f, 1.0f); // left half
+    data.m_Fov                      = 60.0f;
+    data.m_NearZ                    = 1.0f;
+    data.m_FarZ                     = 100.0f;
+    data.m_AspectRatio              = 2.0f;
+    data.m_OrthographicZoom         = 1.0f;
+    data.m_OrthographicProjection   = 1;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    dmVMath::Point3 pos(0.0f, 0.0f, 0.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cams = camera.get_cameras()\n"
+        "    local cam = cams[1]\n"
+        "    local cx = render.get_window_width() * 0.25 -- center of left-half viewport\n"
+        "    local cy = render.get_window_height() * 0.5\n"
+        "    local p = camera.screen_to_world(vmath.vector3(cx, cy, camera.get_near_z(cam)), cam)\n"
+        "    assert_near(p.x, 0)\n"
+        "    assert_near(p.y, 0)\n"
+        "    local p0 = camera.screen_xy_to_world(cx, cy, cam)\n"
+        "    assert_near(p0.x, 0)\n"
+        "    assert_near(p0.y, 0)\n"
+        "    assert_near(p0.z, -camera.get_near_z(cam))\n"
+        "end\n";
+
+    dmRender::HRenderScript                  render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance          inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
+}
+
+TEST_F(dmRenderScriptTest, TestCameraScreenToWorld_Ortho_LargeCoords_ExplicitURL)
+{
+    // Orthographic camera with explicit URL and large screen coordinates
+    dmRender::HRenderCamera cam_handle = dmRender::NewRenderCamera(m_Context);
+
+    dmMessage::URL cam_url = {};
+    cam_url.m_Socket   = dmHashString64("main");
+    cam_url.m_Path     = dmHashString64("go");
+    cam_url.m_Fragment = dmHashString64("camera1");
+    dmRender::SetRenderCameraURL(m_Context, cam_handle, &cam_url);
+
+    dmRender::RenderCameraData data = {};
+    data.m_Viewport                 = dmVMath::Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+    data.m_Fov                      = 60.0f; // ignored in ortho
+    data.m_NearZ                    = 0.1f;
+    data.m_FarZ                     = 1000.0f;
+    data.m_AspectRatio              = 2.0f;
+    data.m_OrthographicZoom         = 1.0f;
+    data.m_OrthographicProjection   = 1;
+    data.m_AutoAspectRatio          = 0;
+    dmRender::SetRenderCameraData(m_Context, cam_handle, &data);
+
+    dmVMath::Point3 pos(0.0f, 0.0f, 0.0f);
+    dmVMath::Quat   rot(0.0f, 0.0f, 0.0f, 1.0f);
+    dmRender::UpdateRenderCamera(m_Context, cam_handle, &pos, &rot);
+
+    const char* script =
+        "local function assert_near(a,b)\n"
+        "    assert(math.abs(a-b) < 1e-3, tostring(a)..' ~= '..tostring(b))\n"
+        "end\n"
+        "function init(self)\n"
+        "    local cams = camera.get_cameras()\n"
+        "    assert(#cams >= 1)\n"
+        "    local cam = cams[#cams]\n"
+        "    local x, y = 2230, 818\n"
+        "    local p0 = camera.screen_xy_to_world(x, y, cam)\n"
+        "    assert_near(p0.z, -camera.get_near_z(cam))\n"
+        "    local p1 = camera.screen_to_world(vmath.vector3(x, y, camera.get_near_z(cam)), cam)\n"
+        "    assert_near(p1.z, -camera.get_near_z(cam))\n"
+        "end\n";
+
+    dmRender::HRenderScript                  render_script = dmRender::NewRenderScript(m_Context, LuaSourceFromString(script));
+    dmRender::HRenderScriptInstance          inst          = dmRender::NewRenderScriptInstance(m_Context, render_script);
+    ASSERT_EQ(dmRender::RENDER_SCRIPT_RESULT_OK, dmRender::InitRenderScriptInstance(inst));
+    dmRender::DeleteRenderScriptInstance(inst);
+    dmRender::DeleteRenderScript(m_Context, render_script);
+    dmRender::DeleteRenderCamera(m_Context, cam_handle);
 }
 
 TEST_F(dmRenderScriptTest, TestComputeEnableDisable)

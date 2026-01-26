@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -474,7 +474,11 @@
         semi-glyphs (into []
                           (comp
                             (filter displayable-codepoint?)
-                            (map (partial ttf-semi-glyph font antialias)))
+                            (map (partial ttf-semi-glyph font antialias))
+                            (remove (fn [semi-glyph]
+                                      (and (zero? (int (:width semi-glyph)))
+                                           (zero? (double (:advance semi-glyph)))
+                                           (<= 65000 (long (:character semi-glyph)))))))
                           prospect-codepoints)]
     (when-not (seq semi-glyphs)
       (throw (ex-info "No character glyphs were included! Maybe turn on 'all_chars'?" {})))

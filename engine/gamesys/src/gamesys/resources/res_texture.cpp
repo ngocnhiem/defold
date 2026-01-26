@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -189,7 +189,8 @@ namespace dmGameSystem
             if (dmGraphics::IsFormatTranscoded(image->m_CompressionType))
             {
                 num_mips = MAX_MIPMAP_COUNT;
-                output_format = dmGraphics::GetSupportedCompressionFormat(context, output_format, image->m_Width, image->m_Height);
+                dmGraphics::TextureType texture_type = TextureImageToTextureType(image_desc->m_DDFImage->m_Type);
+                output_format = dmGraphics::GetSupportedCompressionFormatForType(context, output_format, image->m_Width, image->m_Height, texture_type);
 
                 if (!dmGraphics::Transcode(path, image, image_desc->m_DDFImage->m_Count, image_data_alternative, output_format, image_desc->m_DecompressedData, image_desc->m_DecompressedDataSize, &num_mips))
                 {
@@ -198,7 +199,7 @@ namespace dmGameSystem
                 }
             }
 
-            if (!dmGraphics::IsTextureFormatSupported(context, output_format))
+            if (!dmGraphics::IsTextureFormatSupportedForType(context, TextureImageToTextureType(image_desc->m_DDFImage->m_Type), output_format))
             {
                 continue;
             }

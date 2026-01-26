@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -169,7 +169,7 @@ namespace dmGui
     /**
      * Callback to create a texture resource
      */
-    typedef HTextureSource (*NewTextureResourceCallback)(HScene scene, const dmhash_t path_hash, uint32_t width, uint32_t height, dmImage::Type type, const void* buffer);
+    typedef HTextureSource (*NewTextureResourceCallback)(HScene scene, const dmhash_t path_hash, uint32_t width, uint32_t height, dmImage::Type type, dmImage::CompressionType compression_type, const void* buffer, uint32_t buffer_size);
 
     /**
      * Callback to delete a texture resource
@@ -179,7 +179,7 @@ namespace dmGui
     /**
      * Callback to set the data for a texture resource
      */
-    typedef void (*SetTextureResourceCallback)(HScene scene, const dmhash_t path_hash, uint32_t width, uint32_t height, dmImage::Type type, const void* buffer);
+    typedef void (*SetTextureResourceCallback)(HScene scene, const dmhash_t path_hash, uint32_t width, uint32_t height, dmImage::Type type, dmImage::CompressionType compression_type, const void* buffer, uint32_t buffer_size);
 
     /**
      * Callback to query display profile resolution for a layout id
@@ -514,6 +514,20 @@ namespace dmGui
     void DeleteContext(HContext context, dmScript::HContext script_context);
 
     void SetPhysicalResolution(HContext context, uint32_t width, uint32_t height);
+    void SetSafeAreaAdjust(HContext context, bool enabled, uint32_t width, uint32_t height, float offset_x, float offset_y);
+
+    enum SafeAreaMode
+    {
+        SAFE_AREA_NONE = 0,
+        SAFE_AREA_LONG = 1,
+        SAFE_AREA_SHORT = 2,
+        SAFE_AREA_BOTH = 3,
+    };
+
+    SafeAreaMode ParseSafeAreaMode(const char* mode);
+    void UpdateSafeAreaAdjust(HContext context, SafeAreaMode mode, uint32_t window_width, uint32_t window_height,
+                              int32_t inset_left, int32_t inset_top, int32_t inset_right, int32_t inset_bottom);
+    void SetSceneSafeAreaMode(HScene scene, SafeAreaMode mode);
 
     void GetPhysicalResolution(HContext context, uint32_t& width, uint32_t& height);
 
@@ -605,12 +619,13 @@ namespace dmGui
      * @param width
      * @param height
      * @param type
+     * @param compression_type
      * @param flip
      * @param buffer
      * @param buffer_size
      * @return
      */
-    Result NewDynamicTexture(HScene scene, const dmhash_t path, uint32_t width, uint32_t height, dmImage::Type type, bool flip, const void* buffer, uint32_t buffer_size);
+    Result NewDynamicTexture(HScene scene, const dmhash_t path, uint32_t width, uint32_t height, dmImage::Type type, dmImage::CompressionType compression_type, bool flip, const void* buffer, uint32_t buffer_size);
 
     /**
      * Delete dynamic texture
@@ -627,12 +642,13 @@ namespace dmGui
      * @param width
      * @param height
      * @param type
+     * @param compression_type
      * @param flip
      * @param buffer
      * @param buffer_size
      * @return
      */
-    Result SetDynamicTextureData(HScene scene, const dmhash_t texture_hash, uint32_t width, uint32_t height, dmImage::Type type, bool flip, const void* buffer, uint32_t buffer_size);
+    Result SetDynamicTextureData(HScene scene, const dmhash_t texture_hash, uint32_t width, uint32_t height, dmImage::Type type, dmImage::CompressionType compression_type, bool flip, const void* buffer, uint32_t buffer_size);
 
     /**
      * Get texture data for a dynamic texture
@@ -1210,18 +1226,6 @@ namespace dmGui
      * @return current scene, or 0
      */
     HScene GetSceneFromLua(lua_State* L);
-
-    // Used only in engine_service.cpp for resource profiling
-    typedef bool (*FDynamicTextturesIterator)(dmhash_t gui_res_id, dmhash_t name_hash, uint32_t size, void* user_ctx);
-    /**
-     * Iterates over all dynamic textures in GUI component, and invokes the callback function with the dyn. texture information
-     * @param gui_res_id The GUI component resource id
-     * @param scene      The scene we get dynamic textures information from
-     * @param callback   The callback function which is invoked for each dynamic texture.
-                         It should return true if the iteration should continue, and false otherwise.
-     * @param user_ctx   The user defined context which is passed along with each callback
-     */
-    void IterateDynamicTextures(dmhash_t gui_res_id, HScene scene, FDynamicTextturesIterator callback, void* user_ctx);
 }
 
 #endif

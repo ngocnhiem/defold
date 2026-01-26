@@ -1,4 +1,4 @@
-# Copyright 2020-2025 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -107,10 +107,13 @@ def platform_get_glfw_lib(platform):
     return 'dmglfw'
 
 def platform_get_platform_lib(platform):
+    if not (platform_supports_feature(platform, "opengl", None) or platform_supports_feature(platform, "vulkan", None)):
+        return 'PLATFORM_NULL'
+
     if platform_glfw_version(platform) == 3:
         if Options.options.with_vulkan or platform in ('arm64-macos', 'x86_64-macos', 'arm64-nx64'):
-            return 'platform_vulkan'
-    return 'platform'
+            return 'PLATFORM_VULKAN'
+    return 'PLATFORM'
 
 def platform_graphics_libs_and_symbols(platform):
     graphics_libs = []
@@ -246,7 +249,7 @@ def apidoc_extract_task(bld, src):
     def _parse_source(source_path):
         resource = bld.path.find_resource(source_path)
         if not resource:
-            sys.exit("Couldn't find resource: %s" % s)
+            sys.exit("Couldn't find resource: %s" % resource)
             return
 
         elements = {}
@@ -436,13 +439,16 @@ def default_flags(self):
     # Common for all platforms
     flags = []
     if target_os not in (TargetOS.WINDOWS, TargetOS.XBONE):
-        build_script_path = self.path.abspath()
-        parts = build_script_path.split(os.sep)
-        index = next((i for i, part in enumerate(parts) if part == "engine"), -1)
-        if index != -1 and (index + 1) < len(parts):
-            flags += ["-fdebug-compilation-dir=engine/{}".format(parts[index + 1])]
-        flags += ["-fdebug-prefix-map=../src=src", "-fdebug-prefix-map=../../../tmp/dynamo_home=../../defoldsdk"]
         flags += ["-Werror=return-type"]
+
+        # if we're building on CI, we want to setup special debug paths, as it makes it easier to use with extension builds
+        if os.environ.get('GITHUB_WORKFLOW', None) is not None:
+            build_script_path = self.path.abspath()
+            parts = build_script_path.split(os.sep)
+            index = next((i for i, part in enumerate(parts) if part == "engine"), -1)
+            if index != -1 and (index + 1) < len(parts):
+                flags += ["-fdebug-compilation-dir=engine/{}".format(parts[index + 1])]
+            flags += ["-fdebug-prefix-map=../src=src", "-fdebug-prefix-map=../../../tmp/dynamo_home=../../defoldsdk"]
 
     if Options.options.ndebug:
         flags += [self.env.DEFINES_ST % 'NDEBUG']
@@ -492,6 +498,17 @@ def default_flags(self):
     self.env.append_value('INCLUDES', build_util.get_dynamo_ext('include'))
     self.env.append_value('LIBPATH', build_util.get_dynamo_ext('lib', build_util.get_target_platform()))
 
+    # For 32-bit Windows, search both legacy 'win32' and tuple 'x86-win32' folders
+    # TODO: Remove the redundant lib folders ("win32") once we've moved fully to CMake
+    if build_util.get_target_platform() == 'win32':
+        alias = 'x86-win32' # used by the new/CMake code path
+        # Includes under DYNAMO_HOME and DYNAMO_HOME/ext
+        self.env.append_value('INCLUDES', build_util.get_dynamo_home('include', alias))
+        self.env.append_value('INCLUDES', build_util.get_dynamo_ext('include', alias))
+        # Lib paths under DYNAMO_HOME and DYNAMO_HOME/ext
+        self.env.append_value('LIBPATH', build_util.get_dynamo_home('lib', alias))
+        self.env.append_value('LIBPATH', build_util.get_dynamo_ext('lib', alias))
+
     # Platform specific paths etc comes after the project specific stuff
 
     if target_os in (TargetOS.MACOS, TargetOS.IOS):
@@ -512,7 +529,7 @@ def default_flags(self):
             if f == 'CXXFLAGS':
                 self.env.append_value(f, ['-fno-rtti'])
 
-        self.env.append_value('LINKFLAGS', [f'--target={clang_arch}'])
+        self.env.append_value('LINKFLAGS', [f'--target={clang_arch}', '-fuse-ld=lld'])
 
     elif TargetOS.MACOS == target_os:
         sys_root = self.sdkinfo[build_util.get_target_platform()]['path']
@@ -606,13 +623,17 @@ def default_flags(self):
         emflags_compile = zip(['-s'] * len(emflags_compile), emflags_compile)
         emflags_compile =[j for i in emflags_compile for j in i]
 
+        initial_memory = 'INITIAL_MEMORY=33554432'
+        if Options.options.with_asan and target_arch == 'wasm':
+            initial_memory = 'INITIAL_MEMORY=67108864'
+
         emflags_link = [
             'DISABLE_EXCEPTION_CATCHING=1',
             'ALLOW_UNIMPLEMENTED_SYSCALLS=0',
             'EXPORTED_RUNTIME_METHODS=["ccall","UTF8ToString","callMain","HEAPU8","stringToNewUTF8"]',
             'EXPORTED_FUNCTIONS=_main,_malloc,_free',
             'ERROR_ON_UNDEFINED_SYMBOLS=1',
-            'INITIAL_MEMORY=33554432',
+            initial_memory,
             'MAX_WEBGL_VERSION=2',
             'GL_SUPPORT_AUTOMATIC_ENABLE_EXTENSIONS=0',
             'IMPORTED_MEMORY=1',
@@ -639,7 +660,7 @@ def default_flags(self):
         if Options.options.with_webgpu and platform_supports_feature(build_util.get_target_platform(), 'webgpu', {}):
             if 'wagyu' in Options.options.enable_features:
                 # When building the executable locally, targeting wagyu, we need to link with the stubs
-                wagyu_port = '%s/ext/wagyu-port/new/webgpu-port.py:wagyu=true' % (os.environ['DYNAMO_HOME'])
+                wagyu_port = '%s/ext/wagyu-port/webgpu-port.py:wagyu=true' % (os.environ['DYNAMO_HOME'])
                 linkflags += ['--use-port=%s' % wagyu_port]
             else:
                 emflags_link += ['USE_WEBGPU', 'GL_WORKAROUND_SAFARI_GETCONTEXT_BUG=0']
@@ -652,6 +673,8 @@ def default_flags(self):
             emflags_link += ['PTHREAD_POOL_SIZE=1']
 
         if 'wasm' == target_arch:
+            if Options.options.with_ubsan:
+                emflags_link += ['ASSERTIONS=1']
             emflags_link += ['WASM=1', 'ALLOW_MEMORY_GROWTH=1']
             if int(opt_level) < 2:
                 flags += ['-gseparate-dwarf', '-gsource-map']
@@ -791,8 +814,10 @@ def asan_cxxflags(self):
     if getattr(self, 'skip_asan', False):
         return
     build_util = create_build_utility(self.env)
+    target_os = build_util.get_target_os()
+    target_arch = build_util.get_target_architecture()
     if Options.options.with_asan:
-        if build_util.get_target_os() in ('macos','ios','android','ps4','ps5'):
+        if target_os in ('linux','macos','ios','android','ps4','ps5') or ('wasm' in target_arch):
             self.env.append_value('CXXFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('CFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('LINKFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope'])
@@ -800,11 +825,12 @@ def asan_cxxflags(self):
             self.env.append_value('CXXFLAGS', ['/fsanitize=address', '-D_DISABLE_VECTOR_ANNOTATION', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('CFLAGS', ['/fsanitize=address', '-D_DISABLE_VECTOR_ANNOTATION', '-DDM_SANITIZE_ADDRESS'])
             # not a linker option
-    elif Options.options.with_ubsan and build_util.get_target_os() in ('macos','ios','android','ps4','ps5','nx64'):
-        self.env.append_value('CXXFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
-        self.env.append_value('CFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
-        self.env.append_value('LINKFLAGS', ['-fsanitize=undefined'])
-    elif Options.options.with_tsan and build_util.get_target_os() in ('macos','ios','android','ps4','ps5'):
+    elif Options.options.with_ubsan:
+        if target_os in ('linux','macos','ios','android','ps4','ps5','nx64') or ('wasm' in target_arch):
+            self.env.append_value('CXXFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
+            self.env.append_value('CFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
+            self.env.append_value('LINKFLAGS', ['-fsanitize=undefined'])
+    elif Options.options.with_tsan and build_util.get_target_os() in ('linux','macos','ios','android','ps4','ps5'):
         self.env.append_value('CXXFLAGS', ['-fsanitize=thread', '-DDM_SANITIZE_THREAD'])
         self.env.append_value('CFLAGS', ['-fsanitize=thread', '-DDM_SANITIZE_THREAD'])
         self.env.append_value('LINKFLAGS', ['-fsanitize=thread'])
@@ -1713,7 +1739,8 @@ def detect(conf):
     if Options.options.with_valgrind:
         conf.find_program('valgrind', var='VALGRIND', mandatory = False)
 
-    conf.find_program('ccache', var='CCACHE', mandatory = False)
+    if not Options.options.disable_ccache:
+        conf.find_program('ccache', var='CCACHE', mandatory = False)
 
     if Options.options.with_iwyu:
         conf.find_program('include-what-you-use', var='IWYU', mandatory = False)
@@ -1728,16 +1755,19 @@ def detect(conf):
     conf.env['PLATFORM'] = platform
     conf.env['BUILD_PLATFORM'] = host_platform
 
+    try:
+        build_util = create_build_utility(conf.env)
+    except BuildUtilityException as ex:
+        conf.fatal(ex.msg)
+
     if platform in ('x86_64-linux', 'arm64-linux', 'x86_64-win32', 'x86_64-macos', 'arm64-macos'):
         conf.env['IS_TARGET_DESKTOP'] = 'true'
 
     if host_platform in ('x86_64-linux', 'arm64-linux', 'x86_64-win32', 'x86_64-macos', 'arm64-macos'):
         conf.env['IS_HOST_DESKTOP'] = 'true'
 
-    try:
-        build_util = create_build_utility(conf.env)
-    except BuildUtilityException as ex:
-        conf.fatal(ex.msg)
+    bindirs = [build_util.get_dynamo_ext('bin', host_platform)]
+    conf.find_program('glslang', var='GLSLANG', mandatory = True, path_list = bindirs)
 
     target_os = build_util.get_target_os()
     conf.env['TARGET_OS'] = target_os
@@ -1907,6 +1937,8 @@ def detect(conf):
         # there's no lib prefix anymore so we need to set our our lib dir first so we don't
         # pick up the wrong hid.lib from the windows sdk
         libdirs.insert(0, build_util.get_dynamo_home('lib', build_util.get_target_platform()))
+        if build_util.get_target_platform() == 'win32':
+            libdirs.insert(1, build_util.get_dynamo_home('lib', 'x86-win32'))
 
         conf.env['PATH']     = bindirs + sys.path + conf.env['PATH']
         conf.env['INCLUDES'] = includes
@@ -2046,8 +2078,10 @@ def detect(conf):
 
     if TargetOS.MACOS == target_os:
         conf.env['FRAMEWORK_OPENAL'] = ['OpenAL']
+        conf.env['FRAMEWORK_SOUND'] = ['AVFoundation']
     elif TargetOS.IOS == target_os:
         conf.env['FRAMEWORK_OPENAL'] = ['OpenAL', 'AudioToolbox']
+        conf.env['FRAMEWORK_SOUND'] = ['AVFoundation']
     elif TargetOS.ANDROID == target_os:
         conf.env['LIB_OPENAL'] = ['OpenSLES']
     elif TargetOS.LINUX == target_os:
@@ -2088,11 +2122,8 @@ def detect(conf):
         conf.env['STLIB_GRAPHICS_WEBGPU']   = ['graphics_webgpu', 'graphics_transcoder_basisu', 'basis_transcoder']
     conf.env['STLIB_GRAPHICS_NULL']     = ['graphics_null', 'graphics_transcoder_null']
 
-    conf.env['STLIB_PLATFORM']        = ['platform']
-    conf.env['STLIB_PLATFORM_VULKAN'] = ['platform_vulkan']
-    conf.env['STLIB_PLATFORM_NULL']   = ['platform_null']
-
     conf.env['STLIB_FONT']            = ['font']
+    conf.env['STLIB_FONT_LAYOUT']     = ['font_skribidi', 'harfbuzz', 'sheenbidi', 'unibreak', 'skribidi']
 
     if platform_glfw_version(platform) == 3:
         conf.env['STLIB_DMGLFW'] = 'glfw3'
@@ -2137,6 +2168,22 @@ def detect(conf):
         conf.env['LINKFLAGS_DINPUT']    = ['dinput8.lib', 'dxguid.lib', 'xinput9_1_0.lib']
         conf.env['LINKFLAGS_APP']       = ['user32.lib', 'shell32.lib', 'dbghelp.lib'] + conf.env['LINKFLAGS_DINPUT']
         conf.env['LINKFLAGS_DX12']      = ['D3D12.lib', 'DXGI.lib', 'D3Dcompiler.lib']
+
+
+    if conf.env.PLATFORM in ['win32', 'x86_64-win32']:
+        conf.env['LINKFLAGS_HID']               = ['hid.lib']
+        conf.env['LINKFLAGS_HID_NULL']          = ['hid_null.lib']
+        conf.env['LINKFLAGS_INPUT']             = ['input.lib']
+        conf.env['LINKFLAGS_PLATFORM']          = ['platform.lib']
+        conf.env['LINKFLAGS_PLATFORM_VULKAN']   = ['platform_vulkan.lib']
+        conf.env['LINKFLAGS_PLATFORM_NULL']     = ['platform_null.lib']
+    else:
+        conf.env['STLIB_HID']               = ['hid']
+        conf.env['STLIB_HID_NULL']          = ['hid_null']
+        conf.env['STLIB_INPUT']             = ['input']
+        conf.env['STLIB_PLATFORM']          = ['platform']
+        conf.env['STLIB_PLATFORM_VULKAN']   = ['platform_vulkan']
+        conf.env['STLIB_PLATFORM_NULL']     = ['platform_null']
 
     conf.env['STLIB_EXTENSION'] = 'extension'
     conf.env['STLIB_SCRIPT'] = 'script'

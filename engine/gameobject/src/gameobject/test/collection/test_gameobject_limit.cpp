@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -28,7 +28,7 @@ using namespace dmVMath;
 class CollectionLimitTest : public jc_test_base_class
 {
 protected:
-    virtual void SetUp()
+    void SetUp() override
     {
         m_UpdateContext.m_DT = 1.0f / 60.0f;
 
@@ -58,7 +58,7 @@ protected:
         dmGameObject::SortComponentTypes(m_Register);
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         if (m_Collection)
         {

@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -16,6 +16,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
             [clojure.test :as test :refer [is testing]]
+            [clojure.test.check.clojure-test]
             [dynamo.graph :as g]
             [editor.app-view :as app-view]
             [editor.atlas :as atlas]
@@ -78,6 +79,7 @@
            [javafx.event ActionEvent]
            [javafx.scene Parent Scene]
            [javafx.scene.control Button Cell ColorPicker Control Label ScrollBar Slider TextField ToggleButton]
+           [javafx.scene.input KeyCode KeyEvent]
            [javafx.scene.layout VBox]
            [javafx.scene.paint Color]
            [javax.imageio ImageIO]
@@ -88,6 +90,11 @@
 (set! *warn-on-reflection* true)
 
 (.setLevel ^Logger (LoggerFactory/getLogger "org.eclipse.jetty") Level/ERROR)
+(.setLevel ^Logger (LoggerFactory/getLogger "cognitect.aws.credentials") Level/ERROR)
+
+;; Disable defspec logs:
+;; {:result true, :num-tests 100, :seed 1761047757693, :time-elapsed-ms 41, :test-var "some-spec"}
+(alter-var-root #'clojure.test.check.clojure-test/*report-completion* (constantly false))
 
 (def project-path "test/resources/test_project")
 
@@ -149,9 +156,19 @@
 (defmethod set-control-value! Slider [^Slider slider num-value]
   (.setValue slider num-value))
 
-(defmethod set-control-value! TextField [^TextField text-field num-value]
-  (.setText text-field (field-expression/format-number num-value))
-  (.fireEvent text-field (ActionEvent. text-field text-field)))
+(defmethod set-control-value! TextField [^TextField text-field value]
+  (.setText text-field (cond-> value (number? value) field-expression/format-number))
+  (.fireEvent text-field (KeyEvent.
+                           #_source text-field
+                           #_target text-field
+                           #_eventType KeyEvent/KEY_PRESSED
+                           #_character ""
+                           #_text "\r"
+                           #_code KeyCode/ENTER
+                           #_shiftDown false
+                           #_controlDown false
+                           #_altDown false
+                           #_metaDown false)))
 
 (defmethod set-control-value! ToggleButton [^ToggleButton toggle-button _num-value]
   (.fire toggle-button))
@@ -411,7 +428,7 @@
   resource/Resource
   (children [this] children)
   (ext [this] (FilenameUtils/getExtension (.getPath file)))
-  (resource-type [this] (resource/lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (resource/lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] source-type)
   (exists? [this] exists?)
   (read-only? [this] read-only?)
@@ -806,14 +823,14 @@
   :node-outline info at the resulting path. Throws an exception if the path does
   not lead up to a valid node."
   [node-id & outline-labels]
-  {:pre [(every? string? outline-labels)]}
+  {:pre [(every? (some-fn string? localization/message-pattern?) outline-labels)]}
   (reduce (fn [node-outline outline-label]
             (or (some (fn [child-outline]
                         (when (= outline-label (:label child-outline))
                           child-outline))
                       (:children node-outline))
                 (let [candidates (into (sorted-set)
-                                       (map :label)
+                                       (map (comp localization :label))
                                        (:children node-outline))]
                   (throw (ex-info (format "node-outline for %s '%s' has no child-outline '%s'. Candidates: %s"
                                           (symbol (g/node-type-kw node-id))
@@ -953,9 +970,9 @@
   (File. (workspace/project-directory workspace) path))
 
 (defn selection [app-view]
-  (-> app-view
-    app-view/->selection-provider
-    handler/selection))
+  (let [selection-provider (app-view/->selection-provider app-view)]
+    (g/with-auto-evaluation-context evaluation-context
+      (handler/selection selection-provider evaluation-context))))
 
 ;; Extension library server
 
@@ -986,20 +1003,34 @@
 (defn lib-server-uri [server lib]
   (format "%s/lib/%s" (http-server/local-url server) lib))
 
+(defn handler-enabled? [command command-contexts user-data]
+  (g/with-auto-evaluation-context evaluation-context
+    (let [command-contexts (handler/eval-contexts command-contexts true evaluation-context)
+          handler+command-context (handler/active command command-contexts user-data evaluation-context)]
+      (if (nil? handler+command-context)
+        false
+        (handler/enabled? handler+command-context evaluation-context)))))
+
 (defn handler-run [command command-contexts user-data]
-  (let [command-contexts (handler/eval-contexts command-contexts true)]
-    (-> (handler/active command command-contexts user-data)
-      handler/run)))
+  (g/let-ec [command-contexts (handler/eval-contexts command-contexts true evaluation-context)
+             handler+command-context (handler/active command command-contexts user-data evaluation-context)]
+    (when handler+command-context
+      (handler/run handler+command-context))))
 
 (defn handler-options [command command-contexts user-data]
-  (let [command-contexts (handler/eval-contexts command-contexts true)]
-    (-> (handler/active command command-contexts user-data)
-      handler/options)))
+  (g/with-auto-evaluation-context evaluation-context
+    (let [command-contexts (handler/eval-contexts command-contexts true evaluation-context)
+          handler+command-context (handler/active command command-contexts user-data evaluation-context)]
+      (when handler+command-context
+        (handler/options handler+command-context evaluation-context)))))
 
 (defn handler-state [command command-contexts user-data]
-  (let [command-contexts (handler/eval-contexts command-contexts true)]
-    (-> (handler/active command command-contexts user-data)
-      handler/state)))
+  (g/with-auto-evaluation-context evaluation-context
+    (let [command-contexts (handler/eval-contexts command-contexts true evaluation-context)
+          handler+command-context (handler/active command command-contexts user-data evaluation-context)]
+      (if (nil? handler+command-context)
+        false
+        (handler/state handler+command-context evaluation-context)))))
 
 (defmacro with-prop [binding & forms]
   (let [[node-id# property# value#] binding]

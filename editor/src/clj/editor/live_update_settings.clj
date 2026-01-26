@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -22,6 +22,7 @@
             [editor.form :as form]
             [editor.fs :as fs]
             [editor.graph-util :as gu]
+            [editor.localization :as localization]
             [editor.resource :as resource]
             [editor.resource-node :as resource-node]
             [editor.settings :as settings]
@@ -111,7 +112,7 @@
 (defn register-resource-types [workspace]
   (resource-node/register-settings-resource-type workspace
     :ext "settings"
-    :label "Live Update Settings"
+    :label (localization/message "resource.type.settings")
     :node-type LiveUpdateSettingsNode
     :load-fn load-live-update-settings
     :meta-settings (:settings basic-meta-info)
@@ -119,8 +120,4 @@
     :view-types [:cljfx-form-view :text]))
 
 (defn get-live-update-settings-path [project]
-  (let [project-settings (project/settings project)
-        file-resource (get project-settings ["liveupdate" "settings"])]
-    (if (resource/exists? file-resource)
-      (resource/proj-path file-resource)
-      "/liveupdate.settings")))
+  (resource/resource->proj-path (get (project/settings project) ["liveupdate" "settings"])))

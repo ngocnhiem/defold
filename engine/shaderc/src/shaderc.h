@@ -1,5 +1,4 @@
-
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -32,7 +31,8 @@ namespace dmShaderc
         SHADER_LANGUAGE_NONE  = 0,
         SHADER_LANGUAGE_GLSL  = 1,
         SHADER_LANGUAGE_HLSL  = 2,
-        SHADER_LANGUAGE_SPIRV = 3,
+        SHADER_LANGUAGE_MSL   = 3,
+        SHADER_LANGUAGE_SPIRV = 4,
     };
 
     enum ShaderStage

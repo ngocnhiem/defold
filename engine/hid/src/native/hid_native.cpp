@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -210,7 +210,7 @@ namespace dmHID
         }
     }
 
-    void Update(HContext context)
+    bool Update(HContext context)
     {
         dmPlatform::PollEvents(context->m_Window);
 
@@ -327,6 +327,10 @@ namespace dmHID
                 context->m_AccelerationPacket = packet;
             }
         }
+
+        dmhash_t prev_state_hash = context->m_StateHash;
+        context->m_StateHash = CalcStateHash(context);
+        return prev_state_hash != context->m_StateHash;
     }
 
     void GetGamepadDeviceName(HContext context, HGamepad gamepad, char name[MAX_GAMEPAD_NAME_LENGTH])

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -94,7 +94,6 @@ import com.dynamo.bob.logging.Logger;
 import com.dynamo.bob.util.BobProjectProperties;
 import com.dynamo.bob.util.LibraryUtil;
 import com.dynamo.bob.util.ReportGenerator;
-import com.dynamo.bob.util.HttpUtil;
 import com.dynamo.bob.util.TimeProfiler;
 import com.dynamo.bob.util.StringUtil;
 import com.dynamo.graphics.proto.Graphics.TextureProfiles;
@@ -629,7 +628,7 @@ public class Project {
 
     // Loads the properties from a game project settings file
     // Also adds any properties specified with the "--settings" flag
-    public static BobProjectProperties loadProperties(Project project, IResource projectFile, List<String> settingsFiles, boolean scanExtensions) throws IOException {
+    public static BobProjectProperties loadProperties(Project project, IResource projectFile, List<String> settingsFiles, boolean scanProjectPropertyFiles) throws IOException {
         if (!projectFile.exists()) {
             throw new IOException(String.format("Project file not found: %s", projectFile.getAbsPath()));
         }
@@ -638,12 +637,16 @@ public class Project {
         try {
             // load meta.properties embeded in bob.jar
             properties.loadDefaultMetaFile();
-            if (scanExtensions) {
-                // load property files from extensions
-                List<String> extensionFolders = ExtenderUtil.getExtensionFolders(project);
-                if (!extensionFolders.isEmpty()) {
-                    for (String extension : extensionFolders) {
-                        IResource resource = project.getResource(extension + "/" + BobProjectProperties.PROPERTIES_EXTENSION_FILE);
+            properties.cleanupEmptyProperties();
+            if (scanProjectPropertyFiles) {
+                // load property files from the project (including extensions)
+                List<String> resourcePaths = new ArrayList<>();
+                project.findResourcePaths("", resourcePaths);
+                String propertiesSuffix = "/" + BobProjectProperties.PROPERTIES_FILE;
+                for (String resourcePath : resourcePaths) {
+                    if (resourcePath.equals(BobProjectProperties.PROPERTIES_FILE) ||
+                            resourcePath.endsWith(propertiesSuffix)) {
+                        IResource resource = project.getResource(resourcePath);
                         if (resource.exists()) {
                             // resources from extensions in ZIP files can't be read as files, but getContent() works fine
                             loadPropertiesData(properties, resource.getContent(), true, resource.getPath());
@@ -669,10 +672,10 @@ public class Project {
         return properties;
     }
 
-    public void loadProjectFile(boolean scanExtensions) throws IOException {
+    public void loadProjectFile(boolean scanProjectPropertyFiles) throws IOException {
         IResource gameProject = getGameProjectResource();
         if (gameProject.exists()) {
-            projectProperties = Project.loadProperties(this, gameProject, this.getPropertyFiles(), scanExtensions);
+            projectProperties = Project.loadProperties(this, gameProject, this.getPropertyFiles(), scanProjectPropertyFiles);
         }
     }
 
@@ -1262,71 +1265,6 @@ public class Project {
         m.done();
     }
 
-    private void downloadSymbols(IProgress progress) throws IOException, CompileExceptionError {
-        String archs = this.option("architectures", null);
-        String[] platforms;
-        if (archs != null) {
-            platforms = archs.split(",");
-        }
-        else {
-            platforms = getPlatformStrings();
-        }
-
-        progress.beginTask(IProgress.Task.DOWNLOADING_SYMBOLS, platforms.length);
-
-        final String variant = this.option("variant", Bob.VARIANT_RELEASE);
-        String variantSuffix = "";
-        switch(variant) {
-            case Bob.VARIANT_RELEASE:
-                variantSuffix = "_release";
-                break;
-            case Bob.VARIANT_HEADLESS:
-                variantSuffix = "_headless";
-                break;
-        }
-
-        for(String platform : platforms) {
-            String symbolsFilename = null;
-            Platform p = Platform.get(platform);
-            switch(platform) {
-                case "arm64-ios":
-                case "x86_64-ios":
-                case "x86_64-macos":
-                case "arm64-macos":
-                    symbolsFilename = String.format("dmengine%s.dSYM.zip", variantSuffix);
-                    break;
-                case "js-web":
-                    symbolsFilename = String.format("dmengine%s.js.symbols", variantSuffix);
-                    break;
-                case "win32":
-                case "x86_64-win32":
-                    symbolsFilename = String.format("dmengine%s.pdb", variantSuffix);
-                    break;
-                case "arm64-android":
-                case "armv7-android":
-                    symbolsFilename = String.format("libdmengine%s.so", variantSuffix);
-                    break;
-            }
-
-            if (symbolsFilename != null) {
-                try {
-                    URL url = new URL(String.format(Bob.ARTIFACTS_URL + "%s/engine/%s/%s", EngineVersion.sha1, platform, symbolsFilename));
-                    File targetFolder = new File(getBinaryOutputDirectory(), p.getExtenderPair());
-                    File file = new File(targetFolder, symbolsFilename);
-                    HttpUtil http = new HttpUtil();
-                    http.downloadToFile(url, file);
-                    if (symbolsFilename.endsWith(".zip")){
-                        BundleHelper.unzip(new FileInputStream(file), targetFolder.toPath());
-                    }
-                }
-                catch (Exception e) {
-                    throw new CompileExceptionError(e);
-                }
-            }
-            progress.worked(1);
-        }
-    }
-
     static void addToPath(String variable, String path) {
         String newPath = null;
 
@@ -1471,6 +1409,7 @@ public class Project {
         options.add(new GameProjectBuildOption("debug-output-spirv", "output-spirv", "shader","output_spirv",List.of("GraphicsAdapterVulkan")));
         options.add(new GameProjectBuildOption("debug-output-hlsl", "output-hlsl", "shader","output_hlsl",List.of("GraphicsAdapterDX12")));
         options.add(new GameProjectBuildOption("debug-output-wgsl", "output-wgsl", "shader","output_wgsl",List.of("GraphicsAdapterWebGPU")));
+        options.add(new GameProjectBuildOption("debug-output-msl", "output-msl", "shader","output_msl",List.of("GraphicsAdapterMetal")));
         options.add(new GameProjectBuildOption("debug-output-glsl", "output-glsl", "shader","output_glsl",List.of("GraphicsAdapterOpenGL", "GraphicsAdapterOpenGLES")));
         options.add(new GameProjectBuildOption("output-glsles100", "output-glsles100", "shader","output_glsl_es100",null));
         options.add(new GameProjectBuildOption("output-glsles300", "output-glsles300", "shader","output_glsl_es300",null));
@@ -1712,7 +1651,9 @@ public class Project {
         }
 
         IProgress m = monitor.subProgress(99);
-
+        TimeProfiler.start("ensureBobInitialized");
+        Bob.ensureBobInitialized();
+        TimeProfiler.stop();
         IProgress mrep = m.subProgress(1);
         mrep.beginTask(IProgress.Task.READING_TASKS, 1);
         TimeProfiler.start("Create tasks");
@@ -1863,7 +1804,7 @@ public class Project {
                         cleanEngines(monitor, platforms);
                         if (hasOption("with-symbols")) {
                             IProgress progress = monitor.subProgress(1);
-                            downloadSymbols(progress);
+                            EngineArtifactsProvider.downloadSymbols(this, progress);
                             progress.done();
                         }
                     }

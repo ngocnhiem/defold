@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -179,24 +179,52 @@ void ResourceRegisterDecryptionFunction(FResourceDecryption decrypt_resource);
 
 
 /*#
- * Get a resource from factory
+ * Get (load) a resource from factory
+ * @note if successful, it increments the ref count by one
  * @name ResourceGet
  * @param factory [type: HResourceFactory] Factory handle
- * @param name [type: const char*] Resource name
+ * @param path [type: const char*] Resource path
  * @param resource [type: void**] Created resource
  * @return result [type: ResourceResult] RESOURCE_RESULT_OK on success
  */
-ResourceResult ResourceGet(HResourceFactory factory, const char* name, void** resource);
+ResourceResult ResourceGet(HResourceFactory factory, const char* path, void** resource);
 
 /*#
- * Get a resource from factory
+ * Get (load) a resource from factory
+ * @note if successful, it increments the ref count by one
+ * @name ResourceGetWithExt
+ * @param factory [type: HResourceFactory] Factory handle
+ * @param path [type: const char*] Resource path
+ * @param ext [type: const char*] Resource extension (e.g. "texturec", "ttf"). Must match the extension of the path.
+ * @param resource [type: void**] Created resource
+ * @return result [type: ResourceResult] RESOURCE_RESULT_OK on success.
+ *                                       RESOURCE_RESULT_INVALID_FILE_EXTENSION if the path extension doesn't match the required extension.
+ */
+ResourceResult ResourceGetWithExt(HResourceFactory factory, const char* path, const char* ext, void** resource);
+
+/*#
+ * Get a loaded resource from factory
+ * @note this currently doesn't load a resource
+ * @note if successful, it increments the ref count by one
  * @name ResourceGetByHash
  * @param factory [type: HResourceFactory] Factory handle
- * @param name [type: dmhash_t] Resource name
+ * @param path_hash [type: dmhash_t] Resource path hash
  * @param resource [type: void**] Created resource
  * @return result [type: ResourceResult] RESOURCE_RESULT_OK on success
  */
-ResourceResult ResourceGetByHash(HResourceFactory factory, dmhash_t name, void** resource);
+ResourceResult ResourceGetByHash(HResourceFactory factory, dmhash_t path_hash, void** resource);
+
+/*#
+ * Get a loaded resource from factory and also verifying that it's the expected file type
+ * @name ResourceGetByHashAndExt
+ * @param factory [type: HResourceFactory] Factory handle
+ * @param path_hash [type: dmhash_t] Resource path hash
+ * @param ext_hash [type: dmhash_t] Resource extension hash (e.g. "texturec", "ttf"). Must match the extension of the path.
+ * @param resource [type: void**] Created resource
+ * @return result [type: ResourceResult] RESOURCE_RESULT_OK on success.
+ *                                       RESOURCE_RESULT_INVALID_FILE_EXTENSION if the path extension doesn't match the required extension.
+ */
+ResourceResult ResourceGetByHashAndExt(HResourceFactory factory, dmhash_t path_hash, dmhash_t ext_hash, void** resource);
 
 /**
  * Increase resource reference count by 1.
@@ -223,7 +251,7 @@ ResourceResult ResourceGetRaw(HResourceFactory factory, const char* name, void**
  * @name GetDescriptor
  * @param factory [type: HResourceFactory] Factory handle
  * @param path [type: dmhash_t] Resource path
- * @param descriptor [type: HResourceDescriptor*] Returned resource descriptor
+ * @param descriptor [type: HResourceDescriptor*] Returned resource descriptor. Temporary, don't copy.
  * @return result [type: ResourceResult] RESOURCE_RESULT_OK on success
  */
 ResourceResult ResourceGetDescriptor(HResourceFactory factory, const char* path, HResourceDescriptor* descriptor);
@@ -233,7 +261,7 @@ ResourceResult ResourceGetDescriptor(HResourceFactory factory, const char* path,
  * @name GetDescriptorByHash
  * @param factory [type: HResourceFactory] Factory handle
  * @param path_hash [type: dmhash_t] Resource path hash
- * @param descriptor [type: HResourceDescriptor*] Returned resource descriptor
+ * @param descriptor [type: HResourceDescriptor*] Returned resource descriptor. Temporary, don't copy.
  * @return result [type: ResourceResult] RESOURCE_RESULT_OK on success
  */
 ResourceResult ResourceGetDescriptorByHash(HResourceFactory factory, dmhash_t path_hash, HResourceDescriptor* descriptor);
@@ -516,7 +544,7 @@ const char* ResourceTypeGetName(HResourceType type);
 /*# get registered extension name hash of the type
  * @name ResourceTypeGetNameHash
  * @param type [type: HResourceType] The type
- * @return hash [type: dmhash_t] The name hash
+ * @return hash [type: dmhash_t] The name hash of the type (e.g. "collectionc")
  */
 dmhash_t ResourceTypeGetNameHash(HResourceType type);
 
@@ -616,7 +644,7 @@ struct ResourcePreloadParams
  * @member m_Buffer [type: const void*] Buffer containing the loaded file
  * @member m_BufferSize [type: uint32_t] Size of data buffer (in bytes)
  * @member m_PreloadData [type: void*] Preloaded data from Preload phase.
- * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update.
+ * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update. Temporary, don't copy.
  * @member m_Type [type: HResourceType] The resource type
  */
 struct ResourceCreateParams
@@ -641,7 +669,7 @@ struct ResourceCreateParams
  * @member m_Context [type: void*] The context registered with the resource type
  * @member m_Filename [type: const char*] Path of the loaded file
  * @member m_PreloadData [type: void*] Preloaded data from Preload phase.
- * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update.
+ * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update. Temporary, don't copy.
  * @member m_Type [type: HResourceType] The resource type
  */
 struct ResourcePostCreateParams
@@ -664,7 +692,7 @@ struct ResourcePostCreateParams
  * @member m_Buffer [type: const void*] Buffer containing the loaded file
  * @member m_BufferSize [type: uint32_t] Size of data buffer (in bytes)
  * @member m_Message [type: const void*] Pointer holding a precreated message
- * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update
+ * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update. Temporary, don't copy.
  * @member m_Type [type: HResourceType] The resource type
  */
 struct ResourceRecreateParams
@@ -705,7 +733,7 @@ struct ResourceDestroyParams
  * @member m_UserData [type: void*] User data supplied when the callback was registered
  * @member m_FilenameHash [type: dmhash_t] File name hash of the data
  * @member m_Filename [type: const char*] Path of the resource, same as provided to Get() when the resource was obtained
- * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update
+ * @member m_Resource [type: HResourceDescriptor] The resource descriptor to update. Temporary, don't copy.
  * @member m_Type [type: HResourceType] The resource type
  */
 typedef struct ResourceReloadedParams

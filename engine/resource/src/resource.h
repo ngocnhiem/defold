@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -127,18 +127,17 @@ namespace dmResource
     struct NewFactoryParams
     {
         /// Maximum number of resource in factory. Default is 1024
-        uint32_t m_MaxResources;
+        uint32_t                m_MaxResources;
 
         /// Factory flags. Default is RESOURCE_FACTORY_FLAGS_EMPTY
-        uint32_t m_Flags;
+        uint32_t                m_Flags;
 
-        EmbeddedResource m_ArchiveIndex;
-        EmbeddedResource m_ArchiveData;
-        EmbeddedResource m_ArchiveManifest;
+        EmbeddedResource        m_ArchiveIndex;
+        EmbeddedResource        m_ArchiveData;
+        EmbeddedResource        m_ArchiveManifest;
+        dmHttpCache::HCache     m_HttpCache;
 
-        dmHttpCache::HCache m_HttpCache;
-
-        uint32_t m_Reserved[5];
+        dmJobThread::HContext   m_JobThreadContext;
 
         NewFactoryParams()
         {

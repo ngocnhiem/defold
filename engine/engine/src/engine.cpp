@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -38,6 +38,7 @@
 #include <dlib/sslsocket.h>
 #include <dlib/sys.h>
 #include <dlib/thread.h>
+#include <platform/platform_window.h>
 #include <dlib/time.h>
 #include <graphics/graphics.h>
 #include <extension/extension.hpp>
@@ -62,9 +63,14 @@
 #include "engine_service.h"
 #include "engine_version.h"
 #include "physics_debug_render.h"
+#include "script/script_engine.h"
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten/emscripten.h>
+#endif
+
+#if defined(__EMSCRIPTEN__)
+    #include "engine_web.h"
 #endif
 
 // Embedded resources
@@ -82,6 +88,8 @@ extern uint32_t      DEBUG_SPC_SIZE;
 
     extern unsigned char GAME_PROJECT[];
     extern uint32_t GAME_PROJECT_SIZE;
+
+    #include <dmsdk/gamesys/resources/res_font.h>
 #endif
 
 #if defined(__ANDROID__)
@@ -111,6 +119,9 @@ namespace dmEngine
 #define SYSTEM_SOCKET_NAME "@system"
 
     dmEngineService::HEngineService g_EngineService = 0;
+
+    bool g_EngineUpdateEnabled = true;
+    bool g_EngineRenderEnabled = true;
 
     static ExtensionAppExitCode GetAppExitStatusFromAction(int action)
     {
@@ -190,6 +201,24 @@ namespace dmEngine
     };
 
 
+    static void UpdateGuiSafeAreaAdjust(Engine* engine, uint32_t window_width, uint32_t window_height)
+    {
+        dmPlatform::HWindow window = dmGraphics::GetWindow(engine->m_GraphicsContext);
+        dmPlatform::SafeArea safe_area;
+        if (!dmPlatform::GetSafeArea(window, &safe_area))
+        {
+            safe_area.m_InsetLeft = 0;
+            safe_area.m_InsetTop = 0;
+            safe_area.m_InsetRight = 0;
+            safe_area.m_InsetBottom = 0;
+        }
+
+        dmGui::UpdateSafeAreaAdjust(engine->m_GuiContext, (dmGui::SafeAreaMode)engine->m_GuiSafeAreaMode,
+                                    window_width, window_height,
+                                    safe_area.m_InsetLeft, safe_area.m_InsetTop,
+                                    safe_area.m_InsetRight, safe_area.m_InsetBottom);
+    }
+
     static void OnWindowResize(void* user_data, uint32_t width, uint32_t height)
     {
         uint32_t data_size = sizeof(dmRenderDDF::WindowResized);
@@ -224,6 +253,8 @@ namespace dmEngine
         {
             dmGui::SetPhysicalResolution(engine->m_GuiContext, width, height);
         }
+
+        UpdateGuiSafeAreaAdjust(engine, width, height);
 
         dmGameSystem::OnWindowResized(width, height);
     }
@@ -321,6 +352,9 @@ namespace dmEngine
     , m_Height(640)
     , m_InvPhysicalWidth(1.0f/960)
     , m_InvPhysicalHeight(1.0f/640)
+    , m_ThrottleCooldownMax(0.0f)
+    , m_ThrottleCooldown(0.0f)
+    , m_ThrottleEnabled(false)
     {
         m_EngineService = engine_service;
         m_Register = dmGameObject::NewRegister();
@@ -379,11 +413,14 @@ namespace dmEngine
         if (engine->m_SharedScriptContext) {
             script_lib_context.m_LuaState = dmScript::GetLuaState(engine->m_SharedScriptContext);
             dmGameSystem::FinalizeScriptLibs(script_lib_context);
+            dmEngine::ScriptSysEngineFinalize(script_lib_context.m_LuaState, engine);
         } else {
             script_lib_context.m_LuaState = dmScript::GetLuaState(engine->m_GOScriptContext);
             dmGameSystem::FinalizeScriptLibs(script_lib_context);
+            dmEngine::ScriptSysEngineFinalize(script_lib_context.m_LuaState, engine);
             script_lib_context.m_LuaState = dmScript::GetLuaState(engine->m_GuiScriptContext);
             dmGameSystem::FinalizeScriptLibs(script_lib_context);
+            dmEngine::ScriptSysEngineFinalize(script_lib_context.m_LuaState, engine);
         }
 
         dmHttpClient::ReopenConnectionPool();
@@ -1056,9 +1093,9 @@ namespace dmEngine
         }
 
         dmJobThread::JobThreadCreationParams job_thread_create_param;
-        job_thread_create_param.m_ThreadNames[0] = "DefoldJobThread1";
-        job_thread_create_param.m_ThreadCount    = 1;
-        engine->m_JobThreadContext               = dmJobThread::Create(job_thread_create_param);
+        job_thread_create_param.m_ThreadNamePrefix  = "DefoldJob";
+        job_thread_create_param.m_ThreadCount       = 1;
+        engine->m_JobThreadContext                  = dmJobThread::Create(job_thread_create_param);
 
         dmGraphics::ContextParams graphics_context_params;
         graphics_context_params.m_DefaultTextureMinFilter = ConvertMinTextureFilter(dmConfigFile::GetString(engine->m_Config, "graphics.default_texture_min_filter", "linear"));
@@ -1130,6 +1167,7 @@ namespace dmEngine
         params.m_MaxResources = max_resources;
         params.m_Flags = 0;
         params.m_HttpCache = engine->m_HttpCache;
+        params.m_JobThreadContext = engine->m_JobThreadContext;
 
         if (dLib::IsDebugMode())
         {
@@ -1291,6 +1329,9 @@ namespace dmEngine
             dmLogWarning("`rig.max_instance_count` deprecated. Use component specific counters.");
         }
 
+        const char* safe_area_mode = dmConfigFile::GetString(engine->m_Config, "gui.safe_area_mode", "none");
+        engine->m_GuiSafeAreaMode = (uint8_t)dmGui::ParseSafeAreaMode(safe_area_mode);
+
         dmGui::NewContextParams gui_params;
         gui_params.m_ScriptContext = engine->m_GuiScriptContext;
         gui_params.m_HidContext = engine->m_HidContext;
@@ -1310,6 +1351,8 @@ namespace dmEngine
         gui_params.m_Dpi = physical_dpi;
 
         engine->m_GuiContext = dmGui::NewContext(&gui_params);
+
+        UpdateGuiSafeAreaAdjust(engine, physical_width, physical_height);
 
         dmPhysics::NewContextParams physics_params;
         physics_params.m_WorldCount = dmConfigFile::GetInt(engine->m_Config, "physics.world_count", 4);
@@ -1470,7 +1513,7 @@ namespace dmEngine
                     if (!filename || strlen(filename) == 0) {
                         continue;
                     }
-                    
+
                     // We need the size, in order to send it as a proper LuaModule message
                     void* data;
                     uint32_t datasize;
@@ -1552,6 +1595,8 @@ namespace dmEngine
             {
                 goto bail;
             }
+
+            dmEngine::ScriptSysEngineInitialize(script_lib_context.m_LuaState, engine);
         }
         else
         {
@@ -1561,12 +1606,15 @@ namespace dmEngine
             {
                 goto bail;
             }
+            dmEngine::ScriptSysEngineInitialize(script_lib_context.m_LuaState, engine);
+
             script_lib_context.m_ScriptContext = engine->m_GuiScriptContext;
             script_lib_context.m_LuaState = dmScript::GetLuaState(engine->m_GuiScriptContext);
             if (!dmGameSystem::InitializeScriptLibs(script_lib_context))
             {
                 goto bail;
             }
+            dmEngine::ScriptSysEngineInitialize(script_lib_context.m_LuaState, engine);
         }
 
         // setup streaming for resource types, before we load the first collection
@@ -1643,8 +1691,8 @@ namespace dmEngine
         if (engine->m_EngineService)
         {
             dmEngineService::InitProfiler(engine->m_EngineService, engine->m_Factory, engine->m_Register);
-            
-            dmEngineService::EngineState state;  
+
+            dmEngineService::EngineState state;
             state.m_ConnectionAppMode = engine->m_ConnectionAppMode;
             dmEngineService::InitState(engine->m_EngineService, &state);
         }
@@ -1663,6 +1711,26 @@ namespace dmEngine
 
 bail:
         return false;
+    }
+
+    void SetEngineThrottle(HEngine engine, bool enable, float cooldown)
+    {
+        engine->m_ThrottleEnabled = enable;
+        if (enable)
+        {
+            engine->m_ThrottleCooldownMax = cooldown;
+            engine->m_ThrottleCooldown = 0;
+        }
+    }
+
+    void SetUpdateEnabled(bool enabled)
+    {
+        g_EngineUpdateEnabled = enabled;
+    }
+
+    void SetRenderEnabled(bool enabled)
+    {
+        g_EngineRenderEnabled = enabled;
     }
 
     static void GOActionCallback(dmhash_t action_id, dmInput::Action* action, void* user_data)
@@ -1693,28 +1761,36 @@ bail:
         input_action.m_AccY = action->m_AccY;
         input_action.m_AccZ = action->m_AccZ;
 
-        input_action.m_TouchCount = action->m_Count;
-        int tc = action->m_Count;
-        for (int i = 0; i < tc; ++i) {
-            dmHID::Touch& a = action->m_Touch[i];
-            dmHID::Touch& ia = input_action.m_Touch[i];
-            ia = action->m_Touch[i];
-            ia.m_Id = a.m_Id;
-            ia.m_X = (a.m_X + 0.5f) * width_ratio;
-            ia.m_Y = engine->m_Height - (a.m_Y + 0.5f) * height_ratio;
-            ia.m_DX = a.m_DX * width_ratio;
-            ia.m_DY = -a.m_DY * height_ratio;
-            ia.m_ScreenX = a.m_X;
-            ia.m_ScreenY = window_height - a.m_Y;
-            ia.m_ScreenDX = a.m_DX;
-            ia.m_ScreenDY = -a.m_DY;
+        input_action.m_TouchCount = 0;
+        if (!action->m_HasText && action->m_Count > 0)
+        {
+            uint32_t touch_count = dmMath::Min((uint32_t) action->m_Count, (uint32_t) dmHID::MAX_TOUCH_COUNT);
+            input_action.m_TouchCount = touch_count;
+            for (uint32_t i = 0; i < touch_count; ++i) {
+                dmHID::Touch& a = action->m_Touch[i];
+                dmHID::Touch& ia = input_action.m_Touch[i];
+                ia = action->m_Touch[i];
+                ia.m_Id = a.m_Id;
+                ia.m_X = (a.m_X + 0.5f) * width_ratio;
+                ia.m_Y = engine->m_Height - (a.m_Y + 0.5f) * height_ratio;
+                ia.m_DX = a.m_DX * width_ratio;
+                ia.m_DY = -a.m_DY * height_ratio;
+                ia.m_ScreenX = a.m_X;
+                ia.m_ScreenY = window_height - a.m_Y;
+                ia.m_ScreenDX = a.m_DX;
+                ia.m_ScreenDY = -a.m_DY;
+            }
         }
 
-        input_action.m_TextCount = action->m_Count;
+        input_action.m_TextCount = 0;
         input_action.m_HasText = action->m_HasText;
-        tc = action->m_Count;
-        for (int i = 0; i < tc; ++i) {
-            input_action.m_Text[i] = action->m_Text[i];
+        if (action->m_HasText && action->m_Count > 0)
+        {
+            uint32_t text_count = dmMath::Min((uint32_t) action->m_Count, (uint32_t) dmHID::MAX_CHAR_COUNT);
+            input_action.m_TextCount = text_count;
+            for (uint32_t i = 0; i < text_count; ++i) {
+                input_action.m_Text[i] = action->m_Text[i];
+            }
         }
 
         input_action.m_IsGamepad = action->m_IsGamepad;
@@ -1767,6 +1843,34 @@ bail:
         engine->m_RunResult.m_Action = dmEngine::RunResult::EXIT;
     }
 
+    // Return true if the frame should be skipped
+    static bool UpdateFrameThrottle(HEngine engine, float dt, bool has_input)
+    {
+        if (!g_EngineUpdateEnabled) // override from external call (e.g. HTML5)
+        {
+            return true;
+        }
+
+        if (!engine->m_ThrottleEnabled)
+        {
+            return false;
+        }
+
+        // We have new input, so reset the cooldown
+        if (has_input)
+        {
+            engine->m_ThrottleCooldown = 0;
+            return false;
+        }
+
+        // If cooldown max is 0, we want 1 frame of update
+        bool skip = engine->m_ThrottleCooldown > engine->m_ThrottleCooldownMax;
+
+        engine->m_ThrottleCooldown += dt;
+
+        return skip;
+    }
+
     static void StepFrame(HEngine engine, float dt)
     {
         uint64_t frame_start = dmTime::GetMonotonicTime();
@@ -1808,18 +1912,24 @@ bail:
         {
             DM_PROFILE("Frame");
 
+            bool do_render = g_EngineRenderEnabled && !dmRender::IsRenderPaused(engine->m_RenderContext);
+
             {
                 DM_PROFILE("Sim");
 
-                {
-                    DM_PROFILE("Resource");
-                    dmResource::UpdateFactory(engine->m_Factory);
-                }
-
+                bool has_input = false;
                 {
                     DM_PROFILE("Hid");
-                    dmHID::Update(engine->m_HidContext);
+                    has_input = dmHID::Update(engine->m_HidContext);
                 }
+
+                // Check if we should skip this frame
+                if (UpdateFrameThrottle(engine, dt, has_input))
+                {
+                    ProfileFrameEnd(profile);
+                    return;
+                }
+
                 if (!engine->m_RunWhileIconified) {
                     if (dmGraphics::GetWindowStateParam(engine->m_GraphicsContext, dmPlatform::WINDOW_STATE_ICONIFIED))
                     {
@@ -1838,6 +1948,11 @@ bail:
                 uint64_t jobthread_max_time_us = 3 * 1000;
 #endif
                 dmJobThread::Update(engine->m_JobThreadContext, jobthread_max_time_us);
+
+                {
+                    DM_PROFILE("Resource");
+                    dmResource::UpdateFactory(engine->m_Factory); // Process Reload event
+                }
 
                 {
                     DM_PROFILE("Extension");
@@ -1931,7 +2046,7 @@ bail:
 
                 // Don't render while iconified
                 if (!dmGraphics::GetWindowStateParam(engine->m_GraphicsContext, dmPlatform::WINDOW_STATE_ICONIFIED)
-                    && !dmRender::IsRenderPaused(engine->m_RenderContext))
+                    && do_render)
                 {
                     // Call pre render functions for extensions, if available.
                     // We do it here before we render rest of the frame
@@ -1974,11 +2089,10 @@ bail:
                 dmGameObject::PostUpdate(engine->m_MainCollection);
                 dmGameObject::PostUpdate(engine->m_Register);
 
-                if (!dmRender::IsRenderPaused(engine->m_RenderContext))
+                if (do_render)
                 {
                     dmRender::ClearRenderObjects(engine->m_RenderContext);
                 }
-
 
                 dmMessage::Dispatch(engine->m_SystemSocket, Dispatch, engine);
             } // Sim
@@ -1999,7 +2113,7 @@ bail:
                 dmEngineService::Update(engine->m_EngineService, profile);
             }
 
-            if (!dmRender::IsRenderPaused(engine->m_RenderContext))
+            if (do_render)
             {
 #if !defined(DM_RELEASE)
                 dmProfiler::RenderProfiler(profile, engine->m_GraphicsContext, engine->m_RenderContext, ResFontGetHandle(engine->m_SystemFont));
@@ -2139,30 +2253,34 @@ bail:
 
     static void Reboot(HEngine engine, dmSystemDDF::Reboot* reboot)
     {
+        engine->m_RunResult.Free();
+        memset(engine->m_RunResult.m_Argv, 0, sizeof(engine->m_RunResult.m_Argv));
+
         int argc = 0;
         engine->m_RunResult.m_Argv[argc++] = strdup("dmengine");
 
         // This value should match the count in dmSystemDDF::Reboot
         const int ARG_COUNT = 6;
-        char* args[ARG_COUNT] =
+        const char* args[ARG_COUNT] =
         {
-            reboot->m_Arg1 ? strdup(reboot->m_Arg1) : 0,
-            reboot->m_Arg2 ? strdup(reboot->m_Arg2) : 0,
-            reboot->m_Arg3 ? strdup(reboot->m_Arg3) : 0,
-            reboot->m_Arg4 ? strdup(reboot->m_Arg4) : 0,
-            reboot->m_Arg5 ? strdup(reboot->m_Arg5) : 0,
-            reboot->m_Arg6 ? strdup(reboot->m_Arg6) : 0,
+            reboot->m_Arg1,
+            reboot->m_Arg2,
+            reboot->m_Arg3,
+            reboot->m_Arg4,
+            reboot->m_Arg5,
+            reboot->m_Arg6,
         };
 
         for (int i = 0; i < ARG_COUNT; ++i)
         {
-            // NOTE: +1 here, see above
-            engine->m_RunResult.m_Argv[i + 1] = args[i];
-            if (args[i] == 0 || args[i][0] == '\0')
+            const char* arg = args[i];
+            if (arg == 0 || arg[0] == '\0')
             {
                 break;
             }
 
+            // NOTE: +1 here, see above
+            engine->m_RunResult.m_Argv[i + 1] = strdup(arg);
             argc++;
         }
 
@@ -2383,8 +2501,13 @@ void dmEngineInitialize()
     dLib::SetDebugMode(false);
 #endif
 
-    if (dLib::IsDebugMode())
-        ProfileInitialize();
+    ProfileInitialize();
+
+#if defined(__EMSCRIPTEN__)
+    dmEngineSetUpdateEnabled(1);
+    dmEngineSetRenderEnabled(1);
+#endif
+
     dmEngine::PlatformInitialize();
 
     dmThread::SetThreadName(dmThread::GetCurrentThread(), "engine_main");
@@ -2420,8 +2543,7 @@ void dmEngineFinalize()
 
     dmEngine::PlatformFinalize();
 
-    if (dLib::IsDebugMode())
-        ProfileFinalize();
+    ProfileFinalize();
 }
 
 const char* ParseArgOneOperand(const char* arg_str, int argc, char *argv[])

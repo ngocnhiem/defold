@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -245,13 +245,14 @@
 
 (defn start! [^String analytics-url send-interval]
   {:pre [(valid-analytics-url? analytics-url)]}
-  (reset! config-atom (read-config!))
-  (when (some? (sys/defold-version))
-    (swap! worker-atom
-           (fn [started-worker]
-             (when (some? started-worker)
-               (shutdown-worker! started-worker 0))
-             (start-worker! analytics-url send-interval)))))
+  (let [config (reset! config-atom (read-config!))]
+    (when (some? (sys/defold-version))
+      (swap! worker-atom
+             (fn [started-worker]
+               (when (some? started-worker)
+                 (shutdown-worker! started-worker 0))
+               (start-worker! analytics-url send-interval))))
+    (:cid config)))
 
 (defn shutdown!
   ([]

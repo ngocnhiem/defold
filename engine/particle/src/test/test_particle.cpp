@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -59,7 +59,7 @@ static inline void FillAttribute(dmGraphics::VertexAttributeInfo& info, dmhash_t
 class ParticleTest : public jc_test_base_class
 {
 protected:
-    virtual void SetUp()
+    void SetUp() override
     {
         m_Context = dmParticle::CreateContext(64, 1024);
         assert(m_Context != 0);
@@ -76,7 +76,7 @@ protected:
         m_AttributeInfos.m_VertexStride = sizeof(TestVertex);
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         if (m_Prototype != 0x0)
         {

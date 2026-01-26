@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -187,6 +187,14 @@ public class LuaScannerTest {
         assertProperty(properties, "prop2", Double.valueOf(1.0), 1);
         assertProperty(properties, "prop3", Double.valueOf(.1), 2);
         assertProperty(properties, "prop4", Double.valueOf(-1.0E2), 3);
+    }
+
+    @Test
+    public void testPropsFail() throws Exception {
+        List<Property> properties = getPropertiesFromFile("test_props_fail.lua");
+
+        assertEquals(1, properties.size());
+        assertEquals(properties.getFirst().status(), Status.INVALID_VALUE);
     }
 
     @Test

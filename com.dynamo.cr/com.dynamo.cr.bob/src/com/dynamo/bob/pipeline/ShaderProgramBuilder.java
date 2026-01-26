@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -41,8 +41,10 @@ import com.dynamo.graphics.proto.Graphics.ShaderDesc;
 
 @BuilderParams(name="ShaderProgram", inExts= {".shbundle", ".shbundlec"}, outExt=".spc",
         // See configurePreBuildProjectOptions in Project.java
-        paramsForSignature = {"platform", "output-spirv", "output-wgsl", "output-hlsl", "output-glsles100",
-        "output-glsles300", "output-glsl120", "output-glsl330", "output-glsl430", "exclude-gles-sm100"})
+        paramsForSignature = {
+            "platform", "output-spirv", "output-wgsl", "output-hlsl", "output-msl", "output-glsles100",
+            "output-glsles300", "output-glsl120", "output-glsl330", "output-glsl430", "exclude-gles-sm100"
+        })
 public class ShaderProgramBuilder extends Builder {
 
     static public class ShaderBuildResult {
@@ -140,6 +142,9 @@ public class ShaderProgramBuilder extends Builder {
         if (getOutputWGSLFlag()) {
             addUniqueShaderLanguage(ShaderDesc.Language.LANGUAGE_WGSL);
         }
+        if (getOutputMSLFlag()) {
+            addUniqueShaderLanguage(ShaderDesc.Language.LANGUAGE_MSL_22);
+        }
         if (getOutputGLSLFlag()) {
             ArrayList<ShaderDesc.Language> glslLanguages = ShaderCompilers.GetSupportedOpenGLVersionsForPlatform(this.project.getPlatform());
             for (ShaderDesc.Language glslLanguage : glslLanguages) {
@@ -179,6 +184,7 @@ public class ShaderProgramBuilder extends Builder {
     private boolean getOutputSpirvFlag() { return getOutputShaderFlag("output-spirv"); }
     private boolean getOutputHlslFlag() { return getOutputShaderFlag("output-hlsl"); }
     private boolean getOutputWGSLFlag() { return getOutputShaderFlag("output-wgsl"); }
+    private boolean getOutputMSLFlag() { return getOutputShaderFlag("output-msl"); }
     private boolean getOutputGLSLFlag() { return getOutputShaderFlag("output-glsl"); }
     private boolean getOutputGLSLESFlag(int version) { return getOutputShaderFlag("output-glsles" + version); }
     private boolean getOutputGLSLFlag(int version) { return getOutputShaderFlag("output-glsl" + version); }
@@ -487,6 +493,18 @@ public class ShaderProgramBuilder extends Builder {
         if (newShaders.size() > 0 && oldShaders.size() > 0) {
             System.out.println("Warning: Mixing old shaders with new shaders is slow. Consider migrating old shaders to using the new shader pipeline.");
 
+            System.out.print("  Old shaders:");
+            for (ShaderCompilePipeline.ShaderModuleDesc old : oldShaders) {
+                System.out.print(" " + old.resourcePath);
+            }
+            System.out.println();
+
+            System.out.print("  New shaders:");
+            for (ShaderCompilePipeline.ShaderModuleDesc shader : newShaders) {
+                System.out.print(" " + shader.resourcePath);
+            }
+            System.out.println();
+
             ArrayList<ShaderCompilePipeline.ShaderModuleDesc> newDescs = new ArrayList<>(newShaders);
             for (ShaderCompilePipeline.ShaderModuleDesc old : oldShaders) {
                 ShaderUtil.ES2ToES3Converter.Result transformResult = ShaderUtil.ES2ToES3Converter.transform(old.source, old.type, "", 140, true, options.splitTextureSamplers);
@@ -589,6 +607,7 @@ public class ShaderProgramBuilder extends Builder {
             compileOptions.forceIncludeShaderLanguages.add(ShaderDesc.Language.LANGUAGE_GLSL_SM120);
             compileOptions.forceIncludeShaderLanguages.add(ShaderDesc.Language.LANGUAGE_GLES_SM100);
             compileOptions.forceIncludeShaderLanguages.add(ShaderDesc.Language.LANGUAGE_HLSL_51);
+            compileOptions.forceIncludeShaderLanguages.add(ShaderDesc.Language.LANGUAGE_MSL_22);
             compileOptions.forceIncludeShaderLanguages.add(ShaderDesc.Language.LANGUAGE_SPIRV);
             compileOptions.forceIncludeShaderLanguages.add(ShaderDesc.Language.LANGUAGE_WGSL);
 

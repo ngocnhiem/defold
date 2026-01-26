@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -198,7 +198,7 @@
           [read-only-file-resource] false
           [writable-dir-resource] true
           [writable-file-resource] true
-          [writable-file-resource read-only-dir-resource] false
+          [writable-file-resource read-only-dir-resource] true
           [writable-file-resource writable-dir-resource] true
           [fixed-file-resource] false
           [fs-builtins-resource] true))))) ; this should never appear in the asset browser, but if we decide it should - it will be deletable

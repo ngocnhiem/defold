@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -24,6 +24,7 @@
             [editor.graph-util :as gu]
             [editor.graphics :as graphics]
             [editor.image :as image]
+            [editor.localization :as localization]
             [editor.material :as material]
             [editor.model-scene :as model-scene]
             [editor.pipeline :as pipeline]
@@ -32,17 +33,16 @@
             [editor.resource :as resource]
             [editor.resource-node :as resource-node]
             [editor.rig :as rig]
+            [editor.texture-util :as texture-util]
             [editor.validation :as validation]
             [editor.workspace :as workspace]
             [internal.util :as util]
             [schema.core :as s]
-            [util.coll :as coll])
+            [util.coll :as coll :refer [pair]])
   (:import [com.dynamo.gamesys.proto ModelProto$Material ModelProto$Model ModelProto$ModelDesc ModelProto$Texture]
            [editor.gl.shader ShaderLifecycle]))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private model-resource-type-label "Model")
 
 (def ^:private model-icon "icons/32/Icons_22-Model.png")
 
@@ -147,16 +147,19 @@
   (let [sampler-name->gpu-texture-generator (into {}
                                                   (keep (fn [{:keys [sampler gpu-texture-generator]}]
                                                           (when gpu-texture-generator
-                                                            [sampler gpu-texture-generator])))
+                                                            (pair sampler gpu-texture-generator))))
                                                   texture-binding-infos)
         explicit-textures (into {}
                                 (keep-indexed
                                   (fn [unit-index {:keys [name] :as sampler}]
-                                    (when-let [{tex-fn :f tex-args :args} (sampler-name->gpu-texture-generator name)]
-                                      (let [request-id [_node-id unit-index]
-                                            params (material/sampler->tex-params sampler)
-                                            texture (tex-fn tex-args request-id params unit-index)]
-                                        [name texture]))))
+                                    (when-let [gpu-texture-generator (sampler-name->gpu-texture-generator name)]
+                                      (let [gpu-texture (texture-util/generate-gpu-texture gpu-texture-generator)]
+                                        (pair name
+                                              (-> (if (g/error-value? gpu-texture)
+                                                    @texture/placeholder
+                                                    gpu-texture)
+                                                  (texture/set-params (material/sampler->tex-params sampler))
+                                                  (texture/set-base-unit unit-index)))))))
                                 samplers)
         fallback-texture (if (pos? (count explicit-textures))
                            (val (first explicit-textures))
@@ -169,7 +172,7 @@
 
 (g/defnk produce-scene [_node-id scene material-name->material-scene-info]
   (if scene
-    (model-scene/augment-scene scene _node-id model-resource-type-label material-name->material-scene-info)
+    (model-scene/augment-scene scene _node-id "model" material-name->material-scene-info)
     {:aabb geom/empty-bounding-box
      :renderable {:passes [pass/selection]}}))
 
@@ -422,7 +425,9 @@
             (dynamic error (g/fnk [_node-id mesh]
                                   (prop-resource-error :fatal _node-id :mesh mesh "Mesh")))
             (dynamic edit-type (g/constantly {:type resource/Resource
-                                              :ext model-scene/model-file-types})))
+                                              :ext model-scene/model-file-types}))
+            (dynamic label (properties/label-dynamic :model :mesh))
+            (dynamic tooltip (properties/tooltip-dynamic :model :mesh)))
   (input copied-nodes g/Any :array :cascade-delete)
   (input material-binding-infos g/Any :array)
   (output materials [Material] :cached
@@ -445,7 +450,10 @@
           (g/fnk [material-scene-infos]
             (model-scene/make-material-name->material-scene-info material-scene-infos)))
 
-  (property create-go-bones g/Bool (default (protobuf/default ModelProto$ModelDesc :create-go-bones)))
+  (property create-go-bones g/Bool
+            (default (protobuf/default ModelProto$ModelDesc :create-go-bones))
+            (dynamic label (properties/label-dynamic :model :create-go-bones))
+            (dynamic tooltip (properties/tooltip-dynamic :model :create-go-bones)))
 
   (property skeleton resource/Resource ; Nil is valid default.
             (value (gu/passthrough skeleton-resource))
@@ -457,7 +465,9 @@
             (dynamic error (g/fnk [_node-id skeleton]
                                   (validation/prop-error :fatal _node-id :skeleton validation/prop-resource-not-exists? skeleton "Skeleton")))
             (dynamic edit-type (g/constantly {:type resource/Resource
-                                              :ext model-scene/model-file-types})))
+                                              :ext model-scene/model-file-types}))
+            (dynamic label (properties/label-dynamic :model :skeleton))
+            (dynamic tooltip (properties/tooltip-dynamic :model :skeleton)))
   (property animations resource/Resource ; Nil is valid default.
             (value (gu/passthrough animations-resource))
             (set (fn [evaluation-context self old-value new-value]
@@ -470,13 +480,17 @@
             (dynamic error (g/fnk [_node-id animations]
                                   (validation/prop-error :fatal _node-id :animations validation/prop-resource-not-exists? animations "Animations")))
             (dynamic edit-type (g/constantly {:type resource/Resource
-                                              :ext model-scene/animation-file-types})))
+                                              :ext model-scene/animation-file-types}))
+            (dynamic label (properties/label-dynamic :model :animations))
+            (dynamic tooltip (properties/tooltip-dynamic :model :animations)))
   (property default-animation g/Str
             (default (protobuf/default ModelProto$ModelDesc :default-animation))
             (dynamic error (g/fnk [_node-id default-animation animation-ids]
                                   (validate-default-animation _node-id default-animation animation-ids)))
             (dynamic edit-type (g/fnk [animation-ids]
-                                      (properties/->choicebox (into [""] animation-ids)))))
+                                      (properties/->choicebox (into [""] animation-ids))))
+            (dynamic label (properties/label-dynamic :model :default-animation))
+            (dynamic tooltip (properties/tooltip-dynamic :model :default-animation)))
 
   (input mesh-resource resource/Resource)
   (input mesh-set-build-target g/Any)
@@ -571,7 +585,7 @@
 (defn register-resource-types [workspace]
   (resource-node/register-ddf-resource-type workspace
     :ext "model"
-    :label model-resource-type-label
+    :label (localization/message "resource.type.model")
     :node-type ModelNode
     :ddf-type ModelProto$ModelDesc
     :load-fn load-model

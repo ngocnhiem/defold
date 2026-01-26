@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -22,6 +22,7 @@
             [editor.game-object-common :as game-object-common]
             [editor.game-object-non-editable :as game-object-non-editable]
             [editor.graph-util :as gu]
+            [editor.localization :as localization]
             [editor.outline :as outline]
             [editor.pose :as pose]
             [editor.properties :as properties]
@@ -267,7 +268,7 @@
 (g/defnk produce-node-outline [_node-id]
   {:node-id _node-id
    :node-outline-key "Non-Editable Collection"
-   :label "Non-Editable Collection"
+   :label (localization/message "outline.non-editable-collection")
    :icon collection-common/collection-icon})
 
 (defn- make-desc->instance-scene [node-id desc->source-scene child-id->desc]
@@ -431,7 +432,7 @@
     (resource-node/register-ddf-resource-type workspace
       :editable false
       :ext "collection"
-      :label "Non-Editable Collection"
+      :label (localization/message "resource.type.collection.non-editable")
       :node-type NonEditableCollectionNode
       :ddf-type GameObject$CollectionDesc
       :dependencies-fn (collection-common/make-collection-dependencies-fn #(workspace/get-resource-type workspace :non-editable "go"))

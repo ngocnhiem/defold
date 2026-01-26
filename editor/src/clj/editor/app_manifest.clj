@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -17,6 +17,7 @@
             [editor.code.resource :as r]
             [editor.code.util :as util]
             [editor.graph-util :as gu]
+            [editor.localization :as localization]
             [editor.properties :as properties]
             [editor.resource-io :as resource-io]
             [editor.yaml :as yaml]))
@@ -56,9 +57,21 @@
     :js-web :wasm-web :wasm_pthread-web})
 
 (def custom-lib-names
-  {:x86-win32 {"vpx" "vpx"
+  {:x86-win32 {"hid" "hid"
+               "hid_null" "hid_null"
+               "input" "input"
+               "platform" "platform"
+               "platform_null" "platform_null"
+               "platform_vulkan" "platform_vulkan"
+               "vpx" "vpx"
                "vulkan" "vulkan-1"}
-   :x86_64-win32 {"vpx" "vpx"
+   :x86_64-win32 {"hid" "hid"
+                  "hid_null" "hid_null"
+                  "input" "input"
+                  "platform" "platform"
+                  "platform_null" "platform_null"
+                  "platform_vulkan" "platform_vulkan"
+                  "vpx" "vpx"
                   "vulkan" "vulkan-1"}})
 
 (defn platformify-excluded-lib [platform lib]
@@ -321,24 +334,36 @@
       (libs-toggles all-platforms ["record_null"]))))
 
 (def profiler-setting
+  (let [none-toggles (concat
+                       (libs-toggles all-platforms ["profile_null", "profilerext_null"])
+                       (generic-contains-toggles all-platforms :excludeSymbols ["ProfilerBasic", "ProfilerRemotery", "ProfilerJS"])
+                       (exclude-libs-toggles all-platforms ["profile", "profilerext", "profiler_remotery", "profiler_js"]))
+        always-toggles (concat
+                         (exclude-libs-toggles all-platforms ["profile_null", "profilerext_null"])
+                         (generic-contains-toggles all-platforms :symbols ["ProfilerExt" "ProfilerBasic"])
+                         (generic-contains-toggles windows :symbols ["ProfilerRemotery"])
+                         (generic-contains-toggles macos :symbols ["ProfilerRemotery"])
+                         (generic-contains-toggles linux :symbols ["ProfilerRemotery"])
+                         (generic-contains-toggles android :symbols ["ProfilerRemotery"])
+                         (generic-contains-toggles ios :symbols ["ProfilerRemotery"])
+                         (generic-contains-toggles web :symbols ["ProfilerJS"])
+                         (libs-toggles all-platforms ["profile", "profilerext"])
+                         (libs-toggles windows ["profiler_remotery"])
+                         (libs-toggles macos ["profiler_remotery"])
+                         (libs-toggles linux ["profiler_remotery"])
+                         (libs-toggles android ["profiler_remotery"])
+                         (libs-toggles ios ["profiler_remotery"])
+                         (libs-toggles web ["profiler_js"]))]
+    (make-choice-setting
+      :none none-toggles
+      :always always-toggles
+      :debug-only)))
+
+(def font-setting
   (make-check-box-setting
     (concat
-      (libs-toggles all-platforms ["profile_null", "profilerext_null"])
-      (generic-contains-toggles all-platforms :excludeSymbols ["ProfilerBasic"])
-      (exclude-libs-toggles all-platforms ["profile", "profilerext"])
-      (exclude-libs-toggles windows ["profiler_remotery"])
-      (exclude-libs-toggles macos ["profiler_remotery"])
-      (exclude-libs-toggles linux ["profiler_remotery"])
-      (exclude-libs-toggles android ["profiler_remotery"])
-      (exclude-libs-toggles ios ["profiler_remotery"])
-      (exclude-libs-toggles web ["profiler_js"])
-      (generic-contains-toggles windows :excludeSymbols ["ProfilerRemotery"])
-      (generic-contains-toggles macos :excludeSymbols ["ProfilerRemotery"])
-      (generic-contains-toggles linux :excludeSymbols ["ProfilerRemotery"])
-      (generic-contains-toggles android :excludeSymbols ["ProfilerRemotery"])
-      (generic-contains-toggles ios :excludeSymbols ["ProfilerRemotery"])
-      (generic-contains-toggles web :excludeSymbols ["ProfilerJS"])
-      (generic-contains-toggles all-platforms :excludeSymbols ["ProfilerBasic", "ProfilerRemotery"]))))
+      (exclude-libs-toggles all-platforms ["font"])
+      (libs-toggles all-platforms ["font_skribidi", "harfbuzz", "sheenbidi", "unibreak", "skribidi"]))))
 
 (def sound-setting
   (make-check-box-setting
@@ -560,7 +585,8 @@
                                             :two-spaces 2
                                             4)))))))
   (property physics-2d g/Any
-            (dynamic tooltip (g/constantly "Box2D version 3 or legacy Defold version"))
+            (dynamic label (properties/label-dynamic :appmanifest :physics-2d))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :physics-2d))
             (dynamic edit-type (g/constantly {:type :choicebox
                                               :options [[:v3 "Box2D Version 3"]
                                                         [:legacy "Box2D (Legacy Defold version)"]
@@ -568,12 +594,14 @@
             (value (g/fnk [manifest] (:2d (get-setting-value manifest physics-setting))))
             (set (setting-property-updater physics-setting assoc :2d)))
   (property physics-3d g/Any
-            (dynamic tooltip (g/constantly "Bullet or none"))
+            (dynamic label (properties/label-dynamic :appmanifest :physics-3d))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :physics-3d))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (g/fnk [manifest] (:3d (get-setting-value manifest physics-setting))))
             (set (setting-property-updater physics-setting assoc :3d)))
-  (property Rig+Model g/Any
-            (dynamic tooltip (g/constantly "Rig, Model or none"))
+  (property rig+model g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :rig+model))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :rig+model))
             (dynamic edit-type (g/constantly {:type :choicebox
                                               :options [[:model "Rig & Model"]
                                                         [:rig "Rig only"]
@@ -581,58 +609,83 @@
             (value (setting-property-getter rig-setting))
             (set (setting-property-setter rig-setting)))
   (property exclude-record g/Any
-            (dynamic tooltip (g/constantly "Remove the video recording capabilities (desktop platforms)"))
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-record))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-record))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter record-setting))
             (set (setting-property-setter record-setting)))
-  (property exclude-profiler g/Any
-            (dynamic tooltip (g/constantly "Remove the on-screen and web profiler"))
-            (dynamic edit-type (g/constantly {:type g/Bool}))
+  (property profiler g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :profiler))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :profiler))
+            (dynamic edit-type (g/constantly {:type :choicebox
+                                              :options [[:debug-only "Debug Only"]
+                                                        [:none "None"]
+                                                        [:always "Always"]]}))
             (value (setting-property-getter profiler-setting))
             (set (setting-property-setter profiler-setting)))
   (property exclude-sound g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-sound))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-sound))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter sound-setting))
             (set (setting-property-setter sound-setting)))
   (property exclude-sound-decoder-wav g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-sound-decoder-wav))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-sound-decoder-wav))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter sound-decoder-wav-setting))
             (set (setting-property-setter sound-decoder-wav-setting)))
   (property exclude-sound-decoder-ogg g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-sound-decoder-ogg))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-sound-decoder-ogg))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter sound-decoder-ogg-setting))
             (set (setting-property-setter sound-decoder-ogg-setting)))
   (property include-sound-decoder-opus g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :include-sound-decoder-opus))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :include-sound-decoder-opus))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter sound-decoder-opus-setting))
             (set (setting-property-setter sound-decoder-opus-setting)))
   (property exclude-input g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-input))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-input))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter input-setting))
             (set (setting-property-setter input-setting)))
   (property exclude-liveupdate g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-liveupdate))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-liveupdate))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter liveupdate-setting))
             (set (setting-property-setter liveupdate-setting)))
   (property exclude-image g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-image))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-image))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter image-setting))
             (set (setting-property-setter image-setting)))
   (property exclude-types g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-types))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-types))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter types-setting))
             (set (setting-property-setter types-setting)))
   (property exclude-basis-transcoder g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :exclude-basis-transcoder))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :exclude-basis-transcoder))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter basis-transcoder-setting))
             (set (setting-property-setter basis-transcoder-setting)))
   (property use-android-support-lib g/Any
-            (dynamic tooltip (g/constantly "Use the old Android support libraries instead of AndroidX. Available from Defold 1.2.177."))
+            (dynamic label (properties/label-dynamic :appmanifest :use-android-support-lib))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :use-android-support-lib))
             (dynamic edit-type (g/constantly {:type g/Bool}))
             (value (setting-property-getter use-android-support-lib-setting))
             (set (setting-property-setter use-android-support-lib-setting)))
   (property graphics g/Any
-            (dynamic tooltip (g/constantly "Vulkan supports desktop and mobile platforms only"))
+            (dynamic label (properties/label-dynamic :appmanifest :graphics))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :graphics))
             (dynamic edit-type (g/constantly {:type :choicebox
                                               :options [[:open-gl "OpenGL"]
                                                         [:vulkan "Vulkan"]
@@ -640,7 +693,8 @@
             (value (setting-property-getter graphics-setting))
             (set (setting-property-setter graphics-setting)))
   (property graphics-osx g/Any
-            (dynamic tooltip (g/constantly "Vulkan is the default renderer for OSX"))
+            (dynamic label (properties/label-dynamic :appmanifest :graphics-osx))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :graphics-osx))
             (dynamic edit-type (g/constantly {:type :choicebox
                                               :options [[:vulkan "Vulkan"]
                                                         [:open-gl "OpenGL"]
@@ -648,20 +702,27 @@
             (value (setting-property-getter graphics-setting-osx))
             (set (setting-property-setter graphics-setting-osx)))
   (property graphics-web g/Any
-            (dynamic tooltip (g/constantly "WebGPU support is in BETA (web platforms)"))
+            (dynamic label (properties/label-dynamic :appmanifest :graphics-web))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :graphics-web))
             (dynamic edit-type (g/constantly {:type :choicebox
                                               :options [[:web-gl "WebGL"]
                                                         [:web-gpu "WebGPU"]
                                                         [:both "WebGL & WebGPU"]]}))
             (value (setting-property-getter graphics-web-setting))
-            (set (setting-property-setter graphics-web-setting))))
+            (set (setting-property-setter graphics-web-setting)))
+  (property use-font-layout g/Any
+            (dynamic label (properties/label-dynamic :appmanifest :use-font-layout))
+            (dynamic tooltip (properties/tooltip-dynamic :appmanifest :use-font-layout))
+            (dynamic edit-type (g/constantly {:type g/Bool}))
+            (value (setting-property-getter font-setting))
+            (set (setting-property-setter font-setting))))
 
 (defn register-resource-types [workspace]
   (r/register-code-resource-type
     workspace
     :ext "appmanifest"
     :language "yaml"
-    :label "App Manifest"
+    :label (localization/message "resource.type.appmanifest")
     :icon "icons/32/Icons_05-Project-info.png"
     :node-type AppManifestNode
     :view-types [:code :default]

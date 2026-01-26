@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -20,9 +20,13 @@
             [editor.fs :as fs]
             [editor.git :as git]
             [util.text-util :as text-util])
-  (:import [java.io File]
+  (:import [ch.qos.logback.classic Level Logger]
+           [java.io File]
            [org.eclipse.jgit.api Git]
-           [org.eclipse.jgit.revwalk RevCommit]))
+           [org.eclipse.jgit.revwalk RevCommit]
+           [org.slf4j LoggerFactory]))
+
+(.setLevel ^Logger (LoggerFactory/getLogger "org.eclipse.jgit.util.FS") Level/ERROR)
 
 (defn create-file
   ^File [git path content]

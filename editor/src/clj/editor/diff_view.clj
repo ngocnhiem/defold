@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -93,7 +93,7 @@
         str-right (text-util/crlf->lf raw-str-right)
         {:keys [left-lines right-lines edits]} (diff/find-edits str-left str-right)]
 
-    (ui/title! stage "Diff")
+    (ui/title! stage (localization (localization/message "dialog.diff-view.title")))
     (.setOnKeyPressed scene (ui/event-handler event (when (= (.getCode ^KeyEvent event) KeyCode/ESCAPE) (.close stage))))
 
     (.setScene stage scene)

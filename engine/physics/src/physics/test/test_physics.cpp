@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -226,6 +226,7 @@ typedef jc_test_type1<Test2D> TestTypes;
 #endif
 
 TYPED_TEST_CASE(PhysicsTest, TestTypes);
+TYPED_TEST_CASE(PhysicsPrecisionRoundingTest, TestTypes);
 
 TYPED_TEST(PhysicsTest, BoxShape)
 {
@@ -1034,6 +1035,34 @@ TYPED_TEST(PhysicsTest, EmptyRayCasting)
     ASSERT_EQ(0u, result.m_UserData);
 }
 
+TYPED_TEST(PhysicsPrecisionRoundingTest, ZeroLengthRayCasting)
+{
+    dmArray<dmPhysics::RayCastResponse> hits;
+    hits.SetCapacity(8);
+
+    dmPhysics::RayCastRequest request;
+    request.m_UserId = 0;
+    request.m_Mask = 1;
+
+    // A zero length raycast from inputs
+    hits.SetSize(0);
+    request.m_From = Point3(0.0f, -13200000.0f, 0.0f);
+    request.m_To = Point3(0.0f, -13200000.0f, 0.0f);
+    request.m_ReturnAllResults = 0;
+    (*TestFixture::m_Test.m_RayCastFunc)(TestFixture::m_World, request, hits);
+
+    ASSERT_EQ(0u, hits.Size());
+
+    // A zero length raycast after applying scale
+    hits.SetSize(0);
+    request.m_From = Point3(0.0f, -13200000.0f, 0.0f);
+    request.m_To = Point3(0.0f, -13200001.0f, 0.0f);
+    request.m_ReturnAllResults = 0;
+    (*TestFixture::m_Test.m_RayCastFunc)(TestFixture::m_World, request, hits);
+
+    ASSERT_EQ(0u, hits.Size());
+}
+
 TYPED_TEST(PhysicsTest, RayCasting)
 {
     float box_half_ext = 0.5f;
@@ -1385,6 +1414,8 @@ TYPED_TEST(PhysicsTest, GravityChange)
     // Verify that the gravity has affected the y position in the opposite direction.
     ASSERT_LT(y, vo.m_Position.getY());
 
+    (*TestFixture::m_Test.m_DeleteCollisionObjectFunc)(TestFixture::m_World, box_co_a);
+    (*TestFixture::m_Test.m_DeleteCollisionShapeFunc)(shape);
 }
 
 enum FilterGroup

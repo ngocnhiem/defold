@@ -1,11 +1,21 @@
 (ns editor.localization-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as string]
+            [clojure.test :refer :all]
+            [editor.code.lang.java-properties :as java-properties]
+            [editor.fs :as fs]
             [editor.localization :as localization]
             [integration.test-util :as test-util]
-            [util.coll :as coll])
+            [internal.java :as java]
+            [internal.util :as util]
+            [util.coll :as coll]
+            [util.eduction :as e]
+            [util.path :as path])
   (:import [java.io StringReader]
            [java.time LocalDate]
            [javafx.scene.control Label]))
+
+(set! *warn-on-reflection* true)
 
 (defn- bundle [locale->content]
   (coll/pair-map-by
@@ -92,3 +102,21 @@
     (localization/await-for-updates localization)
     ;; no more updates: obj is garbage-collected
     (is (= 2 @update-count))))
+
+(deftest ellipsis-test
+  (let [errors (util/group-into
+                 {} []
+                 :path identity
+                 (coll/transfer (fs/class-path-walker java/class-loader "localization") :eduction
+                   (filter #(.endsWith (str %) ".editor_localization"))
+                   (mapcat (fn [path]
+                             (e/map #(-> {:path (str (.getFileName (path/of path))) :key (key %) :string (val %)})
+                                    (java-properties/parse (io/reader path)))))
+                   (filter #(string/includes? (:string %) "..."))))]
+    (is (empty? errors)
+        (coll/join-to-string
+          "\n"
+          (coll/transfer errors :eduction
+            (map (fn [path+error]
+                   (str "Triple dots (...) instead of ellipsis (…) in " (key path+error) ":\n"
+                        (coll/join-to-string "\n" (e/map #(str (:key %) " = " (:string %)) (val path+error)))))))))))

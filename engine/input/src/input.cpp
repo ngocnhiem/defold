@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -824,6 +824,7 @@ namespace dmInput
                                         GetGamepadConfig(binding, gamepad, device_name_out);
 
                                         action->m_Count = dmStrlCpy(action->m_Text, device_name_out, sizeof(action->m_Text));
+                                        action->m_HasText = action->m_Count > 0;
                                         uint32_t user_id32 = 0;
                                         dmHID::GetGamepadUserId(binding->m_Context->m_HidContext, gamepad_binding->m_Gamepad, &user_id32);
                                         action->m_UserID = (uint16_t)user_id32;

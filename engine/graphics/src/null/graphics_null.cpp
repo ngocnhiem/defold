@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -382,6 +382,69 @@ namespace dmGraphics
 
     #undef NATIVE_HANDLE_IMPL
 
+    static HUniformBuffer NullNewUniformBuffer(HContext _context, const UniformBufferLayout& layout)
+    {
+        NullUniformBuffer* ubo                  = new NullUniformBuffer();
+        ubo->m_BaseUniformBuffer.m_Layout       = layout;
+        ubo->m_BaseUniformBuffer.m_BoundSet     = UNUSED_BINDING_OR_SET;
+        ubo->m_BaseUniformBuffer.m_BoundBinding = UNUSED_BINDING_OR_SET;
+        ubo->m_Buffer                           = new uint8_t[layout.m_Size];
+        ubo->m_BufferSize                       = layout.m_Size;
+        return (HUniformBuffer) ubo;
+    }
+
+    static void NullSetUniformBuffer(HContext context, HUniformBuffer uniform_buffer, uint32_t offset, uint32_t size, const void* data)
+    {
+        NullUniformBuffer* ubo = (NullUniformBuffer*) uniform_buffer;
+        assert(offset + size <= ubo->m_BaseUniformBuffer.m_Layout.m_Size);
+        memcpy(ubo->m_Buffer + offset, data, size);
+    }
+
+    static void NullDisableUniformBuffer(HContext _context, HUniformBuffer uniform_buffer)
+    {
+        NullContext* context = (NullContext*)_context;
+        NullUniformBuffer* ubo = (NullUniformBuffer*) uniform_buffer;
+
+        if (ubo->m_BaseUniformBuffer.m_BoundSet == UNUSED_BINDING_OR_SET || ubo->m_BaseUniformBuffer.m_BoundBinding == UNUSED_BINDING_OR_SET)
+        {
+            return;
+        }
+
+        if (context->m_UniformBuffers[ubo->m_BaseUniformBuffer.m_BoundSet][ubo->m_BaseUniformBuffer.m_BoundBinding] == ubo)
+        {
+            context->m_UniformBuffers[ubo->m_BaseUniformBuffer.m_BoundSet][ubo->m_BaseUniformBuffer.m_BoundBinding] = 0;
+        }
+
+        ubo->m_BaseUniformBuffer.m_BoundSet     = UNUSED_BINDING_OR_SET;
+        ubo->m_BaseUniformBuffer.m_BoundBinding = UNUSED_BINDING_OR_SET;
+    }
+
+    static void NullEnableUniformBuffer(HContext _context, HUniformBuffer uniform_buffer, uint32_t binding, uint32_t set)
+    {
+        NullContext* context = (NullContext*)_context;
+        NullUniformBuffer* ubo = (NullUniformBuffer*) uniform_buffer;
+
+        ubo->m_BaseUniformBuffer.m_BoundBinding = binding;
+        ubo->m_BaseUniformBuffer.m_BoundSet     = set;
+
+        if (context->m_UniformBuffers[set][binding])
+        {
+            NullDisableUniformBuffer(context, (HUniformBuffer) context->m_UniformBuffers[set][binding]);
+        }
+
+        context->m_UniformBuffers[set][binding] = ubo;
+    }
+
+    static void NullDeleteUniformBuffer(HContext _context, HUniformBuffer uniform_buffer)
+    {
+        NullContext* context = (NullContext*)_context;
+        NullUniformBuffer* ubo = (NullUniformBuffer*) uniform_buffer;
+
+        NullDisableUniformBuffer(_context, uniform_buffer);
+        delete[] ubo->m_Buffer;
+        delete ubo;
+    }
+
     static HVertexBuffer NullNewVertexBuffer(HContext context, uint32_t size, const void* data, BufferUsage buffer_usage)
     {
         VertexBuffer* vb = new VertexBuffer();
@@ -651,11 +714,78 @@ namespace dmGraphics
         return ~0;
     }
 
+    static void DrawSetup(NullContext* context)
+    {
+        NullProgram* program = context->m_Program;
+
+        if (!program || program->m_UniformBuffers.Size() == 0)
+            return;
+
+        if (context->m_PerDrawUniformData.Capacity() < program->m_UniformDataSize)
+        {
+            context->m_PerDrawUniformData.SetCapacity(program->m_UniformDataSize);
+            context->m_PerDrawUniformData.SetSize(program->m_UniformDataSize);
+        }
+        memset(context->m_PerDrawUniformData.Begin(), 0, context->m_PerDrawUniformData.Size());
+
+        // For tests: reset all UBOs before drawing
+        for (int set = 0; set < MAX_SET_COUNT; ++set)
+        {
+            for (int binding = 0; binding < MAX_BINDINGS_PER_SET_COUNT; ++binding)
+            {
+                if (context->m_UniformBuffers[set][binding])
+                {
+                    context->m_UniformBuffers[set][binding]->m_UsedInDraw = 0;
+                }
+            }
+        }
+
+        for (int i = 0; i < program->m_UniformBuffers.Size(); ++i)
+        {
+            NullUniformBuffer* pgm_ubo = &program->m_UniformBuffers[i];
+            NullUniformBuffer* bound_ubo = context->m_UniformBuffers[pgm_ubo->m_BaseUniformBuffer.m_BoundSet][pgm_ubo->m_BaseUniformBuffer.m_BoundBinding];
+            ProgramResourceBinding& pgm_res = program->m_BaseProgram.m_ResourceBindings[pgm_ubo->m_BaseUniformBuffer.m_BoundSet][pgm_ubo->m_BaseUniformBuffer.m_BoundBinding];
+
+            pgm_ubo->m_UsedInDraw = 0;
+
+            uint8_t* write_to = context->m_PerDrawUniformData.Begin() + pgm_res.m_UniformBufferOffset;
+
+            if (bound_ubo)
+            {
+                UniformBufferLayout* pgm_layout = (UniformBufferLayout*) pgm_res.m_BindingUserData;
+                if (bound_ubo->m_BaseUniformBuffer.m_Layout.m_Hash != pgm_layout->m_Hash)
+                {
+                    dmLogWarning("Uniform buffer with hash %d has an incompatible layout with the currently bound program at the shader binding '%s' (hash=%d)",
+                        bound_ubo->m_BaseUniformBuffer.m_Layout.m_Hash,
+                        pgm_res.m_Res->m_Name,
+                        pgm_layout->m_Hash);
+
+                    // Fallback to the scratch buffer uniform setup
+                    bound_ubo = 0;
+                }
+            }
+
+            if (bound_ubo)
+            {
+                bound_ubo->m_UsedInDraw = 1;
+                memcpy(write_to, bound_ubo->m_Buffer, pgm_res.m_Res->m_BindingInfo.m_BlockSize);
+            }
+            else
+            {
+                pgm_ubo->m_UsedInDraw = 1;
+                uint8_t* data_from = program->m_UniformData + pgm_res.m_UniformBufferOffset;
+                memcpy(write_to, data_from, pgm_res.m_Res->m_BindingInfo.m_BlockSize);
+            }
+        }
+    }
+
     static void NullDrawElements(HContext _context, PrimitiveType prim_type, uint32_t first, uint32_t count, Type type, HIndexBuffer index_buffer, uint32_t instance_count)
     {
         assert(_context);
         assert(index_buffer);
         NullContext* context = (NullContext*) _context;
+
+        DrawSetup(context);
 
         uint32_t binding_index = 0;
 
@@ -688,9 +818,12 @@ namespace dmGraphics
         g_DrawCount++;
     }
 
-    static void NullDraw(HContext context, PrimitiveType prim_type, uint32_t first, uint32_t count, uint32_t instance_count)
+    static void NullDraw(HContext _context, PrimitiveType prim_type, uint32_t first, uint32_t count, uint32_t instance_count)
     {
-        assert(context);
+        assert(_context);
+
+        NullContext* context = (NullContext*) _context;
+        DrawSetup(context);
 
         if (g_Flipped)
         {
@@ -716,6 +849,23 @@ namespace dmGraphics
         return g_DrawCount;
     }
 
+    static void BuildUniformBuffers(NullProgram* program)
+    {
+        uint32_t num_ubos = program->m_BaseProgram.m_ShaderMeta.m_UniformBuffers.Size();
+        program->m_UniformBuffers.SetCapacity(num_ubos);
+
+        for (int i = 0; i < num_ubos; ++i)
+        {
+            ShaderResourceBinding& res = program->m_BaseProgram.m_ShaderMeta.m_UniformBuffers[i];
+
+            NullUniformBuffer ubo = {};
+            ubo.m_BaseUniformBuffer.m_BoundBinding = res.m_Binding;
+            ubo.m_BaseUniformBuffer.m_BoundSet = res.m_Set;
+
+            program->m_UniformBuffers.Push(ubo);
+        }
+    }
+
     static void CreateProgramResourceBindings(NullProgram* program, NullShaderModule* vertex_module, NullShaderModule* fragment_module, NullShaderModule* compute_module)
     {
         ResourceBindingDesc bindings[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT] = {};
@@ -733,6 +883,7 @@ namespace dmGraphics
         memset(program->m_UniformData, 0, binding_info.m_UniformDataSize);
 
         BuildUniforms(&program->m_BaseProgram);
+        BuildUniformBuffers(program);
     }
 
     static NullShaderModule* NewShaderModuleFromDDF(HContext context, ShaderDesc::Shader* ddf)
@@ -869,7 +1020,7 @@ namespace dmGraphics
     static void NullEnableProgram(HContext context, HProgram program)
     {
         assert(context);
-        ((NullContext*) context)->m_Program = (void*)program;
+        ((NullContext*) context)->m_Program = (NullProgram*) program;
     }
 
     static void NullDisableProgram(HContext context)
@@ -948,9 +1099,9 @@ namespace dmGraphics
         uint32_t buffer_offset = UNIFORM_LOCATION_GET_OP2(base_location);
         assert(!(set == UNIFORM_LOCATION_MAX && binding == UNIFORM_LOCATION_MAX));
 
-        NullProgram* program            = (NullProgram*) context->m_Program;
+        NullProgram* program            = context->m_Program;
         ProgramResourceBinding& pgm_res = program->m_BaseProgram.m_ResourceBindings[set][binding];
-        uint32_t offset                 = pgm_res.m_DataOffset + buffer_offset;
+        uint32_t offset                 = pgm_res.m_UniformBufferOffset + buffer_offset;
 
         Vector4* ptr = (Vector4*) (program->m_UniformData + offset);
         return *ptr;
@@ -973,9 +1124,9 @@ namespace dmGraphics
         uint32_t buffer_offset = UNIFORM_LOCATION_GET_OP2(base_location);
         assert(!(set == UNIFORM_LOCATION_MAX && binding == UNIFORM_LOCATION_MAX));
 
-        NullProgram* program            = (NullProgram*) context->m_Program;
+        NullProgram* program            = context->m_Program;
         ProgramResourceBinding& pgm_res = program->m_BaseProgram.m_ResourceBindings[set][binding];
-        uint32_t offset                 = pgm_res.m_DataOffset + buffer_offset;
+        uint32_t offset                 = pgm_res.m_UniformBufferOffset + buffer_offset;
 
         WriteConstantData(program, offset, (uint8_t*) data, sizeof(dmVMath::Vector4) * count);
     }
@@ -991,9 +1142,9 @@ namespace dmGraphics
         uint32_t buffer_offset = UNIFORM_LOCATION_GET_OP2(base_location);
         assert(!(set == UNIFORM_LOCATION_MAX && binding == UNIFORM_LOCATION_MAX));
 
-        NullProgram* program            = (NullProgram*) context->m_Program;
+        NullProgram* program            = context->m_Program;
         ProgramResourceBinding& pgm_res = program->m_BaseProgram.m_ResourceBindings[set][binding];
-        uint32_t offset                 = pgm_res.m_DataOffset + buffer_offset;
+        uint32_t offset                 = pgm_res.m_UniformBufferOffset + buffer_offset;
 
         WriteConstantData(program, offset, (uint8_t*) data, sizeof(dmVMath::Vector4) * 4 * count);
     }
@@ -1338,7 +1489,7 @@ namespace dmGraphics
         return StoreAssetInContainer(context->m_AssetHandleContainer, tex, ASSET_TYPE_TEXTURE);
     }
 
-    static int DoDeleteTexture(void* _context, void* _h_texture)
+    static int DoDeleteTexture(dmJobThread::HContext, dmJobThread::HJob hjob, void* _context, void* _h_texture)
     {
         NullContext* context = (NullContext*) _context;
         HTexture texture = (HTexture) _h_texture;
@@ -1358,7 +1509,7 @@ namespace dmGraphics
         return 0;
     }
 
-    static void DoDeleteTextureComplete(void* _context, void* _h_texture, int result)
+    static void DoDeleteTextureComplete(dmJobThread::HContext, dmJobThread::HJob hjob, dmJobThread::JobStatus status, void* _context, void* _h_texture, int result)
     {
         NullContext* context = (NullContext*) _context;
         HTexture texture = (HTexture) _h_texture;
@@ -1368,7 +1519,14 @@ namespace dmGraphics
 
     static void NullDeleteTextureAsync(NullContext* context, HTexture texture)
     {
-        dmJobThread::PushJob(context->m_JobThread, DoDeleteTexture, DoDeleteTextureComplete, context, (void*) texture);
+        dmJobThread::Job job = {0};
+        job.m_Process = DoDeleteTexture;
+        job.m_Callback = DoDeleteTextureComplete;
+        job.m_Context = context;
+        job.m_Data = (void*)(uintptr_t)texture;
+
+        dmJobThread::HJob hjob = dmJobThread::CreateJob(context->m_JobThread, &job);
+        dmJobThread::PushJob(context->m_JobThread, hjob);
     }
 
     static void PostDeleteTextures(NullContext* context, bool force_delete)
@@ -1379,8 +1537,8 @@ namespace dmGraphics
             for (uint32_t i = 0; i < size; ++i)
             {
                 void* texture = (void*) (size_t) context->m_SetTextureAsyncState.m_PostDeleteTextures[i];
-                DoDeleteTexture(context, texture);
-                DoDeleteTextureComplete(context, texture, 0);
+                DoDeleteTexture(context->m_JobThread, 0, context, texture);
+                DoDeleteTextureComplete(context->m_JobThread, 0, dmJobThread::JOB_STATUS_FINISHED, context, texture, 0);
             }
             context->m_SetTextureAsyncState.m_PostDeleteTextures.SetSize(0);
             return;
@@ -1402,8 +1560,9 @@ namespace dmGraphics
         }
     }
 
-    static void NullDeleteTexture(HContext context, HTexture texture)
+    static void NullDeleteTexture(HContext _context, HTexture texture)
     {
+        NullContext* context = (NullContext*)_context;
         if (g_NullContext->m_AsyncProcessingSupport && g_NullContext->m_UseAsyncTextureLoad)
         {
             // If they're not uploaded yet, we cannot delete them
@@ -1419,8 +1578,8 @@ namespace dmGraphics
         else
         {
             void* htexture = (void*) texture;
-            DoDeleteTexture(g_NullContext, htexture);
-            DoDeleteTextureComplete(g_NullContext, htexture, 0);
+            DoDeleteTexture(context->m_JobThread, 0, g_NullContext, htexture);
+            DoDeleteTextureComplete(context->m_JobThread, 0, dmJobThread::JOB_STATUS_FINISHED, g_NullContext, htexture, 0);
         }
     }
 
@@ -1695,7 +1854,7 @@ namespace dmGraphics
     }
 
     // Called on worker thread
-    static int AsyncProcessCallback(void* _context, void* data)
+    static int AsyncProcessCallback(dmJobThread::HContext, dmJobThread::HJob hjob, void* _context, void* data)
     {
         NullContext* context       = (NullContext*) _context;
         uint16_t param_array_index = (uint16_t) (size_t) data;
@@ -1713,7 +1872,7 @@ namespace dmGraphics
     }
 
     // Called on thread where we update (which should be the main thread)
-    static void AsyncCompleteCallback(void* _context, void* data, int result)
+    static void AsyncCompleteCallback(dmJobThread::HContext, dmJobThread::HJob hjob, dmJobThread::JobStatus status, void* _context, void* data, int result)
     {
         NullContext* context       = (NullContext*) _context;
         uint16_t param_array_index = (uint16_t) (size_t) data;
@@ -1738,12 +1897,14 @@ namespace dmGraphics
             }
             uint16_t param_array_index = PushSetTextureAsyncState(g_NullContext->m_SetTextureAsyncState, texture, params, callback, user_data);
 
-            dmJobThread::PushJob(g_NullContext->m_JobThread,
-                AsyncProcessCallback,
-                AsyncCompleteCallback,
-                (void*) g_NullContext,
-                (void*) (uintptr_t) param_array_index);
+            dmJobThread::Job job = {0};
+            job.m_Process = AsyncProcessCallback;
+            job.m_Callback = AsyncCompleteCallback;
+            job.m_Context = (void*) g_NullContext;
+            job.m_Data = (void*) (uintptr_t) param_array_index;
 
+            dmJobThread::HJob hjob = dmJobThread::CreateJob(g_NullContext->m_JobThread, &job);
+            dmJobThread::PushJob(g_NullContext->m_JobThread, hjob);
         }
         else
         {

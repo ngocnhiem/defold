@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -105,7 +105,7 @@ public:
 
 protected:
 
-    virtual void SetUp()
+    void SetUp() override
     {
         char path[1024];
         dmTestUtil::MakeHostPath(path, sizeof(path), "src/gamesys/test/http/test_http.config.raw");
@@ -188,9 +188,11 @@ protected:
         dmScript::SetInstance(L);
         assert(top == lua_gettop(L));
         m_NumberOfFails = 0;
+
+        dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         dmScript::GetInstance(L);
         ScriptInstance* script_instance = (ScriptInstance*)lua_touserdata(L, -1);
@@ -212,6 +214,7 @@ protected:
         ExtensionAppParamsFinalize(&m_AppParams);
 
         dmRender::DeleteRenderContext(m_RenderContext, m_ScriptContext);
+        dmGraphics::CloseWindow(m_GraphicsContext);
         dmGraphics::DeleteContext(m_GraphicsContext);
 
         dmScript::Finalize(m_ScriptContext);
@@ -464,5 +467,6 @@ int main(int argc, char **argv)
     int ret = jc_test_run_all();
 
     Destroy();
+    dmLog::LogFinalize();
     return ret;
 }

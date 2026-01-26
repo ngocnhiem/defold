@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -44,6 +44,7 @@
            ["Alt+Down" :code.goto-line-end]
            ["Alt+Down" :edit.reorder-down]
            ["Alt+Left" :code.goto-previous-word]
+           ["Alt+F9" :breakpoints.edit-selected]
            ["Alt+F9" :debugger.edit-breakpoint]
            ["Alt+Meta+E" :code.select-next-occurrence]
            ["Alt+Meta+F" :code.replace-text]
@@ -65,6 +66,7 @@
            ["Ctrl+Space" :code.show-completions]
            ["Delete" :edit.delete]
            ["Delete" :code.delete-next-char]
+           ["Delete" :breakpoints.remove-selected]
            ["Down" :scene.move-down]
            ["E" :scene.select-rotate-tool]
            ["End" :code.goto-line-end]
@@ -136,6 +138,7 @@
            ["Shift+Down" :code.select-down]
            ["Shift+E" :scene.select-erase-tool]
            ["Shift+End" :code.select-line-end]
+           ["Shift+F9" :debugger.toggle-breakpoint-enabled]
            ["Shift+F11" :debugger.step-out]
            ["Shift+F12" :code.show-references]
            ["Shift+Home" :code.select-line-text-start]
@@ -174,6 +177,7 @@
            ["Z" :scene.rotate-brush-90-degrees]]
    :win32 [["A" :edit.add-embedded-component]
            ["Alt+Down" :edit.reorder-down]
+           ["Alt+F9" :breakpoints.edit-selected]
            ["Alt+F9" :debugger.edit-breakpoint]
            ["Alt+R" :file.open-recent]
            ["Alt+Up" :edit.reorder-up]
@@ -224,6 +228,7 @@
            ["Ctrl+Z" :edit.undo]
            ["Delete" :edit.delete]
            ["Delete" :code.delete-next-char]
+           ["Delete" :breakpoints.remove-selected]
            ["Down" :scene.move-down]
            ["E" :scene.select-rotate-tool]
            ["End" :code.goto-line-end]
@@ -270,6 +275,7 @@
            ["Shift+Down" :code.select-down]
            ["Shift+E" :scene.select-erase-tool]
            ["Shift+End" :code.select-line-end]
+           ["Shift+F9" :debugger.toggle-breakpoint-enabled]
            ["Shift+F11" :debugger.step-out]
            ["Shift+F12" :code.show-references]
            ["Shift+F5" :debugger.stop]
@@ -293,6 +299,7 @@
            ["Z" :scene.rotate-brush-90-degrees]]
    :linux [["A" :edit.add-embedded-component]
            ["Alt+Down" :edit.reorder-down]
+           ["Alt+F9" :breakpoints.edit-selected]
            ["Alt+F9" :debugger.edit-breakpoint]
            ["Alt+R" :file.open-recent]
            ["Alt+Up" :edit.reorder-up]
@@ -343,6 +350,7 @@
            ["Ctrl+Z" :edit.undo]
            ["Delete" :edit.delete]
            ["Delete" :code.delete-next-char]
+           ["Delete" :breakpoints.remove-selected]
            ["Down" :scene.move-down]
            ["E" :scene.select-rotate-tool]
            ["End" :code.goto-line-end]
@@ -389,6 +397,7 @@
            ["Shift+Down" :code.select-down]
            ["Shift+E" :scene.select-erase-tool]
            ["Shift+End" :code.select-line-end]
+           ["Shift+F9" :debugger.toggle-breakpoint-enabled]
            ["Shift+F11" :debugger.step-out]
            ["Shift+F12" :code.show-references]
            ["Shift+F5" :debugger.stop]

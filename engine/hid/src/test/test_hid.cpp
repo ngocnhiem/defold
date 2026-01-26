@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -20,7 +20,7 @@
 class HIDTest : public jc_test_base_class
 {
 protected:
-    virtual void SetUp()
+    void SetUp() override
     {
         m_Context = dmHID::NewContext(dmHID::NewContextParams());
         dmHID::Init(m_Context);
@@ -35,7 +35,7 @@ protected:
 
     }
 
-    virtual void TearDown()
+    void TearDown() override
     {
         dmHID::Final(m_Context);
         dmHID::DeleteContext(m_Context);

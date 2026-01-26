@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -367,7 +367,7 @@
             {:keys [node-id vbuf shader gpu-texture blend-mode]} user-data]
         (when vbuf
           (let [render-args (merge render-args
-                                   (math/derive-render-transforms
+                                   (math/derive-render-transforms ; TODO(instancing): Can we use the render-args as-is?
                                      world-transform
                                      (:view render-args)
                                      (:projection render-args)
@@ -521,9 +521,13 @@
   (property id g/Str) ; Required protobuf field.
   (property z g/Num ; Required protobuf field.
             (default protobuf/float-zero) ; Default for nodes constructed by editor scripts
-            (dynamic error (validation/prop-error-fnk :warning validation/prop-1-1? z)))
+            (dynamic error (validation/prop-error-fnk :warning validation/prop-1-1? z))
+            (dynamic label (properties/label-dynamic :tile-map.layer :z))
+            (dynamic tooltip (properties/tooltip-dynamic :tile-map.layer :z)))
 
-  (property visible g/Bool (default (protobuf/int->boolean (protobuf/default Tile$TileLayer :is-visible))))
+  (property visible g/Bool (default (protobuf/int->boolean (protobuf/default Tile$TileLayer :is-visible)))
+            (dynamic label (properties/label-dynamic :tile-map.layer :visible))
+            (dynamic tooltip (properties/tooltip-dynamic :tile-map.layer :visible)))
 
   (output scene g/Any :cached produce-layer-scene)
   (output node-outline outline/OutlineData :cached produce-layer-outline)
@@ -595,7 +599,7 @@
   [_node-id child-outlines]
   {:node-id          _node-id
    :node-outline-key "Tile Map"
-   :label            "Tile Map"
+   :label            (localization/message "outline.tile-map")
    :icon             tile-map-icon
    :children         (vec (sort-by :z child-outlines))})
 
@@ -674,7 +678,9 @@
             (dynamic error (g/fnk [_node-id tile-source tile-count max-tile-index]
                              (or (prop-resource-error :fatal _node-id :tile-source tile-source "Tile Source")
                                  (prop-tile-source-range-error _node-id tile-source tile-count max-tile-index))))
-            (dynamic edit-type (g/constantly {:type resource/Resource :ext "tilesource"})))
+            (dynamic edit-type (g/constantly {:type resource/Resource :ext "tilesource"}))
+            (dynamic label (properties/label-dynamic :tile-map :tile-source))
+            (dynamic tooltip (properties/tooltip-dynamic :tile-map :tile-source)))
 
   ;; material
   (property material resource/Resource ; Default assigned in load-fn.
@@ -1422,17 +1428,11 @@
 
 ;; handlers/menu
 
-(defn- selection->tile-map [selection]
-  (handler/adapt-single selection TileMapNode))
+(defn- selection->tile-map [selection evaluation-context]
+  (handler/adapt-single selection TileMapNode evaluation-context))
 
-(defn- selection->layer [selection]
-  (handler/adapt-single selection LayerNode))
-
-(defn tile-map-node
-  [selection]
-  (or (selection->tile-map selection)
-      (some-> (selection->layer selection)
-        core/scope)))
+(defn- selection->layer [selection evaluation-context]
+  (handler/adapt-single selection LayerNode evaluation-context))
 
 (defn- make-new-layer
   [id]
@@ -1440,25 +1440,27 @@
     :id id
     :z protobuf/float-zero))
 
-(defn- add-layer-handler
-  [tile-map-node]
-  (let [layer-id (id/gen "layer" (g/node-value tile-map-node :layer-ids))]
-    (g/transact
-     (concat
-      (g/operation-label "Add layer")
-      (make-layer-node tile-map-node (make-new-layer layer-id))))))
+(defn- add-layer!
+  [tile-map-node layer-id]
+  (g/transact
+    (concat
+      (g/operation-label (localization/message "operation.tile-map.add-layer"))
+      (make-layer-node tile-map-node (make-new-layer layer-id)))))
 
 (handler/defhandler :edit.add-embedded-component :workbench
   (label [user-data] (localization/message "command.edit.add-embedded-component.variant.tile-map"))
-  (active? [selection] (selection->tile-map selection))
-  (run [selection user-data] (add-layer-handler (selection->tile-map selection))))
+  (active? [selection evaluation-context] (selection->tile-map selection evaluation-context))
+  (run [selection user-data]
+    (g/let-ec [tile-map-node (selection->tile-map selection evaluation-context)
+               layer-id (id/gen "layer" (g/node-value tile-map-node :layer-ids evaluation-context))]
+      (add-layer! tile-map-node layer-id))))
 
 (defn- erase-tool-handler [tool-controller]
   (g/set-property! tool-controller :brush empty-brush))
 
 (defn- active-tile-map [app-view evaluation-context]
   (when-let [resource-node (g/node-value app-view :active-resource-node evaluation-context)]
-    (when (g/node-instance? TileMapNode resource-node)
+    (when (g/node-instance? (:basis evaluation-context) TileMapNode resource-node)
       resource-node)))
 
 (defn- active-scene-view
@@ -1480,7 +1482,7 @@
            (and (active-tile-map app-view evaluation-context)
                 (active-scene-view app-view evaluation-context)))
   (enabled? [app-view selection evaluation-context]
-    (and (selection->layer selection)
+    (and (selection->layer selection evaluation-context)
          (-> (active-tile-map app-view evaluation-context)
              (g/node-value :tile-source-resource evaluation-context))))
   (run [app-view] (erase-tool-handler (-> (active-scene-view app-view) scene-view->tool-controller))))
@@ -1493,7 +1495,7 @@
            (and (active-tile-map app-view evaluation-context)
                 (active-scene-view app-view evaluation-context)))
   (enabled? [app-view selection evaluation-context]
-            (and (selection->layer selection)
+            (and (selection->layer selection evaluation-context)
                  (let [active-tile (active-tile-map app-view evaluation-context)]
                    (and (g/node-value active-tile :tile-source-resource evaluation-context)
                         (not (g/error-value? (g/node-value active-tile :gpu-texture evaluation-context)))))))
@@ -1509,7 +1511,7 @@
            (and (active-tile-map app-view evaluation-context)
                 (active-scene-view app-view evaluation-context)))
   (enabled? [app-view selection evaluation-context]
-    (and (selection->layer selection)
+    (and (selection->layer selection evaluation-context)
          (-> (active-tile-map app-view evaluation-context)
              (g/node-value :tile-source-resource evaluation-context))))
   (run [app-view] (transform-brush! app-view flip-brush-horizontally)))
@@ -1519,7 +1521,7 @@
            (and (active-tile-map app-view evaluation-context)
                 (active-scene-view app-view evaluation-context)))
   (enabled? [app-view selection evaluation-context]
-            (and (selection->layer selection)
+            (and (selection->layer selection evaluation-context)
                  (-> (active-tile-map app-view evaluation-context)
                      (g/node-value :tile-source-resource evaluation-context))))
   (run [app-view] (transform-brush! app-view flip-brush-vertically)))
@@ -1529,7 +1531,7 @@
            (and (active-tile-map app-view evaluation-context)
                 (active-scene-view app-view evaluation-context)))
   (enabled? [app-view selection evaluation-context]
-    (and (selection->layer selection)
+    (and (selection->layer selection evaluation-context)
          (-> (active-tile-map app-view evaluation-context)
              (g/node-value :tile-source-resource evaluation-context))))
   (run [app-view] (transform-brush! app-view rotate-brush-90-degrees)))
@@ -1584,4 +1586,4 @@
                           :tool-controller TileMapController}}
       :tags #{:component :non-embeddable}
       :tag-opts {:component {:transform-properties #{:position :rotation}}}
-      :label "Tile Map")))
+      :label (localization/message "resource.type.tilemap"))))

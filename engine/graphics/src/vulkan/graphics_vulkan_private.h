@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -75,6 +75,12 @@ namespace dmGraphics
         const VulkanResourceType GetType();
     };
 
+    struct VulkanUniformBuffer
+    {
+        UniformBuffer m_BaseUniformBuffer;
+        DeviceBuffer  m_DeviceBuffer;
+    };
+
     struct VulkanTexture
     {
         struct VulkanHandle
@@ -93,6 +99,7 @@ namespace dmGraphics
         DeviceBuffer      m_DeviceBuffer;
         int32_atomic_t    m_DataState; // data state per mip-map (mipX = bitX). 0=ok, 1=pending
         HOpaqueHandle     m_PendingUpload;
+        uint32_t          m_DataSize; // for better memory profiling
         uint16_t          m_Width;
         uint16_t          m_Height;
         uint16_t          m_Depth;
@@ -101,8 +108,8 @@ namespace dmGraphics
         uint16_t          m_OriginalDepth;
         uint16_t          m_MipMapCount         : 5;
         uint16_t          m_TextureSamplerIndex : 10;
-        uint32_t          m_Destroyed           : 1;
-        uint32_t          m_UsageHintFlags      : 8;
+        uint16_t          m_Destroyed           : 1;
+        uint8_t           m_UsageHintFlags;
         uint8_t           m_LayerCount;
         uint8_t           m_PageCount; // page count of texture array
 
@@ -426,6 +433,7 @@ namespace dmGraphics
         VertexDeclaration*              m_CurrentVertexDeclaration[MAX_VERTEX_BUFFERS];
         uint32_t                        m_CurrentVertexBufferOffset[MAX_VERTEX_BUFFERS];
         StorageBufferBinding            m_CurrentStorageBuffers[MAX_STORAGE_BUFFERS];
+        VulkanUniformBuffer*            m_CurrentUniformBuffers[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
         VulkanProgram*                  m_CurrentProgram;
         Pipeline*                       m_CurrentPipeline;
         HTexture                        m_CurrentSwapchainTexture;
@@ -456,6 +464,8 @@ namespace dmGraphics
         uint32_t                        m_UseValidationLayers  : 1;
         uint32_t                        m_RenderDocSupport     : 1;
         uint32_t                        m_ASTCSupport          : 1;
+        // See OpenGL backend: separate flag for ASTC array textures
+        uint32_t                        m_ASTCArrayTextureSupport : 1;
         uint32_t                        m_AsyncProcessingSupport : 1;
     };
 

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -266,11 +266,26 @@ namespace dmPhysics
         return world;
     }
 
+    static void ClearPendingRayCasts2D(HWorld2D world)
+    {
+        uint32_t size = world->m_RayCastRequests.Size();
+        for (uint32_t i = 0; i < size; ++i)
+        {
+            const RayCastRequest& request = world->m_RayCastRequests[i];
+            if (request.m_UserData)
+            {
+                free(request.m_UserData);
+            }
+        }
+        world->m_RayCastRequests.SetSize(0);
+    }
+
     void DeleteWorld2D(HContext2D context, HWorld2D world)
     {
         for (uint32_t i = 0; i < context->m_Worlds.Size(); ++i)
             if (context->m_Worlds[i] == world)
                 context->m_Worlds.EraseSwap(i);
+        ClearPendingRayCasts2D(world);
         delete world;
     }
 
@@ -1094,10 +1109,10 @@ namespace dmPhysics
             b2Transform transform(t, r);
             b2PolygonShape* polygon_shape = (b2PolygonShape*) _shape;
             b2Vec2* vertices = polygon_shape->m_vertices;
-            float min_x = INT32_MAX,
-              min_y = INT32_MAX,
-              max_x = -INT32_MAX,
-              max_y = -INT32_MAX;
+            float min_x = (float)INT32_MAX,
+                  min_y = (float)INT32_MAX,
+                  max_x = (float)-INT32_MAX,
+                  max_y = (float)-INT32_MAX;
             float inv_scale = world->m_Context->m_InvScale;
             for (int i = 0; i < polygon_shape->GetVertexCount(); i += 1)
             {
@@ -1352,7 +1367,7 @@ namespace dmPhysics
         return false;
     }
 
-    void RequestRayCast2D(HWorld2D world, const RayCastRequest& request)
+    bool RequestRayCast2D(HWorld2D world, const RayCastRequest& request)
     {
         if (!world->m_RayCastRequests.Full())
         {
@@ -1363,16 +1378,19 @@ namespace dmPhysics
             if (lengthSqr(to2d - from2d) <= 0.0f)
             {
                 dmLogWarning("Ray had 0 length when ray casting, ignoring request.");
+                return false;
             }
             else
             {
                 world->m_RayCastRequests.Push(request);
+                return true;
             }
         }
         else
         {
             dmLogWarning("Ray cast query buffer is full (%d), ignoring request. See 'physics.ray_cast_limit_2d' in game.project", world->m_RayCastRequests.Capacity());
         }
+        return false;
     }
 
     static int Sort_RayCastResponse(const dmPhysics::RayCastResponse* a, const dmPhysics::RayCastResponse* b)
@@ -1389,25 +1407,29 @@ namespace dmPhysics
 
         const Point3 from2d = Point3(request.m_From.getX(), request.m_From.getY(), 0.0);
         const Point3 to2d = Point3(request.m_To.getX(), request.m_To.getY(), 0.0);
-        if (lengthSqr(to2d - from2d) <= 0.0f)
+
+        float scale = world->m_Context->m_Scale;
+        
+        b2Vec2 from;
+        ToB2(from2d, from, scale);
+        b2Vec2 to;
+        ToB2(to2d, to, scale);
+        
+        if ((to - from).LengthSquared() <= 0.0f)
         {
-            dmLogWarning("Ray had 0 length when ray casting, ignoring request.");
+            dmLogWarning("Ray had 0 length when ray casting after applying physics scale, ignoring request.");
             return;
         }
 
-        float scale = world->m_Context->m_Scale;
         ProcessRayCastResultCallback2D query;
         query.m_Request = &request;
         query.m_ReturnAllResults = request.m_ReturnAllResults;
         query.m_Context = world->m_Context;
         query.m_Results = &results;
-        b2Vec2 from;
-        ToB2(from2d, from, scale);
-        b2Vec2 to;
-        ToB2(to2d, to, scale);
         query.m_IgnoredUserData = request.m_IgnoredUserData;
         query.m_CollisionMask = request.m_Mask;
         query.m_Response.m_Hit = 0;
+
         world->m_World.RayCast(&query, from, to);
 
         if (!request.m_ReturnAllResults) {

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -45,7 +45,7 @@ public:
     dmRender::HRenderContext      m_RenderContext;
     dmRender::RenderContextParams m_Params;
 
-    virtual void SetUp()
+    void SetUp() override
     {
         dmGraphics::InstallAdapter();
 
@@ -69,13 +69,15 @@ public:
         m_Params.m_MaxBatches    = 128;
         m_RenderContext          = dmRender::NewRenderContext(m_GraphicsContext, m_Params);
     }
-    virtual void TearDown()
+    void TearDown() override
     {
         dmRender::DeleteRenderContext(m_RenderContext, 0);
+        dmGraphics::CloseWindow(m_GraphicsContext);
         dmGraphics::DeleteContext(m_GraphicsContext);
         dmPlatform::CloseWindow(m_Window);
         dmPlatform::DeleteWindow(m_Window);
         dmScript::DeleteContext(m_Params.m_ScriptContext);
+
     }
 };
 
@@ -144,8 +146,8 @@ TEST_F(dmRenderMaterialTest, TestMaterialConstants)
     dmRender::DeleteNamedConstantBuffer(constants);
     dmGraphics::DisableProgram(m_GraphicsContext);
 
-    dmGraphics::DeleteProgram(m_GraphicsContext, program);
     dmRender::DeleteMaterial(m_RenderContext, material);
+    dmGraphics::DeleteProgram(m_GraphicsContext, program);
 }
 
 TEST_F(dmRenderMaterialTest, TestMaterialVertexAttributes)

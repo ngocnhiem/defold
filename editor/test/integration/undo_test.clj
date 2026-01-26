@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -16,9 +16,8 @@
   (:require [clojure.test :refer :all]
             [clojure.walk :as walk]
             [dynamo.graph :as g]
-            [support.test-support :refer [with-clean-system]]
             [editor.app-view :as app-view]
-            [editor.defold-project :as project]
+            [editor.localization :as localization]
             [editor.outline :as outline]
             [integration.test-util :as test-util]))
 
@@ -72,9 +71,9 @@
   (property counter g/Any)
 
   (output outline g/Any :cached
-          (g/fnk [_node-id outline]
-                 (swap! (g/node-value _node-id :counter) inc)
-                 outline)))
+          (g/fnk [counter outline]
+            (swap! counter inc)
+            outline)))
 
 (defn remove-fns
   "Dynamic functions are never equal. Strip them out of the outline"
@@ -93,7 +92,7 @@
                     (g/tx-nodes-added
                      (g/transact
                       (concat
-                       (g/operation-label "Add Component")
+                       (g/operation-label (localization/message "operation.game-object.add-component"))
                        (g/operation-sequence op-seq)
                        (g/make-nodes proj-graph
                                      [comp-node DummyComponent]
@@ -101,7 +100,7 @@
     (g/transact
      (concat
       (g/operation-sequence op-seq)
-      (g/operation-label "Add Component")
+      (g/operation-label (localization/message "operation.game-object.add-component"))
       (select-fn [component])))
     component))
 
@@ -120,7 +119,7 @@
 
        ;; delete the component
        (g/transact
-         [(g/operation-label "delete node")
+         [(g/operation-label (localization/message "operation.delete"))
           (g/delete-node component)])
 
        ;; force :outline to be cached

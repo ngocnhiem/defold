@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -104,26 +104,35 @@ namespace dmGraphics
 
     struct OpenGLUniformBuffer
     {
-        dmArray<GLint> m_Indices;
-        dmArray<GLint> m_Offsets;
-        uint8_t*       m_BlockMemory;
-        HOpenglID      m_Id;
-        GLint          m_Binding;
-        GLint          m_BlockSize;
-        GLint          m_ActiveUniforms;
-        uint8_t        m_Dirty : 1;
+        UniformBuffer m_BaseUniformBuffer;
+        HOpenglID     m_Id;
+    };
+
+    struct OpenGLScratchUniformBuffer
+    {
+        const UniformBufferLayout* m_Layout;
+        dmArray<GLint>             m_Indices;
+        dmArray<GLint>             m_Offsets;
+        uint8_t*                   m_BlockMemory;
+        HOpenglID                  m_Id;
+        GLint                      m_BindPoint;
+        GLint                      m_BlockSize;
+        GLint                      m_ActiveUniforms;
+        uint8_t                    m_ResourceBinding;
+        uint8_t                    m_ResourceSet : 7;
+        uint8_t                    m_Dirty       : 1;
     };
 
     struct OpenGLProgram
     {
-        Program                        m_BaseProgram;
-        OpenGLShader*                  m_VertexShader;
-        OpenGLShader*                  m_FragmentShader;
-        OpenGLShader*                  m_ComputeShader;
-        uint32_t                       m_Id;
-        ShaderDesc::Language           m_Language;
-        dmArray<OpenGLVertexAttribute> m_Attributes;
-        dmArray<OpenGLUniformBuffer>   m_UniformBuffers;
+        Program                             m_BaseProgram;
+        OpenGLShader*                       m_VertexShader;
+        OpenGLShader*                       m_FragmentShader;
+        OpenGLShader*                       m_ComputeShader;
+        uint32_t                            m_Id;
+        ShaderDesc::Language                m_Language;
+        dmArray<OpenGLVertexAttribute>      m_Attributes;
+        dmArray<OpenGLScratchUniformBuffer> m_UniformBuffers;
     };
 
     /*
@@ -153,15 +162,14 @@ namespace dmGraphics
         int32_atomic_t          m_DeleteContextRequested;
 
         OpenGLProgram*          m_CurrentProgram;
+        OpenGLUniformBuffer*    m_CurrentUniformBuffers[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
 
         dmMutex::HMutex                    m_AssetHandleContainerMutex;
         dmOpaqueHandleContainer<uintptr_t> m_AssetHandleContainer;
-        OpenGLHandlesData       m_GLHandlesData;
+        OpenGLHandlesData                  m_GLHandlesData;
 
         PipelineState           m_PipelineState;
-
         HOpenglID               m_GlobalVAO;
-
         uint32_t                m_Width;
         uint32_t                m_Height;
         uint32_t                m_MaxTextureSize;
@@ -191,6 +199,11 @@ namespace dmGraphics
         uint32_t                m_StorageBufferSupport             : 1;
         uint32_t                m_InstancingSupport                : 1;
         uint32_t                m_ASTCSupport                      : 1;
+        // ASTC for 2D array textures (paged atlases). Some HTML5/GLES drivers
+        // fail on ASTC uploads for array targets even if 2D works. This flag
+        // allows us to disable ASTC only for array textures without disabling
+        // ASTC entirely.
+        uint32_t                m_ASTCArrayTextureSupport          : 1;
         uint32_t                m_3DTextureSupport                 : 1;
     };
 }

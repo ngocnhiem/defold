@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -159,6 +159,7 @@
 
       (testing "save-value"
         (is (= {:artboard "New Artboard"
+                :blit-material "/defold-rive/assets/shader-library/rivemodel_blit.material"
                 :default-animation "Animation1"
                 :material "/defold-rive/assets/rivemodel.material"
                 :scene "/bones/marty.rivescene"}

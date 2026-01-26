@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -20,8 +20,10 @@
             [editor.error-reporting :as error-reporting]
             [editor.localization :as localization]
             [editor.util :as util]
+            [internal.graph.types :as gt]
             [plumbing.core :refer [fnk]]
             [util.coll :as coll :refer [pair]]
+            [util.defonce :as defonce]
             [util.eduction :as e])
   (:import [clojure.lang RT]))
 
@@ -288,12 +290,12 @@
 
 (defonce ^:dynamic *adapters* nil)
 
-(defprotocol SelectionProvider
-  (selection [this])
-  (succeeding-selection [this])
-  (alt-selection [this]))
+(defonce/protocol SelectionProvider
+  (selection [this evaluation-context])
+  (succeeding-selection [this evaluation-context])
+  (alt-selection [this evaluation-context]))
 
-(defrecord Context [name env selection-provider dynamics adapters])
+(defonce/record Context [name env selection-provider dynamics adapters])
 
 (defn ->context
   ([name env]
@@ -364,29 +366,45 @@
   ;; TODO distinguish between scene/form etc when workbench is the context
   (name (:name ctx)))
 
+(defn- invoke-fnk-ec [handler fsym command-context default evaluation-context]
+  (if (= ::auto-evaluation-context evaluation-context)
+    (g/with-auto-evaluation-context evaluation-context
+      (let [ctx (assoc-in command-context [:env :evaluation-context] evaluation-context)]
+        (invoke-fnk handler fsym ctx default)))
+    (let [ctx (assoc-in command-context [:env :evaluation-context] evaluation-context)]
+      (invoke-fnk handler fsym ctx default))))
+
 (defn run [[handler command-context]]
   (analytics/track-screen! (ctx->screen-name command-context))
   (invoke-fnk handler :run command-context nil))
 
-(defn state [[handler command-context]]
-  (invoke-fnk handler :state command-context nil))
+(defn state
+  ([[handler command-context]]
+   (invoke-fnk-ec handler :state command-context nil ::auto-evaluation-context))
+  ([[handler command-context] evaluation-context]
+   (invoke-fnk-ec handler :state command-context nil evaluation-context)))
 
 (defn enabled?
-  ([handler+command-context]
-   (g/with-auto-evaluation-context evaluation-context
-     (enabled? handler+command-context evaluation-context)))
+  ([[handler command-context]]
+   (boolean (invoke-fnk-ec handler :enabled? command-context true ::auto-evaluation-context)))
   ([[handler command-context] evaluation-context]
-   (let [ctx (assoc-in command-context [:env :evaluation-context] evaluation-context)]
-     (boolean (invoke-fnk handler :enabled? ctx true)))))
+   (boolean (invoke-fnk-ec handler :enabled? command-context true evaluation-context))))
 
-(defn label [[handler command-context]]
-  (let [label (:label handler)]
-    (if (or (string? label) (localization/message-pattern? label))
-      label
-      (invoke-fnk handler :label command-context nil))))
+(defn label
+  ([handler+command-context]
+   (label handler+command-context ::auto-evaluation-context))
+  ([[handler command-context] evaluation-context]
+   (let [label (:label handler)]
+     (if (or (string? label)
+             (localization/message-pattern? label))
+       label
+       (invoke-fnk-ec handler :label command-context nil evaluation-context)))))
 
-(defn options [[handler command-context]]
-  (invoke-fnk handler :options command-context nil))
+(defn options
+  ([[handler command-context]]
+   (invoke-fnk-ec handler :options command-context nil ::auto-evaluation-context))
+  ([[handler command-context] evaluation-context]
+   (invoke-fnk-ec handler :options command-context nil evaluation-context)))
 
 (defn- flatten-menu-item-tree [item]
   (->> item
@@ -402,13 +420,14 @@
 
   Returns either a non-empty vector or nil"
   [[{:keys [command]} :as handler+command-context]]
-  (when-let [opts (options handler+command-context)]
-    (->> opts
-         (e/mapcat flatten-menu-item-tree)
-         (e/remove #(= :separator (:label %)))
-         (e/filter #(= command (:command %)))
-         vec
-         coll/not-empty)))
+  (when-let [opts (options handler+command-context)] ; Safe to not supply evaluation-context - we're executing a command.
+    (when-let [flat-opts (->> opts
+                              (e/mapcat flatten-menu-item-tree)
+                              (e/remove #(= :separator (:label %)))
+                              (e/filter #(= command (:command %)))
+                              vec
+                              coll/not-empty)]
+      (with-meta flat-opts (meta opts)))))
 
 (defn- eval-dynamics [context evaluation-context]
   (cond-> context
@@ -437,19 +456,19 @@
                  [handler full-ctx])))
            command-contexts))))
 
-(defn- context-selections [context]
+(defn- context-selections [context evaluation-context]
   (if-let [s (get-in context [:env :selection])]
     [s]
     (if-let [sp (:selection-provider context)]
-      (let [s (selection sp)
-            alt-s (alt-selection sp)]
+      (let [s (selection sp evaluation-context)
+            alt-s (alt-selection sp evaluation-context)]
         (if (and (seq alt-s) (not= s alt-s))
           [s alt-s]
           [s]))
       [nil])))
 
-(defn- eval-selection-context [{:keys [name selection-provider] :as context}]
-  (let [selections (context-selections context)]
+(defn- eval-selection-context [{:keys [name selection-provider] :as context} evaluation-context]
+  (let [selections (context-selections context evaluation-context)]
     (mapv (fn [selection]
             (update context :env assoc
                     :selection selection
@@ -457,11 +476,9 @@
                     :selection-provider selection-provider))
           selections)))
 
-(defn eval-contexts [contexts all-selections?]
-  (let [contexts (g/with-auto-evaluation-context evaluation-context
-                   (mapv #(eval-dynamics % evaluation-context)
-                         contexts))]
-    (loop [selection-contexts (mapcat eval-selection-context contexts)
+(defn eval-contexts [contexts all-selections? evaluation-context]
+  (let [contexts (mapv #(eval-dynamics % evaluation-context) contexts)]
+    (loop [selection-contexts (mapcat #(eval-selection-context % evaluation-context) contexts)
            result []]
       (if-let [ctx (and (or all-selections?
                             (= (:name (first selection-contexts)) (:name (first contexts))))
@@ -500,11 +517,13 @@
   (let [menus (:menus @state-atom)]
     (do-realize-menu (items-at-location menus location) menus)))
 
-(defn adapt [selection t]
+(defn adapt [selection t evaluation-context]
   (if (empty? selection)
     selection
-    (let [selection (if (g/node-type? t)
-                      (adapt selection Long)
+    (let [basis (:basis evaluation-context)
+          _ (assert (gt/basis? basis))
+          selection (if (g/node-type? t)
+                      (adapt selection Long evaluation-context)
                       selection)
           adapters *adapters*
           v (first selection)
@@ -515,31 +534,31 @@
               (and (:on-interface t) (instance? (:on-interface t) v)) identity
               ;; test for node types specifically by checking for longs
               ;; we can't use g/NodeID because that is actually a wrapped ValueTypeRef
-              (and (g/node-type? t) (= (type v) Long)) (fn [v] (when (g/node-instance? t v) v))
-              (satisfies? core/Adaptable v) (fn [v] (core/adapt v t))
+              (and (g/node-type? t) (= (type v) Long)) (fn [v] (when (g/node-instance? basis t v) v))
+              (satisfies? core/Adaptable v) (fn [v] (core/adapt v t evaluation-context))
               true (get adapters t (constantly nil)))]
       (mapv f selection))))
 
 (defn adapt-every
-  ([selection t]
-   (adapt-every selection t nil))
-  ([selection t pred]
+  ([selection t evaluation-context]
+   (adapt-every selection t nil evaluation-context))
+  ([selection t pred evaluation-context]
    (if (empty? selection)
      nil
-     (let [s' (adapt selection t)]
+     (let [s' (adapt selection t evaluation-context)]
        (if (every? (if pred (every-pred some? pred) some?) s')
          s'
          nil)))))
 
-(defn adapt-single [selection t]
+(defn adapt-single [selection t evaluation-context]
   (when (and (nil? (next selection)) (first selection))
-    (first (adapt selection t))))
+    (first (adapt selection t evaluation-context))))
 
 (defn selection->node-ids
-  ([selection]
-   (adapt-every selection Long))
-  ([selection pred]
-   (adapt-every selection Long pred)))
+  ([selection evaluation-context]
+   (adapt-every selection Long evaluation-context))
+  ([selection pred evaluation-context]
+   (adapt-every selection Long pred evaluation-context)))
 
-(defn selection->node-id [selection]
-  (adapt-single selection Long))
+(defn selection->node-id [selection evaluation-context]
+  (adapt-single selection Long evaluation-context))

@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -16,6 +16,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
             [clojure.test :refer :all]
+            [dynamo.graph :as g]
             [editor.lua-parser :as lp]
             [editor.workspace :as workspace]
             [integration.test-util :as test-util]
@@ -25,9 +26,11 @@
 
 (defn- lua-info
   ([code]
-   (lp/lua-info nil fn/constantly-true code))
+   (g/with-auto-or-fake-evaluation-context evaluation-context
+     (lp/lua-info nil fn/constantly-true code evaluation-context)))
   ([workspace valid-resource-kind? code]
-   (lp/lua-info workspace valid-resource-kind? code)))
+   (g/with-auto-or-fake-evaluation-context evaluation-context
+     (lp/lua-info workspace valid-resource-kind? code evaluation-context))))
 
 (deftest test-require
   (testing "bare require function call"

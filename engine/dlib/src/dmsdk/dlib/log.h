@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -225,6 +225,8 @@ void LogInternal(LogSeverity severity, const char* domain, const char* format, .
 #define dmLogOnceFatal(format, args... ) dmLogOnceInternal(dmLogFatal, format, ## args )
 #endif
 
+#endif // NDEBUG
+
 /*# Log listener callback typedef
  *
  * dmLog listener function type. Provides all logs from dmLog* functions and print/pprint Lua functions.
@@ -278,8 +280,6 @@ void dmLogSetLevel(LogSeverity severity);
  */
 LogSeverity dmLogGetLevel();
 
-
-#endif // NDEBUG
 
 #ifdef __cplusplus
 } // extern "C"
