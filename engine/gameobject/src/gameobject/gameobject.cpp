@@ -3998,20 +3998,20 @@ namespace dmGameObject
         return options->m_OptionsCount;
     }
 
-    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, int index, int32_t* result)
+    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, uint32_t index, int32_t* result)
     {
         if (!options || index >= options->m_OptionsCount)
-            return PROPERTY_RESULT_NOT_FOUND;
+            return PROPERTY_RESULT_INVALID_INDEX;
         if (options->m_Options[index].m_HasKey)
             return PROPERTY_RESULT_TYPE_MISMATCH;
         *result = options->m_Options[index].m_Index;
         return PROPERTY_RESULT_OK;
     }
 
-    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, int index, dmhash_t* result)
+    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, uint32_t index, dmhash_t* result)
     {
         if (!options || index >= options->m_OptionsCount)
-            return PROPERTY_RESULT_NOT_FOUND;
+            return PROPERTY_RESULT_INVALID_INDEX;
         if (!options->m_Options[index].m_HasKey)
             return PROPERTY_RESULT_TYPE_MISMATCH;
         *result = options->m_Options[index].m_Key;

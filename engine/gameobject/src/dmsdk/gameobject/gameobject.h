@@ -866,11 +866,33 @@ namespace dmGameObject
      */
     void AddDynamicResourceHash(HCollection collection, dmhash_t path_hash);
 
+    /*#
+     * Get the property count from a PropertyOptions container
+     * @name GetPropertyOptionsCount
+     * @param options [type:HPropertyOptions] Options handle
+     * @return count [type:uint32_t] The number of property options
+     */
     uint32_t GetPropertyOptionsCount(HPropertyOptions options);
 
-    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, int index, int32_t* result);
+    /*#
+     * Get the index value from a property option at a specific index
+     * @name GetPropertyOptionsIndex
+     * @param options [type:HPropertyOptions] Options handle
+     * @param options_index [type:int32_t] The options index into the property options container
+     * @param result [type:int32_t*] If the option at the index is valid, store the result. Pointer is untouched otherwise
+     * @return PROPERTY_RESULT_OK if the property option at the index is valid
+     */
+    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, uint32_t options_index, int32_t* result);
 
-    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, int index, dmhash_t* result);
+    /*#
+     * Get the key value from a property option at a specific index
+     * @name GetPropertyOptionsKey
+     * @param options [type:HPropertyOptions] Options handle
+     * @param options_index [type:int32_t] The options index into the property options container
+     * @param result [type:dmhash_t*] If the option at the index is valid, store the result. Pointer is untouched otherwise
+     * @return PROPERTY_RESULT_OK if the property option at the index is valid
+     */
+    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, uint32_t options_index, dmhash_t* result);
 
     /*#
      * Retrieve a hash property from a component.
