@@ -1567,7 +1567,7 @@
 (handler/defhandler :scene.camera-move-forward :workbench
   (active? [app-view evaluation-context]
            (active-scene-view app-view evaluation-context))
-  (enabled? [app-view] (not (camera-animating? app-view)))
+  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
        (when-some [view (active-scene-view app-view)]
          (let [camera-node (view->camera view)
@@ -1580,7 +1580,7 @@
 (handler/defhandler :scene.camera-move-backward :workbench
   (active? [app-view evaluation-context]
            (active-scene-view app-view evaluation-context))
-  (enabled? [app-view] (not (camera-animating? app-view)))
+  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
        (when-some [view (active-scene-view app-view)]
          (let [camera-node (view->camera view)
@@ -1593,7 +1593,7 @@
 (handler/defhandler :scene.camera-move-left :workbench
   (active? [app-view evaluation-context]
            (active-scene-view app-view evaluation-context))
-  (enabled? [app-view] (not (camera-animating? app-view)))
+  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
        (when-some [view (active-scene-view app-view)]
          (let [camera-node (view->camera view)
@@ -1606,7 +1606,7 @@
 (handler/defhandler :scene.camera-move-right :workbench
   (active? [app-view evaluation-context]
            (active-scene-view app-view evaluation-context))
-  (enabled? [app-view] (not (camera-animating? app-view)))
+  (enabled? [app-view evaluation-context] (not (camera-animating? app-view evaluation-context)))
   (run [app-view]
        (when-some [view (active-scene-view app-view)]
          (let [camera-node (view->camera view)
