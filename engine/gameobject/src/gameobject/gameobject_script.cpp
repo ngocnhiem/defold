@@ -631,13 +631,30 @@ namespace dmGameObject
             return luaL_error(L, "Could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
         }
 
+<<<<<<< HEAD
         LuaToPropertyOptionsResult options_result = {};
+=======
+        dmGameObject::PropertyOptions property_options;
+        dmGameObject::PropertyOption option = {};
+
+        bool index_requested = false;
+>>>>>>> dev
 
         // Options table
         if (lua_gettop(L) > 2)
         {
+<<<<<<< HEAD
             dmGameObject::LuaToPropertyOptions(L, 3, &options_result);
         }
+=======
+            dmGameObject::LuaToPropertyOption(L, 3, &option, &index_requested);
+        }
+
+        AddPropertyOption(&property_options, option);
+
+        dmGameObject::PropertyDesc property_desc;
+        dmGameObject::PropertyResult result = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, property_options, property_desc);
+>>>>>>> dev
 
         dmGameObject::PropertyDesc property_desc;
         dmGameObject::PropertyResult result = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, options_result.m_Options, property_desc);
@@ -657,9 +674,15 @@ namespace dmGameObject
             // Get the rest of the array elements and check each result individually
             for (int i = 1; i < property_desc.m_ArrayLength; ++i)
             {
+<<<<<<< HEAD
                 SetPropertyOptionsByIndex(&options_result.m_Options, 0, i);
                 result                   = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, options_result.m_Options, property_desc);
                 handle_go_get_result     = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, options_result.m_Options, options_result.m_IndexRequested);
+=======
+                SetPropertyOptionsByIndex(&property_options, 0, i);
+                result                   = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, property_options, property_desc);
+                handle_go_get_result     = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, property_options, index_requested);
+>>>>>>> dev
                 if (handle_go_get_result != 1)
                 {
                     return handle_go_get_result;
@@ -761,12 +784,27 @@ namespace dmGameObject
             return luaL_error(L, "could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
         }
 
+<<<<<<< HEAD
         LuaToPropertyOptionsResult options_result = {};
 
         if (lua_gettop(L) > 3)
         {
             LuaToPropertyOptions(L, 4, &options_result);
+=======
+        dmGameObject::PropertyOptions property_options;
+        dmGameObject::PropertyOption option = {};
+
+        if (lua_gettop(L) > 3)
+        {
+            int options_result = LuaToPropertyOption(L, 4, &option, 0);
+            if (options_result != 0)
+            {
+                return options_result;
+            }
+>>>>>>> dev
         }
+
+        AddPropertyOption(&property_options, option);
 
         if (lua_istable(L, 3))
         {
@@ -789,7 +827,11 @@ namespace dmGameObject
                 dmGameObject::PropertyVar property_var;
                 dmGameObject::PropertyResult result = dmGameObject::LuaToVar(L, -1, property_var);
 
+<<<<<<< HEAD
                 SetPropertyOptionsByIndex(&options_result.m_Options, 0, table_index_lua - 1);
+=======
+                SetPropertyOptionsByIndex(&property_options, 0, table_index_lua - 1);
+>>>>>>> dev
 
                 if (result == PROPERTY_RESULT_OK)
                 {
@@ -1780,6 +1822,7 @@ namespace dmGameObject
         if (target_instance == 0)
             return luaL_error(L, "Could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
 
+        dmGameObject::PropertyOptions opt;
         dmGameObject::PropertyResult res = dmGameObject::CancelAnimations(collection, target_instance, target.m_Fragment, property_id);
 
         switch (res)
