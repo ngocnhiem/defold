@@ -280,7 +280,7 @@ namespace dmGameSystem
                 &CompParticleFXNewWorld, &CompParticleFXDeleteWorld,
                 &CompParticleFXCreate, &CompParticleFXDestroy, 0, 0, &CompParticleFXAddToUpdate, CompParticleFXGetComponent,
                 &CompParticleFXUpdate, 0, 0, &CompParticleFXRender, 0, &CompParticleFXOnMessage, 0,
-                &CompParticleFXOnReload, 0, 0,
+                &CompParticleFXOnReload, CompParticleFXGetProperty, CompParticleFXSetProperty,
                 0, 0,
                 1);
 

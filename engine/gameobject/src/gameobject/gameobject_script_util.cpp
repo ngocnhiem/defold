@@ -83,43 +83,94 @@ namespace dmGameObject
         return dmGameObject::RESULT_OK;
     }
 
-    int LuaToPropertyOption(lua_State* L, int index, PropertyOption* property_option, bool* index_requested)
+    int LuaToPropertyOptions(lua_State* L, int index, LuaToPropertyOptionsResult* result)
     {
         luaL_checktype(L, index, LUA_TTABLE);
         lua_pushvalue(L, index);
 
-        lua_getfield(L, -1, "key");
-        if (!lua_isnil(L, -1))
+        uint8_t has_keys = 0;
+        uint8_t has_key = 0;
+        uint8_t has_index = 0;
+        PropertyOptions tmp_options;
+
+        // All of these keywords are optional
+
+        // go.get("#test", "material", { keys = {{emitter_id = ""}, {modifier_id = ""}} })
+        // go.get("#test", "material", { keys = {"", ""} })
         {
-            property_option->m_Key = dmScript::CheckHashOrString(L, -1);
-            property_option->m_HasKey = 1;
-        }
-        lua_pop(L, 1);
+            lua_getfield(L, -1, "keys");
+            if (!lua_isnil(L, -1))
+            {
+                if (!lua_istable(L, -1))
+                {
+                    return luaL_error(L, "'keys' must be a table when passed in as options table.");
+                }
 
-        lua_getfield(L, -1, "index");
-        if (!lua_isnil(L, -1)) // make it optional
+                int count = (int)lua_objlen(L, -1);
+
+                if (count > MAX_PROPERTY_OPTIONS_COUNT)
+                {
+                    return luaL_error(L, "Too many keys passed in to the 'keys' table: %d (max=%d).",
+                        count, MAX_PROPERTY_OPTIONS_COUNT);
+                }
+
+                for (int i = 1; i <= count; ++i)
+                {
+                    lua_rawgeti(L, -1, i);
+                    dmhash_t key = dmScript::CheckHashOrString(L, -1);
+                    dmGameObject::AddPropertyOptionsKey(&tmp_options, key);
+                    lua_pop(L, 1);
+                }
+
+                has_keys = 1;
+            }
+            lua_pop(L, 1);
+        }
+
+        if (!has_keys)
         {
-            if (property_option->m_HasKey)
+            lua_getfield(L, -1, "key");
+            if (!lua_isnil(L, -1))
             {
-                return luaL_error(L, "Options table cannot contain both 'key' and 'index'.");
+                dmhash_t key = dmScript::CheckHashOrString(L, -1);
+                dmGameObject::AddPropertyOptionsKey(&tmp_options, key);
+                has_key = 1;
             }
-            if (!lua_isnumber(L, -1))
-            {
-                return luaL_error(L, "Invalid number passed as index argument in options table.");
-            }
-
-            property_option->m_Index = luaL_checkinteger(L, -1) - 1;
-
-            if (property_option->m_Index < 0)
-            {
-                return luaL_error(L, "Negative numbers passed as index argument in options table (%d).", property_option->m_Index);
-            }
-            if (index_requested)
-                *index_requested = true;
+            lua_pop(L, 1);
         }
-        lua_pop(L, 1);
+
+        if (!has_keys && !has_key)
+        {
+            lua_getfield(L, -1, "index");
+            if (!lua_isnil(L, -1))
+            {
+                if (!lua_isnumber(L, -1))
+                {
+                    return luaL_error(L, "Invalid number passed as index argument in options table.");
+                }
+
+                int32_t index = luaL_checkinteger(L, -1) - 1;
+                if (index < 0)
+                {
+                    return luaL_error(L, "Negative numbers passed as index argument in options table (%d).", index);
+                }
+
+                dmGameObject::AddPropertyOptionsIndex(&tmp_options, index);
+                has_index = 1;
+            }
+            lua_pop(L, 1);
+        }
 
         lua_pop(L, 1);
+
+        if ((has_keys + has_key + has_index) > 1)
+        {
+            return luaL_error(L, "Options table can only contain a single entry of either 'key', 'index' or 'keys', not multiple.");
+        }
+
+        result->m_Options        = tmp_options;
+        result->m_IndexRequested = has_index;
+        result->m_KeysRequested  = has_keys;
 
         return 0;
     }
@@ -267,5 +318,3 @@ namespace dmGameObject
         return 0;
     }
 }
-
-

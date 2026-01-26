@@ -44,7 +44,9 @@ DM_PROPERTY_U32(rmtp_ParticleVertexSizeGPU, 0, PROFILE_PROPERTY_FRAME_RESET, "si
 
 namespace dmGameSystem
 {
-    const int VERTEX_COUNT = 6; // Fixed vertex count per particle
+    const int VERTEX_COUNT          = 6; // Fixed vertex count per particle
+    const dmhash_t HASH_EMITTER_ID  = dmHashString64("emitter_id");
+    const dmhash_t HASH_MODIFIER_ID = dmHashString64("modifier_id");
 
     using namespace dmVMath;
 
@@ -52,22 +54,22 @@ namespace dmGameSystem
 
     struct ParticleFXComponentPrototype
     {
-        Vector3 m_Translation;
-        Quat m_Rotation;
+        Vector3                m_Translation;
+        Quat                   m_Rotation;
         dmParticle::HPrototype m_ParticlePrototype;
-        uint16_t m_AddedToUpdate : 1;
+        uint16_t               m_AddedToUpdate : 1;
         uint16_t : 15;
     };
 
     struct ParticleFXComponent
     {
         dmGameObject::HInstance m_Instance;
-        dmhash_t m_ComponentId;
-        dmParticle::HInstance m_ParticleInstance;
-        dmParticle::HPrototype m_ParticlePrototype;
-        ParticleFXWorld* m_World;
-        uint32_t m_PrototypeIndex;
-        uint16_t m_AddedToUpdate : 1;
+        dmhash_t                m_ComponentId;
+        dmParticle::HInstance   m_ParticleInstance;
+        dmParticle::HPrototype  m_ParticlePrototype;
+        ParticleFXWorld*        m_World;
+        uint32_t                m_PrototypeIndex;
+        uint16_t                m_AddedToUpdate : 1;
         uint16_t : 15;
     };
 
@@ -725,6 +727,85 @@ namespace dmGameSystem
             world->m_EmitterCount += dmParticle::GetEmitterCount(component->m_ParticlePrototype);
         }
         // Don't warn if none could be found
+    }
+
+    struct ResolvePropertyIdResult
+    {
+        dmhash_t m_EmitterId;
+        dmhash_t m_ModifierId;
+    };
+
+    /*
+    enum PropertyResult
+    {
+        PROPERTY_RESULT_OK = 0,
+        PROPERTY_RESULT_NOT_FOUND = -1,
+        PROPERTY_RESULT_INVALID_FORMAT = -2,
+        PROPERTY_RESULT_UNSUPPORTED_TYPE = -3,
+        PROPERTY_RESULT_TYPE_MISMATCH = -4,
+        PROPERTY_RESULT_COMP_NOT_FOUND = -5,
+        PROPERTY_RESULT_INVALID_INSTANCE = -6,
+        PROPERTY_RESULT_BUFFER_OVERFLOW = -7,
+        PROPERTY_RESULT_UNSUPPORTED_VALUE = -8,
+        PROPERTY_RESULT_UNSUPPORTED_OPERATION = -9,
+        PROPERTY_RESULT_RESOURCE_NOT_FOUND = -10,
+        PROPERTY_RESULT_INVALID_INDEX = -11,
+        PROPERTY_RESULT_INVALID_KEY = -12,
+        PROPERTY_RESULT_READ_ONLY = -13,
+    };
+    */
+
+    static bool ResolvePropertyIds(const dmGameObject::PropertyOptions* options, ResolvePropertyIds* resolved_ids)
+    {
+        ResolvePropertyIdResult res = {};
+        uint32_t property_count = dmGameObject::GetPropertyOptionsCount(options);
+        for (int i = 0; i < property_count; ++i)
+        {
+            dmhash_t hash = 0;
+            dmGameObject::GetPropertyOptionsKey(options, i, &hash);
+
+            if (hash == HASH_EMITTER_ID)
+            {
+                dmGameObject::GetPropertyOptionsKey(options, ++i, &res.m_EmitterId);
+            }
+            else if (hash == HASH_MODIFIER_ID)
+            {
+                dmGameObject::GetPropertyOptionsKey(options, ++i, &res.m_ModifierId);
+            }
+        }
+
+        if (res.m_EmitterId == 0 && res.m_ModifierId == 0)
+            return false;
+
+        *resolved_ids = res;
+        return true;
+    }
+
+    dmGameObject::PropertyResult CompCollisionObjectGetProperty(const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
+    {
+        ResolvePropertyIdResult resolved_ids;
+        if (!ResolvePropertyIds(params.m_Options, &resolved_ids))
+        {
+            return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+        }
+
+        ParticleFXWorld* pfx_world     = (ParticleFXWorld*)params.m_World;
+        ParticleFXComponent* component = &pfx_world->m_Components.Get(*params.m_UserData);
+
+        // dmParticle::SetEmitterProperty(resolved_ids.m_EmitterId, resolved_ids.m_ModifierId);
+
+        return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+    }
+
+    dmGameObject::PropertyResult CompCollisionObjectSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
+    {
+        ResolvePropertyIdResult resolved_ids;
+        if (!ResolvePropertyIds(params.m_Options, &resolved_ids))
+        {
+            return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+        }
+
+        return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }
 
     static void SetBlendFactors(dmRender::RenderObject* ro, dmParticleDDF::BlendMode blend_mode)
