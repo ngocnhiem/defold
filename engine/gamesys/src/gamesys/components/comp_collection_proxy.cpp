@@ -340,61 +340,57 @@ namespace dmGameSystem
                     proxy->m_Preloader = 0;
                 }
             }
+            if (proxy->m_Collection != 0 && proxy->m_Unloading)
+            {
+                if (dmGameObject::IsCollectionDeleted(proxy->m_Collection)) {
+                    UnloadComplete(proxy, dmGameObject::RESULT_OK);
+                }
+            }
             if (proxy->m_Collection != 0)
             {
-                if (proxy->m_Unloading)
+                DM_PROPERTY_ADD_U32(rmtp_CollectionProxyLoaded, 1);
+                if (proxy->m_DelayedEnable != proxy->m_Enabled)
                 {
-                    if (dmGameObject::IsCollectionDeleted(proxy->m_Collection)) {
-                        UnloadComplete(proxy, dmGameObject::RESULT_OK);
+                    proxy->m_Enabled = proxy->m_DelayedEnable;
+                }
+
+                if (proxy->m_Enabled)
+                {
+                    DM_PROPERTY_ADD_U32(rmtp_CollectionProxyEnabled, 1);
+                    dmGameObject::UpdateContext uc = *params.m_UpdateContext;
+                    // We might be inside a parent proxy, so the scale will propagate
+                    uc.m_TimeScale = params.m_UpdateContext->m_TimeScale * proxy->m_TimeStepFactor;
+
+                    float warped_dt = params.m_UpdateContext->m_DT * proxy->m_TimeStepFactor;
+                    switch (proxy->m_TimeStepMode)
+                    {
+                    case dmGameSystemDDF::TIME_STEP_MODE_CONTINUOUS:
+                        uc.m_DT = warped_dt;
+                        proxy->m_AccumulatedTime = 0.0f;
+                        break;
+                    case dmGameSystemDDF::TIME_STEP_MODE_DISCRETE:
+                        proxy->m_AccumulatedTime += warped_dt;
+                        if (proxy->m_AccumulatedTime >= params.m_UpdateContext->m_DT)
+                        {
+                            uc.m_DT = params.m_UpdateContext->m_DT;
+                            proxy->m_AccumulatedTime -= params.m_UpdateContext->m_DT;
+                        }
+                        else
+                        {
+                            uc.m_DT = 0.0f;
+                        }
+                        break;
+                    default:
+                        break;
                     }
+
+                    if (!dmGameObject::Update(proxy->m_Collection, &uc))
+                        result = dmGameObject::UPDATE_RESULT_UNKNOWN_ERROR;
                 }
                 else
                 {
-                    DM_PROPERTY_ADD_U32(rmtp_CollectionProxyLoaded, 1);
-                    if (proxy->m_DelayedEnable != proxy->m_Enabled)
-                    {
-                        proxy->m_Enabled = proxy->m_DelayedEnable;
-                    }
-
-                    if (proxy->m_Enabled)
-                    {
-                        DM_PROPERTY_ADD_U32(rmtp_CollectionProxyEnabled, 1);
-                        dmGameObject::UpdateContext uc = *params.m_UpdateContext;
-                        // We might be inside a parent proxy, so the scale will propagate
-                        uc.m_TimeScale = params.m_UpdateContext->m_TimeScale * proxy->m_TimeStepFactor;
-
-                        float warped_dt = params.m_UpdateContext->m_DT * proxy->m_TimeStepFactor;
-                        switch (proxy->m_TimeStepMode)
-                        {
-                        case dmGameSystemDDF::TIME_STEP_MODE_CONTINUOUS:
-                            uc.m_DT = warped_dt;
-                            proxy->m_AccumulatedTime = 0.0f;
-                            break;
-                        case dmGameSystemDDF::TIME_STEP_MODE_DISCRETE:
-                            proxy->m_AccumulatedTime += warped_dt;
-                            if (proxy->m_AccumulatedTime >= params.m_UpdateContext->m_DT)
-                            {
-                                uc.m_DT = params.m_UpdateContext->m_DT;
-                                proxy->m_AccumulatedTime -= params.m_UpdateContext->m_DT;
-                            }
-                            else
-                            {
-                                uc.m_DT = 0.0f;
-                            }
-                            break;
-                        default:
-                            break;
-                        }
-
-                        if (!dmGameObject::Update(proxy->m_Collection, &uc))
-                            result = dmGameObject::UPDATE_RESULT_UNKNOWN_ERROR;
-                    }
-                    else
-                    {
-                        proxy->m_AccumulatedTime = 0.0f;
-                    }
+                    proxy->m_AccumulatedTime = 0.0f;
                 }
-
             }
         }
         return result;
