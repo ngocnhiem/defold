@@ -1533,36 +1533,36 @@
 (declare selection->movable)
 
 (handler/defhandler :scene.move-up :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) 0.0 1.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 0.0 1.0 0.0)))
 
 (handler/defhandler :scene.move-down :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) 0.0 -1.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 0.0 -1.0 0.0)))
 
 (handler/defhandler :scene.move-left :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) -1.0 0.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) -1.0 0.0 0.0)))
 
 (handler/defhandler :scene.move-right :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) 1.0 0.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 1.0 0.0 0.0)))
 
 (handler/defhandler :scene.move-up-major :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) 0.0 10.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 0.0 10.0 0.0)))
 
 (handler/defhandler :scene.move-down-major :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) 0.0 -10.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 0.0 -10.0 0.0)))
 
 (handler/defhandler :scene.move-left-major :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) -10.0 0.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) -10.0 0.0 0.0)))
 
 (handler/defhandler :scene.move-right-major :workbench
-  (active? [selection] (selection->movable selection))
-  (run [selection] (nudge! (selection->movable selection) 10.0 0.0 0.0)))
+  (active? [selection evaluation-context] (selection->movable selection evaluation-context))
+  (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 10.0 0.0 0.0)))
 
 (def camera-speed 0.1)
 
