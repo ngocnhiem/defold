@@ -19,6 +19,8 @@
 #include <assert.h>
 
 #include <dmsdk/dlib/vmath.h>
+#include <dmsdk/gameobject/gameobject.h>
+
 #include <dlib/index_pool.h>
 #include <dlib/hash.h>
 #include <dlib/log.h>
@@ -31,6 +33,7 @@
 #include "gamesys.h"
 #include <gamesys/gamesys_ddf.h>
 #include "../gamesys_private.h"
+#include "comp_private.h"
 
 #include "resources/res_particlefx.h"
 #include "resources/res_textureset.h"
@@ -52,12 +55,23 @@ namespace dmGameSystem
 
     struct ParticleFXWorld;
 
+    struct ParticleFXEmitterOverride
+    {
+        MaterialResource* m_Material;
+    };
+
+    struct ParticleFXPrototypeOverrides
+    {
+        dmArray<ParticleFXEmitterOverride> m_EmitterOverrides;
+    };
+
     struct ParticleFXComponentPrototype
     {
-        Vector3                m_Translation;
-        Quat                   m_Rotation;
-        dmParticle::HPrototype m_ParticlePrototype;
-        uint16_t               m_AddedToUpdate : 1;
+        Vector3                       m_Translation;
+        Quat                          m_Rotation;
+        dmParticle::HPrototype        m_ParticlePrototype;
+        ParticleFXPrototypeOverrides* m_Overrides;
+        uint16_t                      m_AddedToUpdate : 1;
         uint16_t : 15;
     };
 
@@ -729,35 +743,19 @@ namespace dmGameSystem
         // Don't warn if none could be found
     }
 
-    struct ResolvePropertyIdResult
+    struct ResolvePropertyOptionsResult
     {
         dmhash_t m_EmitterId;
         dmhash_t m_ModifierId;
+        dmhash_t m_PayloadHash;
+        int32_t  m_PayloadIndex;
+        uint8_t  m_HasPayloadHash : 1;
+        uint8_t  m_HasPayloadIndex : 1;
     };
 
-    /*
-    enum PropertyResult
+    static bool ResolvePropertyOptions(dmGameObject::HPropertyOptions options, ResolvePropertyOptionsResult* resolved_options)
     {
-        PROPERTY_RESULT_OK = 0,
-        PROPERTY_RESULT_NOT_FOUND = -1,
-        PROPERTY_RESULT_INVALID_FORMAT = -2,
-        PROPERTY_RESULT_UNSUPPORTED_TYPE = -3,
-        PROPERTY_RESULT_TYPE_MISMATCH = -4,
-        PROPERTY_RESULT_COMP_NOT_FOUND = -5,
-        PROPERTY_RESULT_INVALID_INSTANCE = -6,
-        PROPERTY_RESULT_BUFFER_OVERFLOW = -7,
-        PROPERTY_RESULT_UNSUPPORTED_VALUE = -8,
-        PROPERTY_RESULT_UNSUPPORTED_OPERATION = -9,
-        PROPERTY_RESULT_RESOURCE_NOT_FOUND = -10,
-        PROPERTY_RESULT_INVALID_INDEX = -11,
-        PROPERTY_RESULT_INVALID_KEY = -12,
-        PROPERTY_RESULT_READ_ONLY = -13,
-    };
-    */
-
-    static bool ResolvePropertyIds(const dmGameObject::PropertyOptions* options, ResolvePropertyIds* resolved_ids)
-    {
-        ResolvePropertyIdResult res = {};
+        ResolvePropertyOptionsResult res = {};
         uint32_t property_count = dmGameObject::GetPropertyOptionsCount(options);
         for (int i = 0; i < property_count; ++i)
         {
@@ -772,38 +770,108 @@ namespace dmGameSystem
             {
                 dmGameObject::GetPropertyOptionsKey(options, ++i, &res.m_ModifierId);
             }
+            else if (!res.m_HasPayloadHash && !res.m_HasPayloadIndex)
+            {
+                if (dmGameObject::GetPropertyOptionsKey(options, i, &res.m_PayloadHash) == dmGameObject::PROPERTY_RESULT_OK)
+                {
+                    res.m_HasPayloadHash = 1;
+                }
+                else if (dmGameObject::GetPropertyOptionsIndex(options, i, &res.m_PayloadIndex) == dmGameObject::PROPERTY_RESULT_OK)
+                {
+                    res.m_HasPayloadIndex = 1;
+                }
+            }
         }
 
         if (res.m_EmitterId == 0 && res.m_ModifierId == 0)
             return false;
 
-        *resolved_ids = res;
+        *resolved_options = res;
         return true;
     }
 
-    dmGameObject::PropertyResult CompCollisionObjectGetProperty(const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
+    // static dmGameObject::PropertyResult AddOverrideMaterial(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, dmhash_t resource)
+    // {
+    //     if (!prototype->m_Overrides)
+    //         prototype->m_Overrides = new ParticleFXPrototypeOverrides;
+    //     return SetResourceProperty(factory, resource, MATERIAL_EXT_HASH, (void**)&overrides->m_Material);
+    // }
+
+    // static inline MaterialResource* GetMaterialResource(const ParticleFXComponentPrototype* prototype)
+    // {
+    //     const ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
+    //     // const SpriteResource* resource = prototype->m_Resource;
+    //     // const SpriteResourceOverrides* overrides = prototype->m_Overrides;
+    //     // return (overrides && overrides->m_Material) ? overrides->m_Material : resource->m_Material;
+    // }
+
+    static inline MaterialResource* GetEmitterMaterialResource(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
-        ResolvePropertyIdResult resolved_ids;
-        if (!ResolvePropertyIds(params.m_Options, &resolved_ids))
+        const ParticleFXPrototypeOverrides* emitter_overrides = prototype->m_Overrides;
+        if (emitter_overrides && emitter_overrides->m_EmitterOverrides.Size() < emitter_index)
+        {
+            const ParticleFXEmitterOverride* override = &emitter_overrides->m_EmitterOverrides[emitter_index];
+            if (override->m_Material)
+                return override->m_Material;
+        }
+        return (MaterialResource*) dmParticle::GetMaterial(prototype->m_ParticlePrototype, emitter_index);
+    }
+
+    dmGameObject::PropertyResult CompParticleFXGetProperty(const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
+    {
+        ResolvePropertyOptionsResult resolved_options;
+        if (!ResolvePropertyOptions(params.m_Options, &resolved_options))
         {
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
         }
 
-        ParticleFXWorld* pfx_world     = (ParticleFXWorld*)params.m_World;
-        ParticleFXComponent* component = &pfx_world->m_Components.Get(*params.m_UserData);
+        dmhash_t property_id                    = params.m_PropertyId;
+        ParticleFXWorld* pfx_world              = (ParticleFXWorld*) params.m_World;
+        ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
 
-        // dmParticle::SetEmitterProperty(resolved_ids.m_EmitterId, resolved_ids.m_ModifierId);
+        if (resolved_options.m_EmitterId)
+        {
+            uint32_t emitter_index = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, resolved_options.m_EmitterId);
+            if (emitter_index == dmParticle::INVALID_EMITTER_INDEX)
+            {
+                return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+            }
+
+            if (property_id == PROP_MATERIAL)
+            {
+                MaterialResource* emitter_material_res = GetEmitterMaterialResource(prototype, emitter_index);
+                return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), emitter_material_res, out_value);
+            }
+        }
+
+        /*
+        ParticleFXComponent* component = (ParticleFXComponent*)*params.m_UserData;
+
+        if (resolved_options.m_EmitterId && resolved_options.m_ModifierId)
+        {
+            // return dmParticle::GetModifierProperty();
+        }
+        return dmParticle::GetEmitterProperty(pfx_world->m_ParticleContext, component->m_ParticleInstance, resolved_options.m_EmitterId, property_id, out_value);
+        */
 
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }
 
-    dmGameObject::PropertyResult CompCollisionObjectSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
+    dmGameObject::PropertyResult CompParticleFXSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
     {
-        ResolvePropertyIdResult resolved_ids;
-        if (!ResolvePropertyIds(params.m_Options, &resolved_ids))
+        ResolvePropertyOptionsResult resolved_options;
+        if (!ResolvePropertyOptions(params.m_Options, &resolved_options))
         {
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
         }
+
+        dmhash_t property_id = params.m_PropertyId;
+        ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
+
+        // if (property_id == PROP_MATERIAL)
+        // {
+        //     return AddOverrideMaterial(dmGameObject::GetFactory(params.m_Instance), prototype, params.m_Value.m_Hash);
+        // }
 
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }

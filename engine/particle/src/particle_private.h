@@ -259,6 +259,7 @@ namespace dmParticle
         Property                    m_ParticleProperties[dmParticleDDF::PARTICLE_KEY_COUNT];
         dmArray<ModifierPrototype>  m_Modifiers;
         dmhash_t                    m_Animation;
+        dmhash_t                    m_Id;
         /// Tile source to use when rendering particles.
         void*                       m_TileSource;
         /// Material to use when rendering particles.

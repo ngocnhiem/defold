@@ -231,7 +231,8 @@ namespace dmParticle
         uint16_t index = context->m_InstanceIndexPool.Pop();
 
         // Avoid zero in order to ensure that HInstance != INVALID_INSTANCE for valid handles.
-        if (context->m_NextVersionNumber == INVALID_INSTANCE) context->m_NextVersionNumber++;
+        if (context->m_NextVersionNumber == INVALID_INSTANCE)
+            context->m_NextVersionNumber++;
         instance->m_VersionNumber = context->m_NextVersionNumber++;
 
         context->m_Instances[index] = instance;
@@ -1822,6 +1823,7 @@ namespace dmParticle
             EmitterPrototype* emitter = &prototype->m_Emitters[i];
             emitter->m_Animation = dmHashString64(emitter_ddf->m_Animation);
             emitter->m_BlendMode = emitter_ddf->m_BlendMode;
+            emitter->m_Id = dmHashString64(emitter_ddf->m_Id);
             // Approximate splines with linear segments
             memset(emitter->m_Properties, 0, sizeof(emitter->m_Properties));
             memset(emitter->m_ParticleProperties, 0, sizeof(emitter->m_ParticleProperties));
@@ -2060,6 +2062,19 @@ namespace dmParticle
     void SetTileSource(HPrototype prototype, uint32_t emitter_index, void* tile_source)
     {
         prototype->m_Emitters[emitter_index].m_TileSource = tile_source;
+    }
+
+    uint32_t GetEmitterIndexFromId(HPrototype prototype, dmhash_t id)
+    {
+        uint32_t emitter_count = prototype->m_Emitters.Size();
+        for (int i = 0; i < emitter_count; ++i)
+        {
+            if (prototype->m_Emitters[i].m_Id == id)
+            {
+                return i;
+            }
+        }
+        return INVALID_EMITTER_INDEX;
     }
 
     static void SetRenderConstantInternal(HParticleContext context, HInstance instance, dmhash_t emitter_id, dmhash_t name_hash, Matrix4 value, bool is_matrix4)

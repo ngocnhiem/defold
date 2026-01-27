@@ -19,6 +19,7 @@
 #include <dlib/hash.h>
 #include <ddf/ddf.h>
 #include <graphics/graphics.h>
+#include <gameobject/gameobject.h>
 #include "particle/particle_ddf.h"
 
 /*extern "C"
@@ -57,6 +58,10 @@ namespace dmParticle
      * Invalid instance handle
      */
     const HInstance INVALID_INSTANCE = 0;
+    /**
+     * Invalid emitter id
+     */
+    const uint32_t INVALID_EMITTER_INDEX = -1;
 
     /// Config key to use for tweaking maximum number of instances in a context.
     extern const char* MAX_INSTANCE_COUNT_KEY;
@@ -213,6 +218,10 @@ namespace dmParticle
         float m_Time;
         uint32_t m_StructSize;
     };
+
+    // Properties (runtime only)
+    // dmGameObject::PropertyResult GetEmitterProperty(HParticleContext context, HInstance instance, dmhash_t emitter_id, dmhash_t property_id, dmGameObject::PropertyDesc& out_value);
+    uint32_t GetEmitterIndexFromId(HPrototype prototype, dmhash_t id);
 
     // For tests
     dmVMath::Vector3 GetPosition(HParticleContext context, HInstance instance);
