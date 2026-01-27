@@ -450,6 +450,12 @@ namespace dmGameObject
         hcollection->m_Collection = collection;
         collection->m_Factory = factory;
 
+        HCollection existing = GetCollectionByHash(regist, dmHashString64(name));
+        if (existing && existing->m_Collection->m_ToBeDeleted)
+        {
+            DeleteCollection(existing->m_Collection);
+        }
+
         char name_frame[128];
         dmStrlCpy(name_frame, name, sizeof(name_frame));
         dmStrlCat(name_frame, "_frame", sizeof(name_frame));
@@ -458,14 +464,6 @@ namespace dmGameObject
         for (int i = 0; i < 2; ++i)
         {
             dmMessage::Result result = dmMessage::NewSocket(socket_names[i], sockets[i]);
-            if (result == dmMessage::RESULT_SOCKET_EXISTS)
-            {
-                if (TryDeletePendingCollectionForSocket(regist, socket_names[i]))
-                {
-                    result = dmMessage::NewSocket(socket_names[i], sockets[i]);
-                }
-            }
-
             if (result != dmMessage::RESULT_OK)
             {
                 if (result == dmMessage::RESULT_SOCKET_EXISTS)
