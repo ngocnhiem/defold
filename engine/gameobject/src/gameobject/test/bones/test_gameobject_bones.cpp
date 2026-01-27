@@ -165,7 +165,7 @@ TEST_F(BonesTest, DeleteBones)
 
     ASSERT_EQ(0, m_Collection->m_Collection->m_InstanceIndices.Size());
 
-    dmGameObject::DeleteCollection(m_Collection);
+    dmGameObject::DeleteCollectionAsync(m_Collection);
     dmGameObject::PostUpdate(m_Register);
 }
 
@@ -190,6 +190,6 @@ TEST_F(BonesTest, ComponentCreatingInstances)
     dmGameObject::HInstance test_inst = dmGameObject::New(m_Collection, "/test_bones.goc");
     ASSERT_NE((void*)0, test_inst);
 
-    dmGameObject::DeleteCollection(m_Collection);
+    dmGameObject::DeleteCollectionAsync(m_Collection);
     dmGameObject::PostUpdate(m_Register);
 }

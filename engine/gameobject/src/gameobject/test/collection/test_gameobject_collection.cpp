@@ -86,7 +86,7 @@ protected:
 
     void TearDown() override
     {
-        dmGameObject::DeleteCollection(m_Collection);
+        dmGameObject::DeleteCollectionAsync(m_Collection);
         dmGameObject::PostUpdate(m_Register);
         dmScript::Finalize(m_ScriptContext);
         dmScript::DeleteContext(m_ScriptContext);
@@ -327,7 +327,7 @@ TEST_F(CollectionTest, CollectionSpawningToFail)
         ASSERT_TRUE(ret);
     }
 
-    dmGameObject::DeleteCollection(coll);
+    dmGameObject::DeleteCollectionAsync(coll);
 
     ASSERT_TRUE(filled);
     dmGameObject::PostUpdate(m_Register);

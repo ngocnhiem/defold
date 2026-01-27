@@ -133,7 +133,7 @@ protected:
 
     void TearDown() override
     {
-        dmGameObject::DeleteCollection(m_Collection);
+        dmGameObject::DeleteCollectionAsync(m_Collection);
         dmMessage::DeleteSocket(m_Socket);
         dmGameObject::PostUpdate(m_Register);
         dmScript::Finalize(m_ScriptContext);
@@ -398,7 +398,7 @@ TEST_F(SpawnDeleteTest, CollectionDelete_ScriptFinal_Spawn)
 
     Init();
 
-    dmGameObject::DeleteCollection(m_Collection);
+    dmGameObject::DeleteCollectionAsync(m_Collection);
     dmGameObject::PostUpdate(m_Register);
 
     ASSERT_INIT(0u);
@@ -475,7 +475,7 @@ TEST_F(SpawnDeleteTest, CollectionDelete_ScriptFinal_Delete)
 
     Init();
 
-    dmGameObject::DeleteCollection(m_Collection);
+    dmGameObject::DeleteCollectionAsync(m_Collection);
 
     dmGameObject::PostUpdate(m_Register);
 
@@ -571,7 +571,7 @@ TEST_F(SpawnDeleteTest, CollectionDelete_ScriptFinal_SpawnDelete)
 
     Init();
 
-    dmGameObject::DeleteCollection(m_Collection);
+    dmGameObject::DeleteCollectionAsync(m_Collection);
 
     dmGameObject::PostUpdate(m_Register);
 

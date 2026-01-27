@@ -697,7 +697,7 @@ void GamesysTest<T>::SetUp()
 template<typename T>
 void GamesysTest<T>::TearDown()
 {
-    dmGameObject::DeleteCollection(m_Collection);
+    dmGameObject::DeleteCollectionAsync(m_Collection);
     dmGameObject::PostUpdate(m_Register);
     dmResource::Release(m_Factory, m_GamepadMapsDDF);
 
