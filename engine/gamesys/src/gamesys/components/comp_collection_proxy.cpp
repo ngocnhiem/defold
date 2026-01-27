@@ -342,7 +342,8 @@ namespace dmGameSystem
             }
             if (proxy->m_Collection != 0 && proxy->m_Unloading)
             {
-                if (dmGameObject::IsCollectionDeleted(proxy->m_Collection)) {
+                if (dmGameObject::IsCollectionDeleted(proxy->m_Collection))
+                {
                     UnloadComplete(proxy, dmGameObject::RESULT_OK);
                 }
             }
