@@ -271,7 +271,7 @@ bail:
     {
         HCollection hcollection = (HCollection) ResourceDescriptorGetResource(params->m_Resource);
         UnloadPropertyResources(params->m_Factory, hcollection->m_Collection->m_PropertyResources);
-        DeleteCollectionAsync(hcollection);
+        DeleteCollection(hcollection);
         return dmResource::RESULT_OK;
     }
 
