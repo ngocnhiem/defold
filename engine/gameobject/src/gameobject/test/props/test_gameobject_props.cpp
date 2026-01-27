@@ -117,7 +117,7 @@ protected:
 
     void TearDown() override
     {
-        dmGameObject::DeleteCollectionAsync(m_Collection);
+        dmGameObject::DeleteCollection(m_Collection);
         dmGameObject::PostUpdate(m_Register);
         dmResource::DeleteFactory(m_Factory);
         dmScript::Finalize(m_ScriptContext);

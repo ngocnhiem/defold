@@ -571,7 +571,8 @@ namespace dmGameObject
         hcollection->m_Deleted = 1;
     }
 
-    void DeleteCollectionAsync(HCollection hcollection)
+    // Really should be renamed "DelayDelete"
+    void DeleteCollection(HCollection hcollection)
     {
         hcollection->m_Collection->m_ToBeDeleted = 1;
     }

@@ -137,7 +137,7 @@ protected:
 
     void TearDown() override
     {
-        dmGameObject::DeleteCollectionAsync(m_Collection);
+        dmGameObject::DeleteCollection(m_Collection);
         dmGameObject::PostUpdate(m_Register);
         dmScript::Finalize(m_ScriptContext);
         dmScript::DeleteContext(m_ScriptContext);
@@ -616,7 +616,7 @@ TEST_F(ComponentTest, FinalCallsFinal)
     ASSERT_EQ(0u, collection->m_Collection->m_InstanceIndices.Size());
     ASSERT_EQ((uint32_t) 11, m_ComponentFinalCountMap[TestGameObjectDDF::AResource::m_DDFHash]);
 
-    dmGameObject::DeleteCollectionAsync(collection);
+    dmGameObject::DeleteCollection(collection);
     dmGameObject::PostUpdate(m_Register);
 }
 

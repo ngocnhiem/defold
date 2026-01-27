@@ -109,12 +109,10 @@ namespace dmGameObject
     HCollection NewCollection(const char* name, dmResource::HFactory factory, HRegister regist, uint32_t max_instances, HCollectionDesc collection_desc);
 
     /**
-     * Flag a gameobject collection for deletion. Note that this will not
-     * immediately delete the collection. Use IsCollectionDeleted() to check
-     * if it has been deleted.
+     * Deletes a gameobject collection
      * @param collection
      */
-    void DeleteCollectionAsync(HCollection collection);
+    void DeleteCollection(HCollection collection);
 
     /**
      * Check if a gameobject collection has been deleted

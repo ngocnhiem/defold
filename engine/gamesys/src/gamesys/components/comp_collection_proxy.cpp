@@ -534,7 +534,6 @@ namespace dmGameSystem
         }
 
         dmResource::Release(context->m_Factory, proxy->m_Collection);
-        // proxy->m_Collection = 0;
         proxy->m_Initialized = 0;
         proxy->m_Enabled = 0;
         proxy->m_DelayedEnable = 0;
