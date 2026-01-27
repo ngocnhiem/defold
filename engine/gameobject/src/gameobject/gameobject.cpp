@@ -422,27 +422,6 @@ namespace dmGameObject
         delete collection;
     }
 
-    // Remove a to-be-deleted collection that still owns the given socket so a new
-    // collection can re-use the name immediately.
-    static bool TryDeletePendingCollectionForSocket(HRegister regist, const char* socket_name)
-    {
-        dmhash_t socket_hash = dmHashString64(socket_name);
-        HCollection existing = GetCollectionByHash(regist, socket_hash);
-        if (existing == 0)
-        {
-            return false;
-        }
-
-        Collection* old_collection = existing->m_Collection;
-        if (old_collection == 0 || !old_collection->m_ToBeDeleted)
-        {
-            return false;
-        }
-
-        DeleteCollection(old_collection);
-        return true;
-    }
-
     Result AttachCollection(Collection* collection, const char* name, dmResource::HFactory factory, HRegister regist, HCollection hcollection)
     {
         collection->m_HCollection = hcollection;
