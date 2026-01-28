@@ -114,6 +114,7 @@ namespace dmGameSystem
     };
     const dmhash_t PROP_TEXTURES    = dmHashString64("textures");
     const dmhash_t PROP_TILE_SOURCE = dmHashString64("tile_source");
+    const dmhash_t PROP_ANIMATION   = dmHashString64("animations");
 
     dmResource::Result RegisterResourceTypes(dmResource::HFactory factory, dmRender::HRenderContext render_context, dmInput::HContext input_context, PhysicsContext* physics_context)
     {

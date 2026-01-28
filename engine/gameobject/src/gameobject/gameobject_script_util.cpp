@@ -222,6 +222,8 @@ namespace dmGameObject
         result->m_IndexRequested = has_index;
         result->m_KeysRequested  = has_keys;
 
+        lua_pop(L, 1);
+
         return 0;
     }
 

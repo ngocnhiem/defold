@@ -2064,6 +2064,11 @@ namespace dmParticle
         prototype->m_Emitters[emitter_index].m_TileSource = tile_source;
     }
 
+    dmhash_t GetAnimation(HPrototype prototype, uint32_t emitter_index)
+    {
+        return prototype->m_Emitters[emitter_index].m_Animation;
+    }
+
     uint32_t GetEmitterIndexFromId(HPrototype prototype, dmhash_t id)
     {
         uint32_t emitter_count = prototype->m_Emitters.Size();

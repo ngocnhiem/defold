@@ -219,9 +219,9 @@ namespace dmParticle
         uint32_t m_StructSize;
     };
 
-    // Properties (runtime only)
-    // dmGameObject::PropertyResult GetEmitterProperty(HParticleContext context, HInstance instance, dmhash_t emitter_id, dmhash_t property_id, dmGameObject::PropertyDesc& out_value);
+    // Runtime only
     uint32_t GetEmitterIndexFromId(HPrototype prototype, dmhash_t id);
+    dmhash_t GetAnimation(HPrototype prototype, uint32_t emitter_index);
 
     // For tests
     dmVMath::Vector3 GetPosition(HParticleContext context, HInstance instance);

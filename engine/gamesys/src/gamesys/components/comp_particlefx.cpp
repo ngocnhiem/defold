@@ -57,7 +57,9 @@ namespace dmGameSystem
 
     struct ParticleFXEmitterOverride
     {
-        MaterialResource* m_Material;
+        MaterialResource*   m_Material;
+        TextureSetResource* m_TileSource;
+        dmhash_t            m_Animation;
     };
 
     struct ParticleFXPrototypeOverrides
@@ -196,10 +198,32 @@ namespace dmGameSystem
         return (void*)params.m_UserData;
     }
 
+    static void DeleteOverrides(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype)
+    {
+        ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
+        if (!overrides)
+            return;
+
+        uint32_t num_emitter_overrides = overrides->m_EmitterOverrides.Size();
+        for (int i = 0; i < num_emitter_overrides; ++i)
+        {
+            if (overrides->m_EmitterOverrides[i].m_Material)
+                dmResource::Release(factory, overrides->m_EmitterOverrides[i].m_Material);
+            if (overrides->m_EmitterOverrides[i].m_TileSource)
+                dmResource::Release(factory, overrides->m_EmitterOverrides[i].m_TileSource);
+        }
+
+        delete overrides;
+    }
+
     dmGameObject::CreateResult CompParticleFXDestroy(const dmGameObject::ComponentDestroyParams& params)
     {
         ParticleFXWorld* w = (ParticleFXWorld*)params.m_World;
         ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
+
+        dmResource::HFactory factory = dmGameObject::GetFactory(params.m_Instance);
+        DeleteOverrides(factory, prototype);
+
         uint32_t index = prototype - w->m_Prototypes.Begin();
         for (uint32_t i = 0; i < w->m_Components.Size(); ++i)
         {
@@ -211,6 +235,7 @@ namespace dmGameSystem
             }
         }
         w->m_PrototypeIndices.Push(index);
+
         return dmGameObject::CREATE_RESULT_OK;
     }
 
@@ -790,32 +815,75 @@ namespace dmGameSystem
         return true;
     }
 
-    // static dmGameObject::PropertyResult AddOverrideMaterial(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, dmhash_t resource)
-    // {
-    //     if (!prototype->m_Overrides)
-    //         prototype->m_Overrides = new ParticleFXPrototypeOverrides;
-    //     return SetResourceProperty(factory, resource, MATERIAL_EXT_HASH, (void**)&overrides->m_Material);
-    // }
-
-    // static inline MaterialResource* GetMaterialResource(const ParticleFXComponentPrototype* prototype)
-    // {
-    //     const ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
-    //     // const SpriteResource* resource = prototype->m_Resource;
-    //     // const SpriteResourceOverrides* overrides = prototype->m_Overrides;
-    //     // return (overrides && overrides->m_Material) ? overrides->m_Material : resource->m_Material;
-    // }
-
-    static inline MaterialResource* GetEmitterMaterialResource(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
+    static inline const ParticleFXEmitterOverride* GetEmitterOverride(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
         const ParticleFXPrototypeOverrides* emitter_overrides = prototype->m_Overrides;
         if (emitter_overrides && emitter_overrides->m_EmitterOverrides.Size() < emitter_index)
         {
-            const ParticleFXEmitterOverride* override = &emitter_overrides->m_EmitterOverrides[emitter_index];
-            if (override->m_Material)
-                return override->m_Material;
+            return &emitter_overrides->m_EmitterOverrides[emitter_index];
+        }
+        return 0;
+    }
+
+    static inline MaterialResource* GetEmitterMaterialResource(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
+    {
+        const ParticleFXEmitterOverride* override = GetEmitterOverride(prototype, emitter_index);
+        if (override && override->m_Material)
+        {
+            return override->m_Material;
         }
         return (MaterialResource*) dmParticle::GetMaterial(prototype->m_ParticlePrototype, emitter_index);
     }
+
+    static inline TextureSetResource* GetEmitterTextureSet(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
+    {
+        const ParticleFXEmitterOverride* override = GetEmitterOverride(prototype, emitter_index);
+        if (override && override->m_TileSource)
+        {
+            return override->m_TileSource;
+        }
+        return (TextureSetResource*) dmParticle::GetTileSource(prototype->m_ParticlePrototype, emitter_index);
+    }
+
+    static inline dmhash_t GetEmitterAnimation(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
+    {
+        const ParticleFXEmitterOverride* override = GetEmitterOverride(prototype, emitter_index);
+        if (override && override->m_Animation)
+        {
+            return override->m_Animation;
+        }
+        return dmParticle::GetAnimation(prototype->m_ParticlePrototype, emitter_index);
+    }
+
+    static dmGameObject::PropertyResult GetEmitterProperty(const dmGameObject::ComponentGetPropertyParams& params, ParticleFXComponentPrototype* prototype, dmhash_t emitter_id, dmGameObject::PropertyDesc& out_value)
+    {
+        dmhash_t property_id = params.m_PropertyId;
+        uint32_t emitter_index = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, emitter_id);
+        if (emitter_index == dmParticle::INVALID_EMITTER_INDEX)
+        {
+            return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+        }
+
+        if (property_id == PROP_MATERIAL)
+        {
+            MaterialResource* emitter_material_res = GetEmitterMaterialResource(prototype, emitter_index);
+            return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), emitter_material_res, out_value);
+        }
+        else if (property_id == PROP_IMAGE)
+        {
+            TextureSetResource* emitter_texture_set_res = GetEmitterTextureSet(prototype, emitter_index);
+            return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), emitter_texture_set_res, out_value);
+        }
+        else if (property_id == PROP_ANIMATION)
+        {
+            dmhash_t emitter_animation = GetEmitterAnimation(prototype, emitter_index);
+            out_value.m_Variant = dmGameObject::PropertyVar(emitter_animation);
+            return dmGameObject::PROPERTY_RESULT_OK;
+        }
+
+        return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+    }
+
 
     dmGameObject::PropertyResult CompParticleFXGetProperty(const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
     {
@@ -825,34 +893,54 @@ namespace dmGameSystem
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
         }
 
-        dmhash_t property_id                    = params.m_PropertyId;
-        ParticleFXWorld* pfx_world              = (ParticleFXWorld*) params.m_World;
+        ParticleFXWorld* pfx_world = (ParticleFXWorld*) params.m_World;
         ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
 
         if (resolved_options.m_EmitterId)
         {
-            uint32_t emitter_index = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, resolved_options.m_EmitterId);
-            if (emitter_index == dmParticle::INVALID_EMITTER_INDEX)
-            {
-                return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
-            }
-
-            if (property_id == PROP_MATERIAL)
-            {
-                MaterialResource* emitter_material_res = GetEmitterMaterialResource(prototype, emitter_index);
-                return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), emitter_material_res, out_value);
-            }
+            return GetEmitterProperty(params, prototype, resolved_options.m_EmitterId, out_value);
         }
 
-        /*
-        ParticleFXComponent* component = (ParticleFXComponent*)*params.m_UserData;
+        return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+    }
 
-        if (resolved_options.m_EmitterId && resolved_options.m_ModifierId)
+    static dmGameObject::PropertyResult AddOverrideMaterial(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, uint32_t emitter_index, dmhash_t resource)
+    {
+        if (!prototype->m_Overrides)
+            prototype->m_Overrides = new ParticleFXPrototypeOverrides;
+
+        ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
+
+        uint32_t num_overrides = overrides->m_EmitterOverrides.Size();
+        if (emitter_index >= num_overrides)
         {
-            // return dmParticle::GetModifierProperty();
+            uint32_t new_size = emitter_index+1;
+            overrides->m_EmitterOverrides.SetCapacity(new_size);
+            overrides->m_EmitterOverrides.SetSize(new_size);
+            memset(overrides->m_EmitterOverrides.Begin() + num_overrides, 0, sizeof(ParticleFXEmitterOverride) * (new_size-num_overrides));
         }
-        return dmParticle::GetEmitterProperty(pfx_world->m_ParticleContext, component->m_ParticleInstance, resolved_options.m_EmitterId, property_id, out_value);
-        */
+
+        dmGameObject::PropertyResult res = SetResourceProperty(factory, resource, MATERIAL_EXT_HASH, (void**) &overrides->m_EmitterOverrides[emitter_index].m_Material);
+        if (res == dmGameObject::PROPERTY_RESULT_OK)
+        {
+            dmParticle::SetMaterial(prototype->m_ParticlePrototype, emitter_index, overrides->m_EmitterOverrides[emitter_index].m_Material);
+        }
+        return res;
+    }
+
+    static dmGameObject::PropertyResult SetEmitterProperty(const dmGameObject::ComponentSetPropertyParams& params, ParticleFXComponentPrototype* prototype, dmhash_t emitter_id)
+    {
+        dmhash_t property_id = params.m_PropertyId;
+        uint32_t emitter_index = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, emitter_id);
+        if (emitter_index == dmParticle::INVALID_EMITTER_INDEX)
+        {
+            return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+        }
+
+        if (property_id == PROP_MATERIAL)
+        {
+            return AddOverrideMaterial(dmGameObject::GetFactory(params.m_Instance), prototype, emitter_index, params.m_Value.m_Hash);
+        }
 
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }
@@ -865,13 +953,13 @@ namespace dmGameSystem
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
         }
 
-        dmhash_t property_id = params.m_PropertyId;
+        ParticleFXWorld* pfx_world = (ParticleFXWorld*) params.m_World;
         ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
 
-        // if (property_id == PROP_MATERIAL)
-        // {
-        //     return AddOverrideMaterial(dmGameObject::GetFactory(params.m_Instance), prototype, params.m_Value.m_Hash);
-        // }
+        if (resolved_options.m_EmitterId)
+        {
+            return SetEmitterProperty(params, prototype, resolved_options.m_EmitterId);
+        }
 
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }
