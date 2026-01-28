@@ -33,6 +33,11 @@
   (math/rotate (types/rotation camera)
                (Vector3d. 0.0 0.0 -1.0)))
 
+(s/defn camera-up-vector :- Vector3d
+  [camera :- Camera]
+  (math/rotate (types/rotation camera)
+               (Vector3d. 0.0 1.0 0.0)))
+
 (s/defn camera-right-vector :- Vector3d
   [camera :- Camera]
   (math/rotate (types/rotation camera)

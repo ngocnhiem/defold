@@ -1056,6 +1056,7 @@
         current-camera (g/node-value camera-node :local-camera)
         forward (c/camera-forward-vector current-camera)
         right (c/camera-right-vector current-camera)
+        up (c/camera-up-vector current-camera)
         offset (Vector3d. 0.0 0.0 0.0)]
 
     (doseq [key pressed-keys]
@@ -1063,7 +1064,9 @@
         (= key KeyCode/W) (.add offset forward)
         (= key KeyCode/S) (.sub offset forward)
         (= key KeyCode/A) (.sub offset right)
-        (= key KeyCode/D) (.add offset right)))
+        (= key KeyCode/D) (.add offset right)
+        (= key KeyCode/Q) (.sub offset up)
+        (= key KeyCode/E) (.add offset up)))
 
     (when (> (.length offset) 0.0)
       (.normalize offset)
@@ -1703,7 +1706,8 @@
                                                                       :shift (.isShiftDown e)
                                                                       :meta (.isMetaDown e)
                                                                       :control (.isControlDown e))]
-                                                 (g/update-property! view-id :input-action-queue conj updated-action)))))]
+                                                 (g/update-property! view-id :input-action-queue conj updated-action)))))
+        camera-keycodes #{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT KeyCode/Q KeyCode/E}]
     (ui/on-mouse! parent (fn [type e] (cond
                                         (= type :exit)
                                         (g/set-property! view-id :cursor-pos nil))))
@@ -1720,7 +1724,7 @@
         (when @process-events?
           (simulate-mouse-on-modifier-keys! e)
           (let [code (.getCode e)]
-            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT} code)
+            (when (camera-keycodes code)
               (g/update-property! view-id :pressed-keys disj code))))))
     (.setOnKeyPressed parent
       (ui/event-handler e
@@ -1728,7 +1732,7 @@
           (handle-key-pressed! e)
           (simulate-mouse-on-modifier-keys! e)
           (let [code (.getCode e)]
-            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT} code)
+            (when (camera-keycodes code)
               (g/update-property! view-id :pressed-keys conj code))))))))
 
 (defn make-gl-pane! [view-id opts]
