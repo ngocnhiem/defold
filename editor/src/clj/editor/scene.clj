@@ -981,6 +981,7 @@
   (property tool-picking-rect Rect)
   (property input-action-queue g/Any (default []))
   (property updatable-states g/Any)
+  (property pressed-keys g/Any (default #{}))
 
   (input input-handlers Runnable :array)
   (input picking-rect Rect)
@@ -1035,11 +1036,50 @@
     :none Cursor/NONE
     Cursor/DEFAULT))
 
+(def camera-speed 1.0)
+
+(defn- move-camera [scene-view dir dt]
+  (let [camera-node (view->camera scene-view)
+        current-camera (g/node-value camera-node :local-camera)
+        offset (case dir
+                  :forward
+                  (doto (Vector3d. (c/camera-forward-vector current-camera)) (.scale (* dt camera-speed)))
+                  :backward
+                  (doto (Vector3d. (c/camera-forward-vector current-camera)) (.scale (* dt (- camera-speed))))
+                  :left
+                  (doto (Vector3d. (c/camera-right-vector current-camera)) (.scale (* dt (- camera-speed))))
+                  :right
+                  (doto (Vector3d. (c/camera-right-vector current-camera)) (.scale (* dt camera-speed)))
+                  nil)
+        new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+    (set-camera! camera-node current-camera new-camera false)))
+
+(defn- update-camera-view! [node-id pressed-keys dt]
+  (doseq [key pressed-keys]
+    (when (= key KeyCode/W)
+      (move-camera node-id :forward dt))
+    (when (= key KeyCode/S)
+      (move-camera node-id :backward dt))
+    (when (= key KeyCode/A)
+      (move-camera node-id :left dt))
+    (when (= key KeyCode/D)
+      (move-camera node-id :right dt))
+    #_(case key
+      KeyCode/W (move-camera node)
+      KeyCode/S (ui/run-command node :scene.camera-move-backward)
+      KeyCode/A (ui/run-command node :scene.camera-move-left)
+      KeyCode/D (ui/run-command node :scene.camera-move-right)
+      nil)))
+
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
         node (g/node-by-id-at basis node-id)
         image-view (g/raw-property-value* basis node :image-view)]
     (when-not (ui/inside-hidden-tab? image-view)
+      (when-let [keys (g/maybe-node-value node-id :pressed-keys)]
+        (when (and (seq keys)
+                   (g/maybe-node-value node-id :camera))
+          (update-camera-view! node-id keys dt)))
       (let [drawable (g/raw-property-value* basis node :drawable)
             async-copy-state-atom (g/raw-property-value* basis node :async-copy-state)]
         (when (and (some? drawable)
@@ -1569,8 +1609,6 @@
   (active? [selection evaluation-context] (selection->movable selection evaluation-context))
   (run [selection evaluation-context] (nudge! (selection->movable selection evaluation-context) 10.0 0.0 0.0)))
 
-(def camera-speed 0.1)
-
 (handler/defhandler :scene.camera-move-forward :workbench
   (active? [app-view evaluation-context]
     (active-scene-view app-view evaluation-context))
@@ -1687,11 +1725,22 @@
     (.setOnDragOver parent event-handler)
     (.setOnDragDropped parent event-handler)
     (.setOnScroll parent event-handler)
-    (.setOnKeyReleased parent simulate-mouse-on-modifier-keys!)
-    (.setOnKeyPressed parent (ui/event-handler e
-                               (when @process-events?
-                                 (handle-key-pressed! e)
-                                 (simulate-mouse-on-modifier-keys! e))))))
+    (.setOnKeyReleased parent
+      (ui/event-handler e
+        (when @process-events?
+            (simulate-mouse-on-modifier-keys! e)
+            (let [code (.getCode e)]
+            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D} code)
+                (g/update-property! view-id :pressed-keys disj code))))))
+    (.setOnKeyPressed parent
+      (ui/event-handler e
+        (when @process-events?
+            (handle-key-pressed! e)
+            (simulate-mouse-on-modifier-keys! e)
+            ;; Only add key if not already present (ignore repeats)
+            (let [code (.getCode e)]
+            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D} code)
+                (g/update-property! view-id :pressed-keys conj code))))))))
 
 (defn make-gl-pane! [view-id opts]
   (let [image-view (doto (ImageView.)
