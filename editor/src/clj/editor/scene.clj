@@ -1530,7 +1530,12 @@
       (for [node-id scene-node-ids]
         (scene-tools/manip-move evaluation-context node-id (Vector3d. dx dy dz))))))
 
-(declare selection->movable)
+(defn- selection->movable
+  ([selection]
+   (g/with-auto-evaluation-context evaluation-context
+     (selection->movable selection evaluation-context)))
+  ([selection evaluation-context]
+   (handler/selection->node-ids selection scene-tools/manip-movable? evaluation-context)))
 
 (handler/defhandler :scene.move-up :workbench
   (active? [selection evaluation-context] (selection->movable selection evaluation-context))
@@ -2045,6 +2050,3 @@
 
 (defmethod scene-tools/manip-scale ::SceneNode [evaluation-context node-id delta]
   (manip-scale-scene-node evaluation-context node-id delta))
-
-(defn selection->movable [selection evaluation-context]
-  (handler/selection->node-ids selection scene-tools/manip-movable? evaluation-context))
