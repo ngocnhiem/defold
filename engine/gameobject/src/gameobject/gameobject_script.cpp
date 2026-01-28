@@ -645,9 +645,12 @@ namespace dmGameObject
         {
             lua_newtable(L);
 
+            dmGameObject::PropertyOptions get_arrayed_property_opts;
+            dmGameObject::AddPropertyOptionsIndex(&get_arrayed_property_opts, 0);
+
             // We already have the first value, so no need to get it again.
             // But we do need to check the result, we could still get errors even if the result is OK
-            int handle_go_get_result = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, options_result.m_Options, options_result.m_IndexRequested, options_result.m_KeysRequested);
+            int handle_go_get_result = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, get_arrayed_property_opts, options_result.m_IndexRequested, options_result.m_KeysRequested);
             if (handle_go_get_result != 1)
             {
                 return handle_go_get_result;
@@ -657,9 +660,9 @@ namespace dmGameObject
             // Get the rest of the array elements and check each result individually
             for (int i = 1; i < property_desc.m_ArrayLength; ++i)
             {
-                SetPropertyOptionsByIndex(&options_result.m_Options, 0, i);
-                result                   = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, options_result.m_Options, property_desc);
-                handle_go_get_result     = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, options_result.m_Options, options_result.m_IndexRequested, options_result.m_KeysRequested);
+                SetPropertyOptionsByIndex(&get_arrayed_property_opts, 0, i);
+                result                   = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, get_arrayed_property_opts, property_desc);
+                handle_go_get_result     = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, get_arrayed_property_opts, options_result.m_IndexRequested, options_result.m_KeysRequested);
 
                 if (handle_go_get_result != 1)
                 {
@@ -790,14 +793,17 @@ namespace dmGameObject
                 dmGameObject::PropertyVar property_var;
                 dmGameObject::PropertyResult result = dmGameObject::LuaToVar(L, -1, property_var);
 
-                SetPropertyOptionsByIndex(&options_result.m_Options, 0, table_index_lua - 1);
+                dmGameObject::PropertyOptions set_arrayed_property_opts;
+                dmGameObject::AddPropertyOptionsIndex(&set_arrayed_property_opts, 0);
+
+                SetPropertyOptionsByIndex(&set_arrayed_property_opts, 0, table_index_lua - 1);
 
                 if (result == PROPERTY_RESULT_OK)
                 {
-                    result = dmGameObject::SetProperty(target_instance, target.m_Fragment, property_id, options_result.m_Options, property_var);
+                    result = dmGameObject::SetProperty(target_instance, target.m_Fragment, property_id, set_arrayed_property_opts, property_var);
                     if (result != PROPERTY_RESULT_OK)
                     {
-                        return dmGameObject::HandleGoSetResult(L, result, property_id, target_instance, target, options_result.m_Options);
+                        return dmGameObject::HandleGoSetResult(L, result, property_id, target_instance, target, set_arrayed_property_opts);
                     }
                 }
 

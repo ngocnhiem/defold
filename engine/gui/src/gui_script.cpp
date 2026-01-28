@@ -759,14 +759,18 @@ namespace dmGui
 
             lua_rawseti(L, -2, 1);
 
+            dmGameObject::PropertyOptions get_material_property_opts;
+            dmGameObject::AddPropertyOptionsIndex(&get_material_property_opts, 0);
+
             for (int i = 1; i < array_size; ++i)
             {
-                SetPropertyOptionsByIndex(&options_result.m_Options, 0, i);
+                bool did_set = SetPropertyOptionsByIndex(&get_material_property_opts, 0, i);
+                assert(did_set);
 
-                property_res = dmGui::GetMaterialProperty(scene, hnode, property_id, property_desc, &options_result.m_Options) ?
+                property_res = dmGui::GetMaterialProperty(scene, hnode, property_id, property_desc, &get_material_property_opts) ?
                         dmGameObject::PROPERTY_RESULT_OK : dmGameObject::PROPERTY_RESULT_NOT_FOUND;
 
-                handle_go_get_result = dmGameObject::CheckGetPropertyResult(L, "gui", property_res, property_desc, property_id, target, options_result.m_Options, options_result.m_IndexRequested, options_result.m_KeysRequested);
+                handle_go_get_result = dmGameObject::CheckGetPropertyResult(L, "gui", property_res, property_desc, property_id, target, get_material_property_opts, options_result.m_IndexRequested, options_result.m_KeysRequested);
                 if (handle_go_get_result != 1)
                 {
                     return handle_go_get_result;

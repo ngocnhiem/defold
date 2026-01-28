@@ -189,6 +189,7 @@ namespace dmGameSystem
         prototype->m_Rotation = params.m_Rotation;
         prototype->m_ParticlePrototype = (dmParticle::HPrototype)params.m_Resource;
         prototype->m_AddedToUpdate = false;
+        prototype->m_Overrides = 0;
         *params.m_UserData = (uintptr_t)prototype;
         return dmGameObject::CREATE_RESULT_OK;
     }
