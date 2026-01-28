@@ -118,6 +118,12 @@ def build(bld):
                      target   = 'dlib',
                      defines  = ['VALGRIND'] + extra_defines)
 
+    dlib_fat = bld.stlib(features = 'c cxx',
+                     source   = source_files + platform_source_files,
+                     includes = ['.', './mbedtls/include'],
+                     target   = 'dlib_fat',
+                     defines  = ['VALGRIND', 'DEFOLD_MBEDTLS_FAT'] + extra_defines)
+
     # remove all null implementations
     dlib.source = remove_files(dlib.source, ['_null.cpp'])
 
@@ -133,6 +139,12 @@ def build(bld):
                           defines     = dlib.defines,
                           target      = 'dlib_noasan')
     dlib_noasan.source = [x for x in dlib.source]
+
+    dlib_fat_noasan = bld.stlib(features = dlib.features + ['skip_asan'],
+                          source      = [x for x in dlib_noasan.source],
+                          includes    = dlib.includes,
+                          defines     = dlib.defines + ['DEFOLD_MBEDTLS_FAT'],
+                          target      = 'dlib_fat_noasan')
 
 
     mbedtls_dirs = 'mbedtls/library/**/*.c'.split()
@@ -172,6 +184,23 @@ def build(bld):
                          target       = 'mbedtls_noasan')
     mbedtls_noasan.source = [x for x in mbedtls.source]
     mbedtls_noasan.env.append_unique('CFLAGS', FLAG_ST % 's')
+
+    # MbedTLS version with more options enabled
+    mbedtls_fat = bld.stlib(features    = mbedtls.features,
+                  includes    = mbedtls.includes,
+                  target      = 'mbedtls_fat',
+                  source      = [x for x in mbedtls.source],
+                  remove_flags= remove_flags,
+                  defines     = mbedtls.defines + ['DEFOLD_MBEDTLS_FAT'])
+
+    # Create a separate library, in order to separate it from the ASAN builds
+    mbedtls_fat_noasan = bld.stlib(features     = mbedtls_noasan.features,
+                         includes     = mbedtls_noasan.includes,
+                         source = [x for x in mbedtls_noasan.source],
+                         remove_flags = remove_flags,
+                         defines      = mbedtls_noasan.defines + ['DEFOLD_MBEDTLS_FAT'],
+                         target       = 'mbedtls_fat_noasan')
+    mbedtls_fat_noasan.env.append_unique('CFLAGS', FLAG_ST % 's')
 
     libzip_dirs = ['zip/**/*.cpp']
     libzip = bld.stlib(features    = 'c cxx',
