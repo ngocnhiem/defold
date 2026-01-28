@@ -884,7 +884,6 @@ namespace dmGameSystem
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }
 
-
     dmGameObject::PropertyResult CompParticleFXGetProperty(const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
     {
         ResolvePropertyOptionsResult resolved_options;
@@ -940,6 +939,14 @@ namespace dmGameSystem
         if (property_id == PROP_MATERIAL)
         {
             return AddOverrideMaterial(dmGameObject::GetFactory(params.m_Instance), prototype, emitter_index, params.m_Value.m_Hash);
+        }
+        else if (property_id == PROP_IMAGE)
+        {
+
+        }
+        else if (property_id == PROP_ANIMATION)
+        {
+
         }
 
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;

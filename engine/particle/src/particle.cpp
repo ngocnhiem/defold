@@ -190,9 +190,10 @@ namespace dmParticle
         }
     }
 
-    static void InitEmitter(Emitter* emitter, dmParticleDDF::Emitter* emitter_ddf, uint32_t original_seed)
+    static void InitEmitter(Emitter* emitter, EmitterPrototype* prototype, dmParticleDDF::Emitter* emitter_ddf, uint32_t original_seed)
     {
         emitter->m_Id = dmHashString64(emitter_ddf->m_Id);
+        emitter->m_Material = prototype->m_Material;
         uint32_t particle_count = emitter_ddf->m_MaxParticleCount;
         emitter->m_Particles.SetCapacity(particle_count);
         emitter->m_OriginalSeed = original_seed;
@@ -259,7 +260,7 @@ namespace dmParticle
             // instances spawned the same frame to be identical.
             original_seed += context->m_InstanceSeeding++;
 
-            InitEmitter(emitter, &ddf->m_Emitters[i], original_seed);
+            InitEmitter(emitter, &prototype->m_Emitters[i], &ddf->m_Emitters[i], original_seed);
             emitter->m_Seed = original_seed;
 
             UpdateEmitterRenderData(instance_handle, i, instance, emitter, &ddf->m_Emitters[i]);
@@ -403,7 +404,7 @@ namespace dmParticle
                 {
                     Emitter* emitter = &emitters[emitter_i];
                     uint32_t original_seed = seed_base + emitter_i + context->m_InstanceSeeding++;
-                    InitEmitter(emitter, &ddf->m_Emitters[emitter_i], original_seed);
+                    InitEmitter(emitter, &prototype->m_Emitters[emitter_i], &ddf->m_Emitters[emitter_i], original_seed);
                     emitter->m_Seed = original_seed;
                 }
             }
@@ -412,7 +413,7 @@ namespace dmParticle
         for (uint32_t emitter_i = 0; emitter_i < old_emitter_count; ++emitter_i)
         {
             Emitter* emitter = &emitters[emitter_i];
-            InitEmitter(emitter, &ddf->m_Emitters[emitter_i], emitter->m_OriginalSeed);
+            InitEmitter(emitter, &prototype->m_Emitters[emitter_i], &ddf->m_Emitters[emitter_i], emitter->m_OriginalSeed);
         }
         if (replay)
         {
@@ -1974,7 +1975,15 @@ namespace dmParticle
         dmVMath::Matrix4 world = dmTransform::ToMatrix4(transform);
         dmParticle::EmitterPrototype* emitter_proto = &instance->m_Prototype->m_Emitters[emitter_index];
 
-        render_emitter_callback(user_context, emitter_proto->m_Material, emitter->m_AnimationData.m_Texture, world, emitter_proto->m_BlendMode, emitter->m_VertexIndex, emitter->m_VertexCount, emitter->m_RenderConstants.Begin(), emitter->m_RenderConstants.Size());
+        render_emitter_callback(user_context,
+            emitter_proto->m_Material,
+            emitter->m_AnimationData.m_Texture,
+            world,
+            emitter_proto->m_BlendMode,
+            emitter->m_VertexIndex,
+            emitter->m_VertexCount,
+            emitter->m_RenderConstants.Begin(),
+            emitter->m_RenderConstants.Size());
     }
 
     // Update render data for the emitter at the specified index
@@ -1988,7 +1997,7 @@ namespace dmParticle
         dmParticle::EmitterPrototype* emitter_proto = &inst->m_Prototype->m_Emitters[emitter_index];
 
         render_data.m_Transform = world;
-        render_data.m_Material = emitter_proto->m_Material;
+        render_data.m_Material = emitter->m_Material;
         render_data.m_BlendMode = emitter_proto->m_BlendMode;
         render_data.m_Texture = emitter->m_AnimationData.m_Texture;
         render_data.m_RenderConstants = emitter->m_RenderConstants.Begin();

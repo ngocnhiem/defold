@@ -120,6 +120,7 @@ namespace dmParticle
         dmVMath::Point3         m_LastPosition;
         dmhash_t                m_Id;
         EmitterRenderData       m_RenderData;
+        void*                   m_Material;
         /// Vertex index of the render data for the particles spawned by this emitter.
         uint32_t                m_VertexIndex;
         /// Number of vertices of the render data for the particles spawned by this emitter.
@@ -263,7 +264,7 @@ namespace dmParticle
         /// Tile source to use when rendering particles.
         void*                       m_TileSource;
         /// Material to use when rendering particles.
-        void*                       m_Material;
+        void*                       m_Material; // MaterialResource*
         /// Blend mode
         dmParticleDDF::BlendMode    m_BlendMode;
         /// The max life time possible of a particle (used for quantizing particle life time when sorting)
