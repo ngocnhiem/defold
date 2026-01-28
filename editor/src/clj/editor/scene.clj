@@ -1038,6 +1038,17 @@
 
 (def camera-speed 1.5)
 
+(defn- screen->world
+  ^Vector3d [camera viewport ^Vector3d screen-pos]
+  (let [w4 (c/camera-unproject camera viewport (.x screen-pos) (.y screen-pos) (.z screen-pos))]
+    (Vector3d. (.x w4) (.y w4) (.z w4))))
+
+(defn- view->camera
+  ([view]
+   (view->camera (g/now) view))
+  ([basis view]
+   (g/node-feeding-into basis view :camera)))
+
 (defn- update-camera-view! [node-id pressed-keys dt]
   (let [speed-up (contains? pressed-keys KeyCode/SHIFT)
         speed (* camera-speed (if speed-up 5.0 1.0))
@@ -1105,17 +1116,6 @@
         (g/set-property node-id :drawable nil)
         (g/set-property node-id :picking-drawable nil)
         (g/set-property node-id :async-copy-state nil)))))
-
-(defn- screen->world
-  ^Vector3d [camera viewport ^Vector3d screen-pos]
-  (let [w4 (c/camera-unproject camera viewport (.x screen-pos) (.y screen-pos) (.z screen-pos))]
-    (Vector3d. (.x w4) (.y w4) (.z w4))))
-
-(defn- view->camera
-  ([view]
-   (view->camera (g/now) view))
-  ([basis view]
-   (g/node-feeding-into basis view :camera)))
 
 (defn augment-action [view action]
   (let [x          (:x action)
