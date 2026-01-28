@@ -1036,40 +1036,30 @@
     :none Cursor/NONE
     Cursor/DEFAULT))
 
-(def camera-speed 1.0)
-
-(defn- move-camera [scene-view dir dt]
-  (let [camera-node (view->camera scene-view)
-        current-camera (g/node-value camera-node :local-camera)
-        offset (case dir
-                  :forward
-                  (doto (Vector3d. (c/camera-forward-vector current-camera)) (.scale (* dt camera-speed)))
-                  :backward
-                  (doto (Vector3d. (c/camera-forward-vector current-camera)) (.scale (* dt (- camera-speed))))
-                  :left
-                  (doto (Vector3d. (c/camera-right-vector current-camera)) (.scale (* dt (- camera-speed))))
-                  :right
-                  (doto (Vector3d. (c/camera-right-vector current-camera)) (.scale (* dt camera-speed)))
-                  nil)
-        new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-    (set-camera! camera-node current-camera new-camera false)))
+(def camera-speed 1.5)
 
 (defn- update-camera-view! [node-id pressed-keys dt]
-  (doseq [key pressed-keys]
-    (when (= key KeyCode/W)
-      (move-camera node-id :forward dt))
-    (when (= key KeyCode/S)
-      (move-camera node-id :backward dt))
-    (when (= key KeyCode/A)
-      (move-camera node-id :left dt))
-    (when (= key KeyCode/D)
-      (move-camera node-id :right dt))
-    #_(case key
-      KeyCode/W (move-camera node)
-      KeyCode/S (ui/run-command node :scene.camera-move-backward)
-      KeyCode/A (ui/run-command node :scene.camera-move-left)
-      KeyCode/D (ui/run-command node :scene.camera-move-right)
-      nil)))
+  (let [speed-up (contains? pressed-keys KeyCode/SHIFT)
+        speed (* camera-speed (if speed-up 5.0 1.0))
+        camera-node (view->camera node-id)
+        current-camera (g/node-value camera-node :local-camera)
+        forward (c/camera-forward-vector current-camera)
+        right (c/camera-right-vector current-camera)
+        offset (Vector3d. 0.0 0.0 0.0)]
+
+    (doseq [key pressed-keys]
+      (cond
+        (= key KeyCode/W) (.add offset forward)
+        (= key KeyCode/S) (.sub offset forward)
+        (= key KeyCode/A) (.sub offset right)
+        (= key KeyCode/D) (.add offset right)))
+
+    (when (> (.length offset) 0.0)
+      (.normalize offset)
+      (.scale offset (* dt speed))
+      (let [new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+        (set-camera! camera-node current-camera new-camera false)))))
+
 
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
@@ -1728,19 +1718,18 @@
     (.setOnKeyReleased parent
       (ui/event-handler e
         (when @process-events?
-            (simulate-mouse-on-modifier-keys! e)
-            (let [code (.getCode e)]
-            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D} code)
-                (g/update-property! view-id :pressed-keys disj code))))))
+          (simulate-mouse-on-modifier-keys! e)
+          (let [code (.getCode e)]
+            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT} code)
+              (g/update-property! view-id :pressed-keys disj code))))))
     (.setOnKeyPressed parent
       (ui/event-handler e
         (when @process-events?
-            (handle-key-pressed! e)
-            (simulate-mouse-on-modifier-keys! e)
-            ;; Only add key if not already present (ignore repeats)
-            (let [code (.getCode e)]
-            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D} code)
-                (g/update-property! view-id :pressed-keys conj code))))))))
+          (handle-key-pressed! e)
+          (simulate-mouse-on-modifier-keys! e)
+          (let [code (.getCode e)]
+            (when (#{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT} code)
+              (g/update-property! view-id :pressed-keys conj code))))))))
 
 (defn make-gl-pane! [view-id opts]
   (let [image-view (doto (ImageView.)
