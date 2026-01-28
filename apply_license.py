@@ -118,7 +118,6 @@ excluded_paths = [
 ]
 
 included_files = [
-    "./engine/dlib/src/mbedtls/include/mbedtls/defold_mbedtls_config.h",
     "./engine/dlib/src/mbedtls/include/defold_mbedtls_threading.h",
     "./engine/dlib/src/mbedtls/include/threading_alt.h",
     "./engine/dlib/src/mbedtls/defold_mbedtls_threading.cpp",

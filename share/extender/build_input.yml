@@ -82,6 +82,8 @@ context:
                 "particle",
                 "rig",
                 "dlib",
+                "dlib_fat",
+                "mbedtls_fat",
                 "image",
                 "image_null",
                 "dmglfw",
