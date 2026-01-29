@@ -64,6 +64,7 @@
            [com.jogamp.opengl.util GLPixelStorageModes]
            [editor.pose Pose]
            [editor.types AABB Camera Rect Region]
+           [java.awt Robot]
            [java.awt.image BufferedImage]
            [java.lang Math Runnable]
            [java.nio IntBuffer]
@@ -1033,10 +1034,10 @@
     ;; `CLOSED_HAND ``OPEN_HAND_HAND ``HAND `all render a pointer cursor on Linux and Windows.
     ;; `MOVE `renders the default cursor on macOS.
     :pan (if (os/is-mac-os?) Cursor/CLOSED_HAND Cursor/MOVE)
-    :none Cursor/NONE
+    :none Cursor/MOVE
     Cursor/DEFAULT))
 
-(def camera-speed 1.5)
+(def camera-speed 2.5)
 
 (defn- screen->world
   ^Vector3d [camera viewport ^Vector3d screen-pos]
@@ -1073,8 +1074,26 @@
    nil))
 
 (defn- update-camera-view! [node-id pressed-keys dt]
-  (let [speed-up (contains? pressed-keys KeyCode/SHIFT)
-        speed (* camera-speed (if speed-up 5.0 1.0))
+  (let [image-view (g/node-value node-id :image-view)
+        cursor-pos (g/node-value node-id :cursor-pos)]
+    (when (and image-view cursor-pos)
+      (let [bounds (.getBoundsInLocal image-view)
+            screen-bounds (.localToScreen image-view bounds)
+            margin 20
+            [mouse-x mouse-y] cursor-pos
+            screen-pos (.localToScreen image-view mouse-x mouse-y)
+            near-edge? (or (< (.getX screen-pos) (+ (.getMinX screen-bounds) margin))
+                          (> (.getX screen-pos) (- (.getMaxX screen-bounds) margin))
+                          (< (.getY screen-pos) (+ (.getMinY screen-bounds) margin))
+                          (> (.getY screen-pos) (- (.getMaxY screen-bounds) margin)))]
+        (when near-edge?
+          (let [robot (Robot.)
+                center-x (+ (.getMinX screen-bounds) (/ (.getWidth screen-bounds) 2))
+                center-y (+ (.getMinY screen-bounds) (/ (.getHeight screen-bounds) 2))]
+            (.mouseMove robot center-x center-y))))))
+  (let [shift (contains? pressed-keys KeyCode/SHIFT)
+        alt (contains? pressed-keys KeyCode/ALT)
+        speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))
         camera-node (view->camera node-id)
         current-camera (g/node-value camera-node :local-camera)
         forward (c/camera-forward-vector current-camera)
@@ -1653,7 +1672,7 @@
                                                                       :meta (.isMetaDown e)
                                                                       :control (.isControlDown e))]
                                                  (g/update-property! view-id :input-action-queue conj updated-action)))))
-        camera-keycodes #{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT KeyCode/Q KeyCode/E}]
+        camera-keycodes #{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT KeyCode/ALT KeyCode/Q KeyCode/E}]
     (ui/on-mouse! parent (fn [type e] (cond
                                         (= type :exit)
                                         (g/set-property! view-id :cursor-pos nil))))
