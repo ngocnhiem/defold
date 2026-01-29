@@ -1074,23 +1074,6 @@
    nil))
 
 (defn- update-camera-view! [node-id pressed-keys dt]
-  (let [image-view (g/node-value node-id :image-view)
-        cursor-pos (g/node-value node-id :cursor-pos)]
-    (when (and image-view cursor-pos)
-      (let [bounds (.getBoundsInLocal image-view)
-            screen-bounds (.localToScreen image-view bounds)
-            margin 20
-            [mouse-x mouse-y] cursor-pos
-            screen-pos (.localToScreen image-view mouse-x mouse-y)
-            near-edge? (or (< (.getX screen-pos) (+ (.getMinX screen-bounds) margin))
-                          (> (.getX screen-pos) (- (.getMaxX screen-bounds) margin))
-                          (< (.getY screen-pos) (+ (.getMinY screen-bounds) margin))
-                          (> (.getY screen-pos) (- (.getMaxY screen-bounds) margin)))]
-        (when near-edge?
-          (let [robot (Robot.)
-                center-x (+ (.getMinX screen-bounds) (/ (.getWidth screen-bounds) 2))
-                center-y (+ (.getMinY screen-bounds) (/ (.getHeight screen-bounds) 2))]
-            (.mouseMove robot center-x center-y))))))
   (let [shift (contains? pressed-keys KeyCode/SHIFT)
         alt (contains? pressed-keys KeyCode/ALT)
         speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))

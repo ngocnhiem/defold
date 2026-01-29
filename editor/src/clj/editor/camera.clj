@@ -692,6 +692,41 @@
 
                  filter-fn
                  filter-fn)]
+    (when (not= :idle movement)
+      (let [image-view (:target action)
+            mouse-x (:x action)
+            mouse-y (:y action)]
+        (when image-view
+          (let [bounds (.getBoundsInLocal image-view)
+                screen-bounds (.localToScreen image-view bounds)
+                margin 1
+                screen-pos (.localToScreen image-view mouse-x mouse-y)
+                near-edge? (or (< (.getX screen-pos) (+ (.getMinX screen-bounds) margin))
+                               (> (.getX screen-pos) (- (.getMaxX screen-bounds) margin))
+                               (< (.getY screen-pos) (+ (.getMinY screen-bounds) margin))
+                               (> (.getY screen-pos) (- (.getMaxY screen-bounds) margin)))]
+            (when near-edge?
+              (let [robot (Robot.)
+                    current-x (:screen-x action)
+                    current-y (:screen-y action)
+                    bounds-width (.getWidth screen-bounds)
+                    bounds-height (.getHeight screen-bounds)
+                    left-dist (- (.getX screen-pos) (.getMinX screen-bounds))
+                    right-dist (- (.getMaxX screen-bounds) (.getX screen-pos))
+                    top-dist (- (.getY screen-pos) (.getMinY screen-bounds))
+                    bottom-dist (- (.getMaxY screen-bounds) (.getY screen-pos))
+                    new-x (cond
+                            (< left-dist margin) (- (.getMaxX screen-bounds) margin 1)
+                            (< right-dist margin) (+ (.getMinX screen-bounds) margin 1)
+                            :else current-x)
+                    new-y (cond
+                            (< top-dist margin) (+ (.getMinY screen-bounds) margin 1)
+                            (< bottom-dist margin) (- (.getMaxY screen-bounds) margin 1)
+                            :else current-y)]
+                (.mouseMove robot new-x new-y)
+                (g/user-data-swap! self ::ui-state assoc
+                                   :last-x (+ new-x last-x)
+                                   :last-y (+ new-y last-y))))))))
     (g/set-property! self :local-camera camera)
     (case type
       :scroll (if (contains? movements-enabled :dolly) nil action)
