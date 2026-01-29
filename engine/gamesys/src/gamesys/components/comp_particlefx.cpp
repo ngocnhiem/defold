@@ -79,13 +79,15 @@ namespace dmGameSystem
 
     struct ParticleFXComponent
     {
-        dmGameObject::HInstance m_Instance;
-        dmhash_t                m_ComponentId;
-        dmParticle::HInstance   m_ParticleInstance;
-        dmParticle::HPrototype  m_ParticlePrototype;
-        ParticleFXWorld*        m_World;
-        uint32_t                m_PrototypeIndex;
-        uint16_t                m_AddedToUpdate : 1;
+        dmGameObject::HInstance       m_Instance;
+        dmhash_t                      m_ComponentId;
+        dmParticle::HInstance         m_ParticleInstance;
+        dmParticle::HPrototype        m_ParticlePrototype;
+        // Cloned from the prototype when playing a particle fx
+        ParticleFXPrototypeOverrides* m_Overrides;
+        ParticleFXWorld*              m_World;
+        uint32_t                      m_PrototypeIndex;
+        uint16_t                      m_AddedToUpdate : 1;
         uint16_t : 15;
     };
 
@@ -109,6 +111,8 @@ namespace dmGameSystem
         uint32_t                                m_WarnOutOfROs : 1;
         uint32_t                                m_WarnParticlesExceeded : 1;
     };
+
+    static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component);
 
     dmGameObject::CreateResult CompParticleFXNewWorld(const dmGameObject::ComponentNewWorldParams& params)
     {
@@ -156,8 +160,7 @@ namespace dmGameSystem
         for (uint32_t i = 0; i < pfx_world->m_Components.Size(); ++i)
         {
             ParticleFXComponent* c = &pfx_world->m_Components[i];
-            dmResource::Release(pfx_world->m_Context->m_Factory, c->m_ParticlePrototype);
-            dmParticle::DestroyInstance(pfx_world->m_ParticleContext, c->m_ParticleInstance);
+            DestroyComponent(pfx_world, c);
         }
 
         for (uint32_t i = 0; i < pfx_world->m_ConstantBuffers.Size(); ++i)
@@ -240,10 +243,10 @@ namespace dmGameSystem
         return dmGameObject::CREATE_RESULT_OK;
     }
 
-    static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component);
     static void SetBlendFactors(dmRender::RenderObject* ro, dmParticleDDF::BlendMode blend_mode);
     static void SetRenderConstants(dmRender::HNamedConstantBuffer constant_buffer, dmParticle::RenderConstant* constants, uint32_t constant_count);
     void RenderLineCallback(void* usercontext, const dmVMath::Point3& start, const dmVMath::Point3& end, const dmVMath::Vector4& color);
+    void FetchMaterialCallback(dmParticle::HParticleContext context, dmParticle::HInstance instance, uint32_t emitter_index, void** out_material);
     dmParticle::FetchAnimationResult FetchAnimationCallback(void* texture_set_ptr, dmhash_t animation, dmParticle::AnimationData* out_data);
 
     dmGameObject::CreateResult CompParticleFXAddToUpdate(const dmGameObject::ComponentAddToUpdateParams& params) {
@@ -286,7 +289,7 @@ namespace dmGameSystem
         }
 
         ParticleFXContext* ctx = (ParticleFXContext*)params.m_Context;
-        dmParticle::Update(particle_context, params.m_UpdateContext->m_DT, FetchAnimationCallback);
+        dmParticle::Update(particle_context, params.m_UpdateContext->m_DT, FetchAnimationCallback, FetchMaterialCallback);
 
         // Prune sleeping instances
         uint32_t i = 0;
@@ -632,6 +635,13 @@ namespace dmGameSystem
         return dmGameObject::UPDATE_RESULT_OK;
     }
 
+    struct InstanceUserData
+    {
+        ParticleFXWorld*              m_World;
+        ParticleFXPrototypeOverrides* m_Overrides;
+        dmhash_t                      m_ComponentId;
+    };
+
     static dmParticle::HInstance CreateComponent(ParticleFXWorld* world, dmGameObject::HInstance go_instance, dmhash_t component_id, ParticleFXComponentPrototype* prototype, dmParticle::EmitterStateChangedData* emitter_state_changed_data)
     {
         if (world->m_Components.Full())
@@ -645,23 +655,83 @@ namespace dmGameSystem
         component->m_Instance = go_instance;
         component->m_ComponentId = component_id;
         component->m_PrototypeIndex = prototype - world->m_Prototypes.Begin();
+        component->m_Overrides = 0;
         // NOTE: We must increase ref-count as a particle fx might be playing after the component is destroyed
         dmResource::HFactory factory = world->m_Context->m_Factory;
         dmResource::IncRef(factory, prototype->m_ParticlePrototype);
-
-        // incref overrides?
-
         component->m_ParticleInstance = dmParticle::CreateInstance(world->m_ParticleContext, prototype->m_ParticlePrototype, emitter_state_changed_data);
         component->m_ParticlePrototype = prototype->m_ParticlePrototype;
         component->m_World = world;
         component->m_AddedToUpdate = prototype->m_AddedToUpdate;
+
+        ParticleFXPrototypeOverrides* overrides = &prototype->m_Overrides[component->m_PrototypeIndex];
+
+        if (overrides)
+        {
+            uint32_t num_overrides = overrides->m_EmitterOverrides.Size();
+
+            if (num_overrides > 0)
+            {
+                ParticleFXPrototypeOverrides* component_overrides = new ParticleFXPrototypeOverrides;
+                component_overrides->m_EmitterOverrides.SetCapacity(num_overrides);
+
+                for (int i = 0; i < num_overrides; ++i)
+                {
+                    component_overrides->m_EmitterOverrides.Push(overrides->m_EmitterOverrides[i]);
+                    if (component_overrides->m_EmitterOverrides[i].m_Material)
+                    {
+                        dmResource::IncRef(factory, component_overrides->m_EmitterOverrides[i].m_Material);
+                    }
+                    if (component_overrides->m_EmitterOverrides[i].m_TileSource)
+                    {
+                        dmResource::IncRef(factory, component_overrides->m_EmitterOverrides[i].m_TileSource);
+                    }
+                }
+                component->m_Overrides = component_overrides;
+            }
+
+            InstanceUserData* instance_user_data = new InstanceUserData;
+            instance_user_data->m_World       = world;
+            instance_user_data->m_ComponentId = component_id;
+            instance_user_data->m_Overrides   = component->m_Overrides;
+            dmParticle::SetInstanceUserData(world->m_ParticleContext, component->m_ParticleInstance, instance_user_data);
+        }
+
         world->m_EmitterCount += dmParticle::GetEmitterCount(component->m_ParticlePrototype);
         return component->m_ParticleInstance;
     }
 
     static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component)
     {
+
+        if (component->m_Overrides)
+        {
+            uint32_t num_overrides = component->m_Overrides->m_EmitterOverrides.Size();
+            for (int i = 0; i < num_overrides; ++i)
+            {
+                ParticleFXEmitterOverride* emitter_override = &component->m_Overrides->m_EmitterOverrides[i];
+                if (emitter_override->m_Material)
+                {
+                    dmResource::Release(world->m_Context->m_Factory, emitter_override->m_Material);
+                }
+                if (emitter_override->m_TileSource)
+                {
+                    dmResource::Release(world->m_Context->m_Factory, emitter_override->m_TileSource);
+                }
+            }
+
+            delete component->m_Overrides;
+        }
+
         dmResource::Release(world->m_Context->m_Factory, component->m_ParticlePrototype);
+
+        InstanceUserData* user_data = (InstanceUserData*)dmParticle::GetInstanceUserData(world->m_ParticleContext, component->m_ParticleInstance);
+
+        if (user_data)
+        {
+            delete user_data;
+        }
+
         dmParticle::DestroyInstance(world->m_ParticleContext, component->m_ParticleInstance);
     }
 
@@ -928,13 +998,7 @@ namespace dmGameSystem
             overrides->m_EmitterOverrides.SetSize(new_size);
             memset(overrides->m_EmitterOverrides.Begin() + num_overrides, 0, sizeof(ParticleFXEmitterOverride) * (new_size-num_overrides));
         }
-
-        dmGameObject::PropertyResult res = SetResourceProperty(factory, resource, MATERIAL_EXT_HASH, (void**) &overrides->m_EmitterOverrides[emitter_index].m_Material);
-        if (res == dmGameObject::PROPERTY_RESULT_OK)
-        {
-            dmParticle::SetMaterial(prototype->m_ParticlePrototype, emitter_index, overrides->m_EmitterOverrides[emitter_index].m_Material);
-        }
-        return res;
+        return SetResourceProperty(factory, resource, MATERIAL_EXT_HASH, (void**) &overrides->m_EmitterOverrides[emitter_index].m_Material);
     }
 
     static dmGameObject::PropertyResult SetEmitterProperty(const dmGameObject::ComponentSetPropertyParams& params, ParticleFXComponentPrototype* prototype, dmhash_t emitter_id)
@@ -1030,6 +1094,20 @@ namespace dmGameSystem
     void RenderLineCallback(void* usercontext, const dmVMath::Point3& start, const dmVMath::Point3& end, const dmVMath::Vector4& color)
     {
         dmRender::Line3D((dmRender::HRenderContext)usercontext, start, end, color, color);
+    }
+
+    void FetchMaterialCallback(dmParticle::HParticleContext context, dmParticle::HInstance instance, uint32_t emitter_index, void** out_material)
+    {
+        InstanceUserData* user_data = (InstanceUserData*)dmParticle::GetInstanceUserData(context, instance);
+
+        if (user_data && user_data->m_Overrides)
+        {
+            ParticleFXPrototypeOverrides* component_overrides = user_data->m_Overrides;
+            if (component_overrides && emitter_index < component_overrides->m_EmitterOverrides.Size())
+            {
+                *out_material = component_overrides->m_EmitterOverrides[emitter_index].m_Material;
+            }
+        }
     }
 
     dmParticle::FetchAnimationResult FetchAnimationCallback(void* texture_set_ptr, dmhash_t animation, dmParticle::AnimationData* out_data)

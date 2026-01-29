@@ -120,6 +120,7 @@ namespace dmParticle
         dmVMath::Point3         m_LastPosition;
         dmhash_t                m_Id;
         EmitterRenderData       m_RenderData;
+        void*                   m_Material;
         /// Vertex index of the render data for the particles spawned by this emitter.
         uint32_t                m_VertexIndex;
         /// Number of vertices of the render data for the particles spawned by this emitter.
@@ -167,6 +168,7 @@ namespace dmParticle
         uint32_t                m_NumAwakeEmitters;
         /// World transform of the emitter.
         dmTransform::TransformS1 m_WorldTransform;
+        void*                   m_UserData;
         /// DDF resource.
         Prototype*              m_Prototype;
         /// Emitter state changed callback

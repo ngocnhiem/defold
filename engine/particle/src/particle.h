@@ -190,6 +190,11 @@ namespace dmParticle
     typedef FetchAnimationResult (*FetchAnimationCallback)(void* tile_source, dmhash_t animation, AnimationData* out_data);
 
     /**
+     * Callback to fetch a material resource
+     */
+    typedef void (*FetchMaterialCallback)(HParticleContext context, HInstance instance, uint32_t emitter_index, void** out_data);
+
+    /**
      * Particle statistics
      */
     struct Stats
@@ -221,6 +226,9 @@ namespace dmParticle
     // Runtime only
     uint32_t GetEmitterIndexFromId(HPrototype prototype, dmhash_t id);
     dmhash_t GetAnimation(HPrototype prototype, uint32_t emitter_index);
+    void     SetInstanceUserData(HParticleContext context, HInstance instance, void* user_data);
+    void*    GetInstanceUserData(HParticleContext context, HInstance instance);
+    void     Update(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback, FetchMaterialCallback fetch_material_callback);
 
     // For tests
     dmVMath::Vector3 GetPosition(HParticleContext context, HInstance instance);

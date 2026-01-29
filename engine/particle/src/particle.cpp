@@ -234,6 +234,7 @@ namespace dmParticle
         if (context->m_NextVersionNumber == INVALID_INSTANCE)
             context->m_NextVersionNumber++;
         instance->m_VersionNumber = context->m_NextVersionNumber++;
+        instance->m_UserData = 0;
 
         context->m_Instances[index] = instance;
 
@@ -734,7 +735,7 @@ namespace dmParticle
         return GenerateVertexDataInternal(context, dt, instance, emitter_index, particle_start, particle_count, attribute_infos, color, vertex_buffer, vertex_buffer_size, out_vertex_buffer_size);
     }
 
-    static void UpdateInternal(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback)
+    static void UpdateInternal(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback, FetchMaterialCallback fetch_material_callback)
     {
         DM_PROFILE(__FUNCTION__);
 
@@ -774,6 +775,12 @@ namespace dmParticle
                 UpdateEmitter(prototype, instance, emitter_prototype, emitter, emitter_ddf, dt);
                 TotalAliveParticles += (uint32_t)emitter->m_Particles.Size();
                 FetchAnimation(emitter, emitter_prototype, fetch_animation_callback);
+            
+                if (fetch_material_callback && instance_handle != INVALID_INSTANCE)
+                {
+                    fetch_material_callback(context, instance_handle, emitter_i, &emitter->m_Material);
+                }
+
                 UpdateEmitterRenderData(instance_handle, emitter_i, instance, emitter, emitter_ddf);
 
                 if (emitter->m_ReHash)
@@ -784,9 +791,16 @@ namespace dmParticle
         DM_PROPERTY_SET_U32(rmtp_ParticlesAlive, TotalAliveParticles);
     }
 
+    // Called from engine
+    void Update(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback, FetchMaterialCallback fetch_material_callback)
+    {
+        UpdateInternal(context, dt, fetch_animation_callback, fetch_material_callback);
+    }
+
+    // Called from editor, don't need to fetch an override material here.
     void Update(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback)
     {
-        UpdateInternal(context, dt, fetch_animation_callback);
+        UpdateInternal(context, dt, fetch_animation_callback, 0);
     }
 
     static void FetchAnimation(Emitter* emitter, EmitterPrototype* prototype, FetchAnimationCallback fetch_animation_callback)
@@ -896,7 +910,9 @@ namespace dmParticle
         if (emitter->m_State == EMITTER_STATE_POSTSPAWN)
         {
             if (emitter->m_Particles.Empty())
+            {
                 SetEmitterState(instance, emitter, EMITTER_STATE_SLEEPING);
+            }
         }
     }
 
@@ -908,6 +924,18 @@ namespace dmParticle
         uint32_t particle_count = emitter->m_Particles.Size();
 
         return particle_count * vertices_per_particle;
+    }
+
+    void SetInstanceUserData(HParticleContext context, HInstance instance, void* user_data)
+    {
+        Instance* inst = GetInstance(context, instance);
+        inst->m_UserData = user_data;
+    }
+
+    void* GetInstanceUserData(HParticleContext context, HInstance instance)
+    {
+        Instance* inst = GetInstance(context, instance);
+        return inst->m_UserData;
     }
 
     static void SpawnParticle(dmArray<Particle>& particles, uint32_t* seed, dmParticleDDF::Emitter* ddf, const dmTransform::TransformS1& emitter_transform, Vector3 emitter_velocity, float emitter_properties[EMITTER_KEY_COUNT], float dt)
@@ -2001,7 +2029,7 @@ namespace dmParticle
         dmParticle::EmitterPrototype* emitter_proto = &inst->m_Prototype->m_Emitters[emitter_index];
 
         render_data.m_Transform = world;
-        render_data.m_Material = emitter_proto->m_Material;
+        render_data.m_Material = emitter->m_Material ? emitter->m_Material : emitter_proto->m_Material;
         render_data.m_BlendMode = emitter_proto->m_BlendMode;
         render_data.m_Texture = emitter->m_AnimationData.m_Texture;
         render_data.m_RenderConstants = emitter->m_RenderConstants.Begin();
