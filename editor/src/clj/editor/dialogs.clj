@@ -55,13 +55,25 @@
            [javafx.event Event]
            [javafx.scene.control ListView TextField]
            [javafx.scene.input KeyCode KeyEvent MouseButton MouseEvent]
-           [javafx.stage DirectoryChooser FileChooser FileChooser$ExtensionFilter Stage Window]
+           [javafx.stage DirectoryChooser FileChooser FileChooser$ExtensionFilter Screen Stage Window]
            [org.apache.commons.io FilenameUtils]))
 
 (set! *warn-on-reflection* true)
 
 (def clipping-container
   (fx.composite/describe ClippingContainer :ctor [] :props fx.stack-pane/props))
+
+(def ^:private dialogs-css-delay
+  (delay (str (io/resource "dialogs.css"))))
+
+(defn max-dialog-stage-height []
+  (let [screens (Screen/getScreens)
+        n (.size screens)]
+    (loop [i 0
+           max-height 0.0]
+      (if (= i n)
+        max-height
+        (recur (unchecked-inc i) (max max-height (.getHeight (.getVisualBounds ^Screen (.get screens i)))))))))
 
 (defn dialog-stage
   "Dialog `:stage` that manages scene graph itself and provides layout common
@@ -85,8 +97,9 @@
   (-> props
       (dissoc :size :header :content :footer :root-props)
       (assoc :fx/type fxui/dialog-stage
+             :max-height (max-dialog-stage-height)
              :scene {:fx/type fx.scene/lifecycle
-                     :stylesheets [(str (io/resource "dialogs.css"))]
+                     :stylesheets [@dialogs-css-delay]
                      :root (-> root-props
                                (fxui/add-style-classes
                                  "dialog-body"
