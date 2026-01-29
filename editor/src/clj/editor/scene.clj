@@ -1049,6 +1049,29 @@
   ([basis view]
    (g/node-feeding-into basis view :camera)))
 
+(defn set-camera!
+  ([camera-node start-camera end-camera animate?]
+   (set-camera! camera-node start-camera end-camera animate? nil))
+  ([camera-node start-camera end-camera animate? on-animation-end]
+   (if animate?
+     (let [duration 0.5]
+       (g/transact (g/set-property camera-node :animating true))
+       (ui/anim! duration
+                 (fn [^double t]
+                   (let [t (- (* t t 3) (* t t t 2))
+                         cam (c/interpolate start-camera end-camera t)]
+                     (g/transact
+                       (g/set-property camera-node :local-camera cam))))
+                 (fn []
+                   (g/transact
+                     [(g/set-property camera-node :local-camera end-camera)
+                      (g/set-property camera-node :animating false)])
+                   (ui/user-data! (ui/main-scene) ::ui/refresh-requested? true)
+                   (when on-animation-end (on-animation-end)))))
+     (g/transact
+       (g/set-property camera-node :local-camera end-camera)))
+   nil))
+
 (defn- update-camera-view! [node-id pressed-keys dt]
   (let [speed-up (contains? pressed-keys KeyCode/SHIFT)
         speed (* camera-speed (if speed-up 5.0 1.0))
@@ -1073,7 +1096,6 @@
       (.scale offset (* dt speed))
       (let [new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
         (set-camera! camera-node current-camera new-camera false)))))
-
 
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
@@ -1189,29 +1211,6 @@
               (seq (g/node-value view :active-updatables evaluation-context))))
   (run [app-view] (when-let [view (active-scene-view app-view)]
                     (stop-handler view))))
-
-(defn set-camera!
-  ([camera-node start-camera end-camera animate?]
-   (set-camera! camera-node start-camera end-camera animate? nil))
-  ([camera-node start-camera end-camera animate? on-animation-end]
-   (if animate?
-     (let [duration 0.5]
-       (g/transact (g/set-property camera-node :animating true))
-       (ui/anim! duration
-                 (fn [^double t]
-                   (let [t (- (* t t 3) (* t t t 2))
-                         cam (c/interpolate start-camera end-camera t)]
-                     (g/transact
-                       (g/set-property camera-node :local-camera cam))))
-                 (fn []
-                   (g/transact
-                     [(g/set-property camera-node :local-camera end-camera)
-                      (g/set-property camera-node :animating false)])
-                   (ui/user-data! (ui/main-scene) ::ui/refresh-requested? true)
-                   (when on-animation-end (on-animation-end)))))
-     (g/transact
-       (g/set-property camera-node :local-camera end-camera)))
-   nil))
 
 (defn- fudge-empty-aabb
   ^AABB [^AABB aabb]
