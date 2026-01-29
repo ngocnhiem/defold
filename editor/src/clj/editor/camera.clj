@@ -384,25 +384,25 @@
   (and (= 1.0 (some-> camera camera-view-matrix (.getElement 2 2)))
        (= :orthographic (:type camera))))
 
-(defn track
-  [^Camera camera ^Region viewport last-x last-y evt-x evt-y]
-  (if (mode-2d? camera)
-    (let [focus ^Vector4d (:focus-point camera)
-          point (camera-project camera viewport (Point3d. (.x focus) (.y focus) (.z focus)))
-          screen-z (.z point)
-          world (camera-unproject camera viewport evt-x evt-y screen-z)
-          delta (camera-unproject camera viewport last-x last-y screen-z)]
-      (.sub delta world)
-      (assoc (camera-move camera (.x delta) (.y delta) (.z delta))
-        :focus-point (doto focus (.add delta))))
-    (let [dx (- last-x evt-x)
-          dy (- last-y evt-y)
-          rate 0.001
-          current-rotation (Quat4d. (:rotation camera))
-          q1 (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 (* dy rate))))
-          q2 (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 (* dx rate))))
-          new-rotation (doto (Quat4d. q2) (.mul current-rotation) (.mul q1))]
-      (assoc camera :rotation new-rotation))))
+(defn track [^Camera camera ^Region viewport last-x last-y evt-x evt-y]
+  (let [focus ^Vector4d (:focus-point camera)
+        point (camera-project camera viewport (Point3d. (.x focus) (.y focus) (.z focus)))
+        screen-z (.z point)
+        world (camera-unproject camera viewport evt-x evt-y screen-z)
+        delta (camera-unproject camera viewport last-x last-y screen-z)]
+    (.sub delta world)
+    (assoc (camera-move camera (.x delta) (.y delta) (.z delta))
+           :focus-point (doto focus (.add delta)))))
+
+(defn look [^Camera camera ^Region viewport last-x last-y evt-x evt-y]
+  (let [dx (- last-x evt-x)
+        dy (- last-y evt-y)
+        rate 0.001
+        current-rotation (Quat4d. (:rotation camera))
+        q1 (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 (* dy rate))))
+        q2 (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 (* dx rate))))
+        new-rotation (doto (Quat4d. q2) (.mul current-rotation) (.mul q1))]
+    (assoc camera :rotation new-rotation)))
 
 (defn pan-at-pointer-position
   "Pans the camera so that the focus point is at the same position as it was before `dolly`."
@@ -417,8 +417,7 @@
     (assoc (camera-move camera (.x delta) (.y delta) (.z delta))
            :focus-point (doto focus (.add delta)))))
 
-(defn tumble
-  [^Camera camera dx dy]
+(defn tumble [^Camera camera dx dy]
   (let [rate 0.005
         focus ^Vector4d (:focus-point camera)
         delta ^Vector4d (doto (Vector4d. ^Point3d (:position camera))
@@ -460,8 +459,9 @@
   {[:primary   false true  false false] :tumble
    [:primary   false false true  false] :track
    [:primary   false true  true  false] :dolly
-   [:secondary false false true  false] :dolly
-   [:secondary false false false false] :track
+   [:secondary false false false false] :look
+   [:secondary true  false false false] :look
+   [:secondary false false true  false] :look
    [:middle    false false false false] :track})
 
 (defn camera-movement
@@ -686,7 +686,9 @@
                         is-significant-drag)
                    (track viewport last-x last-y x y)
                    (= :tumble movement)
-                   (tumble (- last-x x) (- last-y y)))
+                   (tumble (- last-x x) (- last-y y))
+                   (= :look movement)
+                   (look viewport last-x last-y x y))
 
                  filter-fn
                  filter-fn)]
@@ -732,7 +734,7 @@
   (property local-camera Camera)
   (property cached-3d-camera Camera)
   (property animating g/Bool)
-  (property movements-enabled g/Any (default #{:dolly :track :tumble}))
+  (property movements-enabled g/Any (default #{:dolly :track :tumble :look}))
   (property cursor-type g/Keyword)
 
   (input scene-aabb AABB)
