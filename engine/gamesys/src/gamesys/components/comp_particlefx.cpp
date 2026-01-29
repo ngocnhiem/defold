@@ -240,6 +240,7 @@ namespace dmGameSystem
         return dmGameObject::CREATE_RESULT_OK;
     }
 
+    static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component);
     static void SetBlendFactors(dmRender::RenderObject* ro, dmParticleDDF::BlendMode blend_mode);
     static void SetRenderConstants(dmRender::HNamedConstantBuffer constant_buffer, dmParticle::RenderConstant* constants, uint32_t constant_count);
     void RenderLineCallback(void* usercontext, const dmVMath::Point3& start, const dmVMath::Point3& end, const dmVMath::Vector4& color);
@@ -296,8 +297,7 @@ namespace dmGameSystem
             {
                 uint32_t emitter_count = dmParticle::GetEmitterCount(c.m_ParticlePrototype);
                 w->m_EmitterCount -= emitter_count;
-                dmResource::Release(ctx->m_Factory, c.m_ParticlePrototype);
-                dmParticle::DestroyInstance(particle_context, c.m_ParticleInstance);
+                DestroyComponent(w, &c);
                 components.EraseSwap(i);
                 --count;
             }
@@ -648,12 +648,21 @@ namespace dmGameSystem
         // NOTE: We must increase ref-count as a particle fx might be playing after the component is destroyed
         dmResource::HFactory factory = world->m_Context->m_Factory;
         dmResource::IncRef(factory, prototype->m_ParticlePrototype);
+
+        // incref overrides?
+
         component->m_ParticleInstance = dmParticle::CreateInstance(world->m_ParticleContext, prototype->m_ParticlePrototype, emitter_state_changed_data);
         component->m_ParticlePrototype = prototype->m_ParticlePrototype;
         component->m_World = world;
         component->m_AddedToUpdate = prototype->m_AddedToUpdate;
         world->m_EmitterCount += dmParticle::GetEmitterCount(component->m_ParticlePrototype);
         return component->m_ParticleInstance;
+    }
+
+    static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component)
+    {
+        dmResource::Release(world->m_Context->m_Factory, component->m_ParticlePrototype);
+        dmParticle::DestroyInstance(world->m_ParticleContext, component->m_ParticleInstance);
     }
 
     dmGameObject::UpdateResult CompParticleFXOnMessage(const dmGameObject::ComponentOnMessageParams& params)
@@ -828,30 +837,30 @@ namespace dmGameSystem
 
     static inline MaterialResource* GetEmitterMaterialResource(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
-        const ParticleFXEmitterOverride* override = GetEmitterOverride(prototype, emitter_index);
-        if (override && override->m_Material)
+        const ParticleFXEmitterOverride* emitter_override = GetEmitterOverride(prototype, emitter_index);
+        if (emitter_override && emitter_override->m_Material)
         {
-            return override->m_Material;
+            return emitter_override->m_Material;
         }
         return (MaterialResource*) dmParticle::GetMaterial(prototype->m_ParticlePrototype, emitter_index);
     }
 
     static inline TextureSetResource* GetEmitterTextureSet(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
-        const ParticleFXEmitterOverride* override = GetEmitterOverride(prototype, emitter_index);
-        if (override && override->m_TileSource)
+        const ParticleFXEmitterOverride* emitter_override = GetEmitterOverride(prototype, emitter_index);
+        if (emitter_override && emitter_override->m_TileSource)
         {
-            return override->m_TileSource;
+            return emitter_override->m_TileSource;
         }
         return (TextureSetResource*) dmParticle::GetTileSource(prototype->m_ParticlePrototype, emitter_index);
     }
 
     static inline dmhash_t GetEmitterAnimation(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
-        const ParticleFXEmitterOverride* override = GetEmitterOverride(prototype, emitter_index);
-        if (override && override->m_Animation)
+        const ParticleFXEmitterOverride* emitter_override = GetEmitterOverride(prototype, emitter_index);
+        if (emitter_override && emitter_override->m_Animation)
         {
-            return override->m_Animation;
+            return emitter_override->m_Animation;
         }
         return dmParticle::GetAnimation(prototype->m_ParticlePrototype, emitter_index);
     }
