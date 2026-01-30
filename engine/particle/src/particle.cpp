@@ -602,7 +602,7 @@ namespace dmParticle
     }
 
     // helper functions in update
-    static void FetchAnimation(Emitter* emitter, EmitterPrototype* prototype, FetchAnimationCallback fetch_animation_callback);
+    static void FetchResources(HParticleContext context, HInstance instance, Emitter* emitter, uint32_t emitter_index, EmitterPrototype* prototype, FetchResourcesCallback fetch_resources_callback);
     static void UpdateParticles(Instance* instance, Emitter* emitter, dmParticleDDF::Emitter* emitter_ddf, float dt);
     static void UpdateEmitterState(Instance* instance, Emitter* emitter, EmitterPrototype* emitter_prototype, dmParticleDDF::Emitter* emitter_ddf, float dt);
     static void EvaluateEmitterProperties(Emitter* emitter, Property* emitter_properties, float duration, float properties[EMITTER_KEY_COUNT]);
@@ -735,7 +735,7 @@ namespace dmParticle
         return GenerateVertexDataInternal(context, dt, instance, emitter_index, particle_start, particle_count, attribute_infos, color, vertex_buffer, vertex_buffer_size, out_vertex_buffer_size);
     }
 
-    static void UpdateInternal(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback, FetchMaterialCallback fetch_material_callback)
+    void Update(HParticleContext context, float dt, FetchResourcesCallback fetch_resources_callback)
     {
         DM_PROFILE(__FUNCTION__);
 
@@ -774,13 +774,8 @@ namespace dmParticle
                 UpdateEmitterVelocity(instance, emitter, emitter_ddf, dt);
                 UpdateEmitter(prototype, instance, emitter_prototype, emitter, emitter_ddf, dt);
                 TotalAliveParticles += (uint32_t)emitter->m_Particles.Size();
-                FetchAnimation(emitter, emitter_prototype, fetch_animation_callback);
-            
-                if (fetch_material_callback && instance_handle != INVALID_INSTANCE)
-                {
-                    fetch_material_callback(context, instance_handle, emitter_i, &emitter->m_Material);
-                }
 
+                FetchResources(context, instance_handle, emitter, emitter_i, emitter_prototype, fetch_resources_callback);
                 UpdateEmitterRenderData(instance_handle, emitter_i, instance, emitter, emitter_ddf);
 
                 if (emitter->m_ReHash)
@@ -788,40 +783,51 @@ namespace dmParticle
             }
         }
 
-        DM_PROPERTY_SET_U32(rmtp_ParticlesAlive, TotalAliveParticles);
+        DM_PROPERTY_SET_U32(rmtp_ParticlesAlive, TotalAliveParticles);        
     }
 
-    // Called from engine
-    void Update(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback, FetchMaterialCallback fetch_material_callback)
-    {
-        UpdateInternal(context, dt, fetch_animation_callback, fetch_material_callback);
-    }
-
-    // Called from editor, don't need to fetch an override material here.
-    void Update(HParticleContext context, float dt, FetchAnimationCallback fetch_animation_callback)
-    {
-        UpdateInternal(context, dt, fetch_animation_callback, 0);
-    }
-
-    static void FetchAnimation(Emitter* emitter, EmitterPrototype* prototype, FetchAnimationCallback fetch_animation_callback)
+    static void FetchResources(HParticleContext context, HInstance instance, Emitter* emitter, uint32_t emitter_index, EmitterPrototype* prototype, FetchResourcesCallback fetch_resources_callback)
     {
         DM_PROFILE(__FUNCTION__);
 
         // Needed to avoid autoread of AnimationData when calling java through JNA
         memset(&emitter->m_AnimationData, 0, sizeof(AnimationData));
-        if (fetch_animation_callback != 0x0 && prototype->m_TileSource)
+
+        if (fetch_resources_callback != 0x0)
         {
-            FetchAnimationResult result = fetch_animation_callback(prototype->m_TileSource, prototype->m_Animation, &emitter->m_AnimationData);
-            if (result != FETCH_ANIMATION_OK)
+            FetchResourcesParams params = {};
+            params.m_ParticleContext    = context;
+            params.m_Instance           = instance;
+            params.m_EmitterIndex       = emitter_index;
+            params.m_Animation          = prototype->m_Animation;
+            params.m_MaterialResource   = prototype->m_Material;
+            params.m_TextureSetResource = prototype->m_TileSource;
+
+            FetchResourcesData data = {};
+            FetchResourcesResult result = fetch_resources_callback(&params, &data);
+
+            if (result != FETCH_RESOURCES_OK)
             {
                 if (!emitter->m_FetchAnimWarning)
                 {
                     emitter->m_FetchAnimWarning = 1;
-                    dmLogWarning("The animation '%s' could not be found", dmHashReverseSafe64(prototype->m_Animation));
+
+                    if (!data.m_AnimationData.m_Texture)
+                    {
+                        dmLogWarning("The animation '%s' could not be found", dmHashReverseSafe64(prototype->m_Animation));
+                    }
+                    if (!data.m_Material)
+                    {
+                        dmLogWarning("The material could not be found", dmHashReverseSafe64(prototype->m_Animation));
+                    }
                 }
-            } else {
+            }
+            else
+            {
                 assert(emitter->m_AnimationData.m_StructSize == sizeof(AnimationData) && "AnimationData::m_StructSize has an invalid size");
                 emitter->m_FetchAnimWarning = 0;
+                emitter->m_Material         = data.m_Material;
+                emitter->m_AnimationData    = data.m_AnimationData;
             }
         }
     }
@@ -2380,7 +2386,7 @@ namespace dmParticle
     DM_PARTICLE_TRAMPOLINE3(void, SetScale, HParticleContext, HInstance, float);
 
     DM_PARTICLE_TRAMPOLINE2(bool, IsSleeping, HParticleContext, HInstance);
-    DM_PARTICLE_TRAMPOLINE3(void, Update, HParticleContext, float, FetchAnimationCallback);
+    DM_PARTICLE_TRAMPOLINE3(void, Update, HParticleContext, float, FetchResourcesCallback);
     DM_PARTICLE_TRAMPOLINE9(GenerateVertexDataResult, GenerateVertexData, HParticleContext, float, HInstance, uint32_t, const dmGraphics::VertexAttributeInfos&, const Vector4&, void*, uint32_t, uint32_t*);
 
     DM_PARTICLE_TRAMPOLINE2(HPrototype, NewPrototype, const void*, uint32_t);
