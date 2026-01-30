@@ -177,7 +177,7 @@ static float GetLineTextMetrics(TextGlyph* glyphs, uint32_t row_start, uint32_t 
         }
         trailing_space_width += g.m_Advance;
     }
-    float extent_last = last.m_LeftBearing + last.m_Width;
+    float extent_last = last.m_Width;
     float width = last.m_X - row_start_x + extent_last + trailing_space_width;
     return width;
 }
@@ -271,7 +271,23 @@ TextResult TextLayoutLegacyCreate(HFontCollection collection,
             g.m_Advance = font_glyph.m_Advance * scale;
             g.m_LeftBearing = font_glyph.m_LeftBearing * scale;
 
-            x += g.m_Advance + tracking;
+            // add tracking to the width of all but the first glyph
+            if (i > 0)
+            {
+                x += tracking;
+            }
+
+            // monospaced fonts have all glyphs of equal width
+            // the left bearing of the glyph should be ignored
+            if (settings->m_Monospace)
+            {
+                x += g.m_Advance;
+            }
+            else
+            {
+                x += g.m_Advance;
+                x += g.m_LeftBearing;
+            }
         }
 
         layout->m_Glyphs[i] = g;
