@@ -1103,19 +1103,18 @@
         node (g/node-by-id-at basis node-id)
         image-view (g/raw-property-value* basis node :image-view)]
     (when-not (ui/inside-hidden-tab? image-view)
-      (when-let [keys (g/maybe-node-value node-id :pressed-keys)]
-        (when (and (seq keys)
-                   ;; TODO: Add this check
-                   ;; (not (camera-animating? app-view evaluation-context))
-                   (g/maybe-node-value node-id :camera))
-          (update-camera-view! node-id keys dt)))
       (let [drawable (g/raw-property-value* basis node :drawable)
             async-copy-state-atom (g/raw-property-value* basis node :async-copy-state)]
         (when (and (some? drawable)
                    (some? async-copy-state-atom))
           (update-image-view! image-view drawable async-copy-state-atom dt)
           (when-let [cursor-type (g/maybe-node-value node-id :cursor-type)]
-            (ui/set-cursor image-view (cursor cursor-type)))))
+            (ui/set-cursor image-view (cursor cursor-type)))
+          (when-let [keys (g/maybe-node-value node-id :pressed-keys)]
+            (when (and (not (coll/empty? keys))
+                       (not (g/node-value (view->camera node-id) :animating))
+                       (g/maybe-node-value node-id :camera))
+              (update-camera-view! node-id keys dt)))))
       (when-let [overlay-anchor-pane (g/raw-property-value* basis node :overlay-anchor-pane)]
         (let [overlay-anchor-pane-props (g/node-value node-id :overlay-anchor-pane-props)]
           (advance-user-data-component!
