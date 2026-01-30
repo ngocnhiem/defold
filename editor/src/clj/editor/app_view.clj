@@ -442,6 +442,10 @@
   (state [app-view evaluation-context] (= (g/node-value app-view :active-tool evaluation-context) :scale)))
 
 (handler/defhandler :scene.select-rotate-tool :workbench
+  (enabled? [app-view evaluation-context]
+            (let [scene-view (g/node-value app-view :active-view evaluation-context)]
+              (when-let [image-view ^ImageView (g/node-value scene-view :image-view evaluation-context)]
+                (not= :secondary (:button (ui/user-data (.getParent image-view) ::last-mouse-action))))))
   (run [app-view] (g/transact (g/set-property app-view :active-tool :rotate)))
   (state [app-view evaluation-context] (= (g/node-value app-view :active-tool evaluation-context) :rotate)))
 

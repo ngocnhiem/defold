@@ -970,6 +970,7 @@
   (inherits view/WorkbenchView)
   (inherits SceneRenderer)
 
+  (property app-view g/NodeID)
   (property image-view ImageView)
   (property viewport Region (default (g/constantly (types/->Region 0 0 0 0))))
   (property active-updatable-ids g/Any)
@@ -1072,8 +1073,9 @@
        (g/set-property camera-node :local-camera end-camera)))
    nil))
 
-(defn- update-camera-view! [node-id pressed-keys dt]
-  (let [shift (contains? pressed-keys KeyCode/SHIFT)
+(defn- update-camera-view! [image-view node-id pressed-keys dt]
+  (let [is-secondary-button (= :secondary (:button (ui/user-data (.getParent image-view) ::last-mouse-action)))
+        shift (contains? pressed-keys KeyCode/SHIFT)
         alt (contains? pressed-keys KeyCode/ALT)
         speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))
         camera-node (view->camera node-id)
@@ -1092,7 +1094,8 @@
         (= key KeyCode/Q) (.sub offset up)
         (= key KeyCode/E) (.add offset up)))
 
-    (when (> (.length offset) 0.0)
+    (when (and is-secondary-button
+               (> (.length offset) 0.0))
       (.normalize offset)
       (.scale offset (* dt speed))
       (let [new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
@@ -1114,7 +1117,7 @@
             (when (and (not (coll/empty? keys))
                        (not (g/node-value (view->camera node-id) :animating))
                        (g/maybe-node-value node-id :camera))
-              (update-camera-view! node-id keys dt)))))
+              (update-camera-view! image-view node-id keys dt)))))
       (when-let [overlay-anchor-pane (g/raw-property-value* basis node :overlay-anchor-pane)]
         (let [overlay-anchor-pane-props (g/node-value node-id :overlay-anchor-pane-props)]
           (advance-user-data-component!
@@ -1737,7 +1740,7 @@
     scene-view-pane))
 
 (defn- make-scene-view [scene-graph ^Parent parent opts]
-  (let [view-id (g/make-node! scene-graph SceneView :updatable-states {})
+  (let [view-id (g/make-node! scene-graph SceneView :updatable-states {} :app-view (:app-view opts))
         scene-view-pane (make-scene-view-pane view-id opts)]
     (ui/children! parent [scene-view-pane])
     (ui/with-controls scene-view-pane [overlay-anchor-pane]
