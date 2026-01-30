@@ -20,6 +20,7 @@
             [editor.types :as types]
             [schema.core :as s])
   (:import [editor.types AABB Camera Frustum Rect Region]
+           [java.awt Robot]
            [javafx.scene Cursor]
            [javax.vecmath AxisAngle4d Matrix3d Matrix4d Point2d Point3d Quat4d Tuple2d Tuple3d Tuple4d Vector3d Vector4d]))
 
@@ -692,7 +693,7 @@
 
                  filter-fn
                  filter-fn)]
-    (when (not= :idle movement)
+    #_(when (not= :idle movement)
       (let [image-view (:target action)
             mouse-x (:x action)
             mouse-y (:y action)]
@@ -723,10 +724,7 @@
                             (< top-dist margin) (+ (.getMinY screen-bounds) margin 1)
                             (< bottom-dist margin) (- (.getMaxY screen-bounds) margin 1)
                             :else current-y)]
-                (.mouseMove robot new-x new-y)
-                (g/user-data-swap! self ::ui-state assoc
-                                   :last-x (+ new-x last-x)
-                                   :last-y (+ new-y last-y))))))))
+                (.mouseMove robot new-x new-y)))))))
     (g/set-property! self :local-camera camera)
     (case type
       :scroll (if (contains? movements-enabled :dolly) nil action)
