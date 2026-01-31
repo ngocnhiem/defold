@@ -1637,7 +1637,9 @@
                                   ;; Request focus and consume event to prevent someone else from stealing focus
                                   (.requestFocus parent)
                                   (.consume e))
-                                (when (= :mouse-moved (:type action))
+                                ;; NOTE: In JavaFX, when you release a mouse button, it dispatches 2 events; the release
+                                ;; and a `MOUSE_CLICKED` event as well. We only care about pressed/released
+                                (when (not= :mouse-clicked (:type action))
                                   (ui/user-data! parent ::last-mouse-action action))
                                 (g/transact
                                   (concat
