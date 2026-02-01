@@ -891,7 +891,7 @@ namespace dmGameSystem
     static inline const ParticleFXEmitterOverride* GetEmitterOverride(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
         const ParticleFXPrototypeOverrides* emitter_overrides = prototype->m_Overrides;
-        if (emitter_overrides && emitter_overrides->m_EmitterOverrides.Size() < emitter_index)
+        if (emitter_overrides && emitter_index < emitter_overrides->m_EmitterOverrides.Size())
         {
             return &emitter_overrides->m_EmitterOverrides[emitter_index];
         }

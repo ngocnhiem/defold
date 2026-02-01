@@ -818,12 +818,13 @@ namespace dmParticle
                     }
                     if (!data.m_Material)
                     {
-                        dmLogWarning("The material could not be found", dmHashReverseSafe64(prototype->m_Animation));
+                        dmLogWarning("The material could not be found");
                     }
                 }
             }
             else
             {
+                emitter->m_AnimationData = data.m_AnimationData;
                 assert(emitter->m_AnimationData.m_StructSize == sizeof(AnimationData) && "AnimationData::m_StructSize has an invalid size");
                 emitter->m_FetchAnimWarning = 0;
                 emitter->m_Material         = data.m_Material;
