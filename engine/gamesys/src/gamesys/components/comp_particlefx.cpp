@@ -846,18 +846,8 @@ namespace dmGameSystem
         // Don't warn if none could be found
     }
 
-    struct ResolvePropertyOptionsResult
+    static bool ResolvePropertyEmitter(dmGameObject::HPropertyOptions options, dmhash_t* emitter_id)
     {
-        dmhash_t m_EmitterId;
-        dmhash_t m_PayloadHash;
-        int32_t  m_PayloadIndex;
-        uint8_t  m_HasPayloadHash : 1;
-        uint8_t  m_HasPayloadIndex : 1;
-    };
-
-    static bool ResolvePropertyOptions(dmGameObject::HPropertyOptions options, ResolvePropertyOptionsResult* resolved_options)
-    {
-        ResolvePropertyOptionsResult res = {};
         uint32_t property_count = dmGameObject::GetPropertyOptionsCount(options);
         for (int i = 0; i < property_count; ++i)
         {
@@ -866,26 +856,11 @@ namespace dmGameSystem
 
             if (hash == HASH_EMITTER_ID)
             {
-                dmGameObject::GetPropertyOptionsKey(options, ++i, &res.m_EmitterId);
-            }
-            else if (!res.m_HasPayloadHash && !res.m_HasPayloadIndex)
-            {
-                if (dmGameObject::GetPropertyOptionsKey(options, i, &res.m_PayloadHash) == dmGameObject::PROPERTY_RESULT_OK)
-                {
-                    res.m_HasPayloadHash = 1;
-                }
-                else if (dmGameObject::GetPropertyOptionsIndex(options, i, &res.m_PayloadIndex) == dmGameObject::PROPERTY_RESULT_OK)
-                {
-                    res.m_HasPayloadIndex = 1;
-                }
+                dmGameObject::GetPropertyOptionsKey(options, ++i, emitter_id);
+                return true;
             }
         }
-
-        if (res.m_EmitterId == 0)
-            return false;
-
-        *resolved_options = res;
-        return true;
+        return false;
     }
 
     static inline const ParticleFXEmitterOverride* GetEmitterOverride(const ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
@@ -930,14 +905,14 @@ namespace dmGameSystem
 
     dmGameObject::PropertyResult CompParticleFXGetProperty(const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
     {
-        ResolvePropertyOptionsResult resolved_options;
-        if (!ResolvePropertyOptions(params.m_Options, &resolved_options))
+        dmhash_t emitter_id;
+        if (!ResolvePropertyEmitter(params.m_Options, &emitter_id))
         {
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
         }
         ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
         dmhash_t property_id                    = params.m_PropertyId;
-        uint32_t emitter_index                  = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, resolved_options.m_EmitterId);
+        uint32_t emitter_index                  = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, emitter_id);
 
         if (emitter_index == dmParticle::INVALID_EMITTER_INDEX)
         {
@@ -1002,15 +977,15 @@ namespace dmGameSystem
 
     dmGameObject::PropertyResult CompParticleFXSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
     {
-        ResolvePropertyOptionsResult resolved_options;
-        if (!ResolvePropertyOptions(params.m_Options, &resolved_options))
+        dmhash_t emitter_id;
+        if (!ResolvePropertyEmitter(params.m_Options, &emitter_id))
         {
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
         }
 
         ParticleFXComponentPrototype* prototype = (ParticleFXComponentPrototype*)*params.m_UserData;
         dmhash_t property_id                    = params.m_PropertyId;
-        uint32_t emitter_index                  = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, resolved_options.m_EmitterId);
+        uint32_t emitter_index                  = dmParticle::GetEmitterIndexFromId(prototype->m_ParticlePrototype, emitter_id);
         if (emitter_index == dmParticle::INVALID_EMITTER_INDEX)
         {
             return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
@@ -1057,12 +1032,7 @@ namespace dmGameSystem
         }
         else if (property_id == PROP_ANIMATION)
         {
-            if (!resolved_options.m_HasPayloadHash)
-            {
-                return dmGameObject::PROPERTY_RESULT_INVALID_KEY;
-            }
-
-            dmhash_t new_animation = resolved_options.m_PayloadHash;
+            dmhash_t new_animation = params.m_Value.m_Hash;
             TextureSetResource* emitter_texture_set_res = GetEmitterTextureSet(prototype, emitter_index);
             uint32_t* anim_id = emitter_texture_set_res ? emitter_texture_set_res->m_AnimationIds.Get(new_animation) : 0;
             if (!anim_id)
