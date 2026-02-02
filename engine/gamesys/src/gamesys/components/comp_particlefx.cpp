@@ -662,8 +662,8 @@ namespace dmGameSystem
         component->m_World = world;
         component->m_AddedToUpdate = prototype->m_AddedToUpdate;
 
-        ParticleFXPrototypeOverrides* overrides = &prototype->m_Overrides[component->m_PrototypeIndex];
 
+        ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
         if (overrides)
         {
             uint32_t num_overrides = overrides->m_EmitterOverrides.Size();
