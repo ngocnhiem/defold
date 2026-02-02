@@ -271,17 +271,7 @@ TextResult TextLayoutLegacyCreate(HFontCollection collection,
             g.m_Advance = font_glyph.m_Advance * scale;
             g.m_LeftBearing = font_glyph.m_LeftBearing * scale;
 
-            // monospaced fonts have all glyphs of equal width
-            // the left bearing of the glyph should be ignored
-            if (settings->m_Monospace)
-            {
-                x += g.m_Advance;
-            }
-            else
-            {
-                x += g.m_Advance;
-                x += g.m_LeftBearing;
-            }
+            x += g.m_Advance;
             x += tracking;
         }
 
