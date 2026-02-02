@@ -552,6 +552,7 @@ namespace dmGameObject
      * @param [options] [type:table] optional options table
      * - index [type:number] index into array property (1 based)
      * - key [type:hash] name of internal property
+     * - keys [type:table] array of internal component resources (e.g a particle fx emitter, see examples below)
      * @return value [type:number|boolean|hash|url|vector3|vector4|quaternion|resource] the value of the specified property
      *
      * @examples
@@ -597,11 +598,24 @@ namespace dmGameObject
      * Get a named property
      *
      * ```lua
-     * function init(self)
-     *     -- get the resource of a certain gui font
-     *     local font_hash = go.get("#gui", "fonts", {key = "system_font_BIG"})
-     * end
+     * -- get the resource of a certain gui font
+     * local font_hash = go.get("#gui", "fonts", {key = "system_font_BIG"})
      * ```
+     *
+     * @examples
+     * Get a property from a sub-component, using the "keys" options table
+     * 
+     * ```lua
+     * -- Addressing the first level of a component:
+     * go.get("#particlefx", "material", {keys = {{emitter_id = "cone_emitter"}}})
+     * ```
+     *
+     * @examples
+     * Get a property into a deeper sub-hierarchy (if the component supports it).
+     *
+     * ```lua
+     * -- Note: There is currently no component that supports this, but a custom component could.
+     * go.get("#my_component", "some_property", {keys = {{child = "root"}, {child = "child_node"}}})
      */
     int Script_Get(lua_State* L)
     {
@@ -686,6 +700,7 @@ namespace dmGameObject
      * @param [options] [type:table] optional options table
      * - index [type:integer] index into array property (1 based)
      * - key [type:hash] name of internal property
+     * - keys [type:table] array of internal component resources (e.g a particle fx emitter, see examples below)
      * @examples
      *
      * Set a property "speed" of a script "player", the property must be declared in the player-script:
@@ -732,6 +747,23 @@ namespace dmGameObject
      *     go.set("#gui", "fonts", self.big_font, {key = "system_font_BIG"})
      * end
      * ```
+     *
+     * @examples
+     * Set a property on a sub-component, using the "keys" options table
+     * 
+     * ```lua
+     * go.property("my_material", resource.material)
+     * function init(self)
+     *     go.set("#particlefx", "material", self.my_material, {keys = {{emitter_id = "cone_emitter"}}})
+     * end
+     * ```
+     *
+     * @examples
+     * Set a property in a deeper sub-hierarchy (if the component supports it).
+     *
+     * ```lua
+     * -- Note: There is currently no component that supports this, but a custom component could.
+     * go.set("#my_component", "some_property", some_value, {keys = {{child = "root"}, {child = "child_node"}}})
      */
     int Script_Set(lua_State* L)
     {
