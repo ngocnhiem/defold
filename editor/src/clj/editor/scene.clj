@@ -1073,33 +1073,53 @@
        (g/set-property camera-node :local-camera end-camera)))
    nil))
 
-(defn- update-camera-view! [image-view node-id pressed-keys dt]
-  (let [is-secondary-button (= :secondary (:button (ui/user-data (.getParent image-view) ::last-mouse-action)))
+(def current-input (atom {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor {:x 0.0 :y 0.0} :cursor-pos {:x 0.0 :y 0.0}}))
+
+(def camera-target-rotation (atom nil))
+
+(def ^:private camera-velocity (atom (Vector3d. 0.0 0.0 0.0)))
+(def ^:private acceleration 15.0)
+(def ^:private damping 8.0)
+
+(defn- update-camera-view! [image-view node-id dt]
+  (let [pressed-keys (:keys @current-input)
+        is-secondary-button (contains? (:mouse-buttons @current-input) :secondary)
+        #_(= :secondary (:button (ui/user-data (.getParent image-view) ::last-mouse-action)))
+        camera-keycodes #{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT KeyCode/ALT KeyCode/Q KeyCode/E}
         shift (contains? pressed-keys KeyCode/SHIFT)
         alt (contains? pressed-keys KeyCode/ALT)
         speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))
         camera-node (view->camera node-id)
         current-camera (g/node-value camera-node :local-camera)
+        viewport (g/node-value camera-node :viewport)
         forward (c/camera-forward-vector current-camera)
         right (c/camera-right-vector current-camera)
         up (c/camera-up-vector current-camera)
-        offset (Vector3d. 0.0 0.0 0.0)]
+        target-dir (Vector3d. 0.0 0.0 0.0)]
+    ;; (println @current-input)
 
     (doseq [key pressed-keys]
       (cond
-        (= key KeyCode/W) (.add offset forward)
-        (= key KeyCode/S) (.sub offset forward)
-        (= key KeyCode/A) (.sub offset right)
-        (= key KeyCode/D) (.add offset right)
-        (= key KeyCode/Q) (.sub offset up)
-        (= key KeyCode/E) (.add offset up)))
+        (= key KeyCode/W) (.add target-dir forward)
+        (= key KeyCode/S) (.sub target-dir forward)
+        (= key KeyCode/A) (.sub target-dir right)
+        (= key KeyCode/D) (.add target-dir right)
+        (= key KeyCode/Q) (.sub target-dir up)
+        (= key KeyCode/E) (.add target-dir up)))
 
-    (when (and is-secondary-button
-               (> (.length offset) 0.0))
-      (.normalize offset)
-      (.scale offset (* dt speed))
-      (let [new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-        (set-camera! camera-node current-camera new-camera false)))))
+    (when (not= (.length target-dir) 0.0)
+      (.normalize target-dir))
+    (.scale target-dir speed)
+    (let [vel @camera-velocity
+          diff (doto (Vector3d. target-dir) (.sub vel))]
+      (.scale diff (* acceleration dt))
+      (.add vel diff)
+      (when (= (.length target-dir) 0.0)
+        (.scale vel (Math/exp (* (- damping) dt))))
+      (when (> (.length vel) 0.001)
+        (let [offset (doto (Vector3d. vel) (.scale dt))
+              new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
+          (set-camera! camera-node current-camera new-camera false))))))
 
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
@@ -1113,11 +1133,12 @@
           (update-image-view! image-view drawable async-copy-state-atom dt)
           (when-let [cursor-type (g/maybe-node-value node-id :cursor-type)]
             (ui/set-cursor image-view (cursor cursor-type)))
-          (when-let [keys (g/maybe-node-value node-id :pressed-keys)]
+          (update-camera-view! image-view node-id  dt)
+          #_(when-let [keys (g/maybe-node-value node-id :pressed-keys)]
             (when (and (not (coll/empty? keys))
                        (not (g/node-value (view->camera node-id) :animating))
                        (g/maybe-node-value node-id :camera))
-              (update-camera-view! image-view node-id keys dt)))))
+              ))))
       (when-let [overlay-anchor-pane (g/raw-property-value* basis node :overlay-anchor-pane)]
         (let [overlay-anchor-pane-props (g/node-value node-id :overlay-anchor-pane-props)]
           (advance-user-data-component!
@@ -1622,6 +1643,57 @@
                   ::unhandled)))
     (.consume event)))
 
+(defn register-event-handler-new! [^Parent parent view-id]
+  #_(reset! current-input {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor {:x 0.0 :y 0.0} :cursor-pos {:x 0.0 :y 0.0}})
+  (let [process-events? (atom true)
+        event-handler (ui/event-handler e
+                        (when @process-events?
+                          (let [action (augment-action view-id (i/action-from-jfx e))
+                                x (:x action)
+                                y (:y action)
+                                pos [x y 0.0]]
+                            (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
+                            (swap! current-input assoc :cursor-pos [(:x action) (:y action)])
+                            (when (= :mouse-pressed (:type action))
+                              (swap! current-input update :mouse-buttons conj (:button action))
+                              (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                                         (filter action)
+                                                                         set))
+                              ;; Request focus and consume event to prevent someone else from stealing focus
+                              (.requestFocus parent)
+                              (.consume e))
+                            (when (= :mouse-released (:type action))
+                              (swap! current-input update :mouse-buttons disj (:button action))
+                              (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                                         (filter action)
+                                                                         set))))))]
+    (.setOnMousePressed parent event-handler)
+    (.setOnMouseReleased parent event-handler)
+    (.setOnMouseMoved parent event-handler)
+    (.setOnMouseDragged parent event-handler)
+    (.setOnKeyReleased parent
+      (ui/event-handler e
+        (when @process-events?
+          (let [code (.getCode e)
+                action (i/action-from-jfx e)]
+            (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                         (filter action)
+                                                         set))
+            (when (or (.isLetterKey code)
+                      (.isDigitKey code))
+              (swap! current-input update :keys disj code))))))
+    (.setOnKeyPressed parent
+      (ui/event-handler e
+        (when @process-events?
+          (let [code (.getCode e)
+                action (i/action-from-jfx e)]
+            (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                       (filter action)
+                                                       set))
+            (when (or (.isLetterKey code)
+                      (.isDigitKey code))
+              (swap! current-input update :keys conj code))))))))
+
 (defn register-event-handler! [^Parent parent view-id]
   (let [process-events? (atom true)
         event-handler (ui/event-handler e
@@ -1714,6 +1786,7 @@
                                  picking-drawable (gl/offscreen-drawable picking-drawable-size picking-drawable-size)]
                              (ui/user-data! image-view ::view-id view-id)
                              (register-event-handler! this view-id)
+                             (register-event-handler-new! this view-id)
                              (ui/on-closed! (:tab opts) (fn [_]
                                                           (ui/kill-event-dispatch! this)
                                                           (dispose-scene-view! view-id)))
