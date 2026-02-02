@@ -111,6 +111,13 @@ namespace dmGameSystem
         uint32_t                                m_WarnParticlesExceeded : 1;
     };
 
+    struct InstanceUserData
+    {
+        ParticleFXWorld*              m_World;
+        ParticleFXPrototypeOverrides* m_Overrides;
+        dmhash_t                      m_ComponentId;
+    };
+
     static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component);
 
     dmGameObject::CreateResult CompParticleFXNewWorld(const dmGameObject::ComponentNewWorldParams& params)
@@ -633,13 +640,6 @@ namespace dmGameSystem
         return dmGameObject::UPDATE_RESULT_OK;
     }
 
-    struct InstanceUserData
-    {
-        ParticleFXWorld*              m_World;
-        ParticleFXPrototypeOverrides* m_Overrides;
-        dmhash_t                      m_ComponentId;
-    };
-
     static dmParticle::HInstance CreateComponent(ParticleFXWorld* world, dmGameObject::HInstance go_instance, dmhash_t component_id, ParticleFXComponentPrototype* prototype, dmParticle::EmitterStateChangedData* emitter_state_changed_data)
     {
         if (world->m_Components.Full())
@@ -662,7 +662,9 @@ namespace dmGameSystem
         component->m_World = world;
         component->m_AddedToUpdate = prototype->m_AddedToUpdate;
 
-
+        // If the prototype has overrides when we play the particlefx,
+        // we need to clone them and incref to make sure they can live
+        // while the particlefx is playing.
         ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
         if (overrides)
         {
@@ -689,9 +691,9 @@ namespace dmGameSystem
             }
 
             InstanceUserData* instance_user_data = new InstanceUserData;
-            instance_user_data->m_World       = world;
-            instance_user_data->m_ComponentId = component_id;
-            instance_user_data->m_Overrides   = component->m_Overrides;
+            instance_user_data->m_World          = world;
+            instance_user_data->m_ComponentId    = component_id;
+            instance_user_data->m_Overrides      = component->m_Overrides;
             dmParticle::SetInstanceUserData(world->m_ParticleContext, component->m_ParticleInstance, instance_user_data);
         }
 
@@ -701,7 +703,6 @@ namespace dmGameSystem
 
     static void DestroyComponent(ParticleFXWorld* world, ParticleFXComponent* component)
     {
-
         if (component->m_Overrides)
         {
             uint32_t num_overrides = component->m_Overrides->m_EmitterOverrides.Size();

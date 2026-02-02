@@ -51,7 +51,7 @@ public class ParticleLibrary {
     }
 
     public interface FetchResourcesCallback extends Callback {
-        int invoke(FetchResourcesParams.ByReference params, FetchResourcesData outData);
+        int invoke(FetchResourcesParams params, FetchResourcesData outData);
     }
 
     public static native Pointer Particle_NewPrototype(Buffer buffer, int bufferSize);
@@ -347,7 +347,9 @@ public class ParticleLibrary {
     }
 
     public static class FetchResourcesParams extends Structure {
-        public static class ByReference extends FetchResourcesParams implements Structure.ByReference {}
+        public FetchResourcesParams() {
+            super();
+        }
 
         public Pointer particleContext;
         public int     instance;
@@ -363,7 +365,9 @@ public class ParticleLibrary {
     }
 
     public static class FetchResourcesData extends Structure {
-        public static class ByReference extends FetchResourcesData implements Structure.ByReference {}
+        public FetchResourcesData() {
+            super();
+        }
 
         public AnimationData animationData;
         public Pointer       material;

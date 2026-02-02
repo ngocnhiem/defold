@@ -248,7 +248,6 @@ namespace dmGameObject
         {
         case dmGameObject::PROPERTY_RESULT_OK:
             {
-                // TODO: How to validate keys array?
                 if (!keys_requested)
                 {
                     if (index_requested && (property_desc.m_ValueType != dmGameObject::PROP_VALUE_ARRAY))

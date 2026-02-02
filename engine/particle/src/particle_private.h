@@ -263,7 +263,7 @@ namespace dmParticle
         dmhash_t                    m_Animation;
         dmhash_t                    m_Id;
         /// Tile source to use when rendering particles.
-        void*                       m_TileSource;
+        void*                       m_TileSource; // TextureSetResource*
         /// Material to use when rendering particles.
         void*                       m_Material; // MaterialResource*
         /// Blend mode
