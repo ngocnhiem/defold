@@ -74,7 +74,7 @@
            [javafx.scene.image ImageView WritableImage]
            [javafx.scene.input KeyCode KeyEvent]
            [javafx.scene.layout AnchorPane Pane]
-           [javax.vecmath Matrix4d Point3d Quat4d Vector3d Vector4d]
+           [javax.vecmath AxisAngle4d Matrix4d Point3d Quat4d Vector3d Vector4d]
            [sun.awt.image IntegerComponentRaster]))
 
 (set! *warn-on-reflection* true)
@@ -1075,28 +1075,36 @@
 
 (def current-input (atom {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor {:x 0.0 :y 0.0} :cursor-pos {:x 0.0 :y 0.0}}))
 
-(def camera-target-rotation (atom nil))
-
 (def ^:private camera-velocity (atom (Vector3d. 0.0 0.0 0.0)))
 (def ^:private acceleration 15.0)
 (def ^:private damping 8.0)
+(def ^:private camera-angular-velocity (atom (Quat4d. 0.0 0.0 0.0 1.0)))
+(def ^:private look-sensitivity 0.2)
 
 (defn- update-camera-view! [image-view node-id dt]
   (let [pressed-keys (:keys @current-input)
         is-secondary-button (contains? (:mouse-buttons @current-input) :secondary)
-        #_(= :secondary (:button (ui/user-data (.getParent image-view) ::last-mouse-action)))
-        camera-keycodes #{KeyCode/W KeyCode/A KeyCode/S KeyCode/D KeyCode/SHIFT KeyCode/ALT KeyCode/Q KeyCode/E}
         shift (contains? pressed-keys KeyCode/SHIFT)
         alt (contains? pressed-keys KeyCode/ALT)
         speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))
         camera-node (view->camera node-id)
         current-camera (g/node-value camera-node :local-camera)
-        viewport (g/node-value camera-node :viewport)
         forward (c/camera-forward-vector current-camera)
         right (c/camera-right-vector current-camera)
         up (c/camera-up-vector current-camera)
-        target-dir (Vector3d. 0.0 0.0 0.0)]
-    ;; (println @current-input)
+        target-dir (Vector3d. 0.0 0.0 0.0)
+        {:keys [last-cursor cursor-pos]} @current-input
+        dx (- (first last-cursor) (first cursor-pos))
+        dy (- (second last-cursor) (second cursor-pos))
+
+        new-camera (if (and is-secondary-button (or (not= dx 0.0) (not= dy 0.0)))
+                     (let [rate (* look-sensitivity dt)
+                           current-rotation (Quat4d. (:rotation current-camera))
+                           q1 (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 (* dy rate))))
+                           q2 (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 (* dx rate))))
+                           new-rotation (doto (Quat4d. q2) (.mul current-rotation) (.mul q1))]
+                       (assoc current-camera :rotation new-rotation))
+                     current-camera)]
 
     (doseq [key pressed-keys]
       (cond
@@ -1110,16 +1118,21 @@
     (when (not= (.length target-dir) 0.0)
       (.normalize target-dir))
     (.scale target-dir speed)
+
     (let [vel @camera-velocity
           diff (doto (Vector3d. target-dir) (.sub vel))]
       (.scale diff (* acceleration dt))
       (.add vel diff)
       (when (= (.length target-dir) 0.0)
         (.scale vel (Math/exp (* (- damping) dt))))
-      (when (> (.length vel) 0.001)
-        (let [offset (doto (Vector3d. vel) (.scale dt))
-              new-camera (c/camera-move current-camera (.x offset) (.y offset) (.z offset))]
-          (set-camera! camera-node current-camera new-camera false))))))
+
+      (let [final-camera (if (> (.length vel) 0.001)
+                           (let [offset (doto (Vector3d. vel) (.scale dt))]
+                             (c/camera-move new-camera (.x offset) (.y offset) (.z offset)))
+                           new-camera)]
+        (when (not= final-camera current-camera)
+          (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
+          (set-camera! camera-node current-camera final-camera false))))))
 
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
@@ -1644,7 +1657,6 @@
     (.consume event)))
 
 (defn register-event-handler-new! [^Parent parent view-id]
-  #_(reset! current-input {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor {:x 0.0 :y 0.0} :cursor-pos {:x 0.0 :y 0.0}})
   (let [process-events? (atom true)
         event-handler (ui/event-handler e
                         (when @process-events?
