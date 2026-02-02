@@ -30,7 +30,8 @@
    (localization/make
      (test-util/make-test-prefs)
      :test
-     (bundle locale->content))))
+     (bundle locale->content)
+     #(throw %))))
 
 
 (deftest pattern-test
