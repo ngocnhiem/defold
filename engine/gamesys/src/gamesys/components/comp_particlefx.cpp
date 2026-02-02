@@ -963,7 +963,7 @@ namespace dmGameSystem
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
     }
 
-    static dmGameObject::PropertyResult AddOverrideMaterial(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, uint32_t emitter_index, dmhash_t resource)
+    static ParticleFXPrototypeOverrides* EnsureOverridePropertiesForEmitter(ParticleFXComponentPrototype* prototype, uint32_t emitter_index)
     {
         if (!prototype->m_Overrides)
             prototype->m_Overrides = new ParticleFXPrototypeOverrides;
@@ -978,24 +978,26 @@ namespace dmGameSystem
             overrides->m_EmitterOverrides.SetSize(new_size);
             memset(overrides->m_EmitterOverrides.Begin() + num_overrides, 0, sizeof(ParticleFXEmitterOverride) * (new_size-num_overrides));
         }
+        return overrides;
+    }
+
+    static dmGameObject::PropertyResult AddOverrideMaterial(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, uint32_t emitter_index, dmhash_t resource)
+    {
+        ParticleFXPrototypeOverrides* overrides = EnsureOverridePropertiesForEmitter(prototype, emitter_index);
         return SetResourceProperty(factory, resource, MATERIAL_EXT_HASH, (void**) &overrides->m_EmitterOverrides[emitter_index].m_Material);
     }
 
     static dmGameObject::PropertyResult AddOverrideTileSource(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, uint32_t emitter_index, dmhash_t resource)
     {
-        if (!prototype->m_Overrides)
-            prototype->m_Overrides = new ParticleFXPrototypeOverrides;
-
-        ParticleFXPrototypeOverrides* overrides = prototype->m_Overrides;
-        uint32_t num_overrides = overrides->m_EmitterOverrides.Size();
-        if (emitter_index >= num_overrides)
-        {
-            uint32_t new_size = emitter_index+1;
-            overrides->m_EmitterOverrides.SetCapacity(new_size);
-            overrides->m_EmitterOverrides.SetSize(new_size);
-            memset(overrides->m_EmitterOverrides.Begin() + num_overrides, 0, sizeof(ParticleFXEmitterOverride) * (new_size-num_overrides));
-        }
+        ParticleFXPrototypeOverrides* overrides = EnsureOverridePropertiesForEmitter(prototype, emitter_index);
         return SetResourceProperty(factory, resource, TEXTURE_SET_EXT_HASH, (void**) &overrides->m_EmitterOverrides[emitter_index].m_TextureSet);
+    }
+
+    static dmGameObject::PropertyResult AddOverrideAnimation(dmResource::HFactory factory, ParticleFXComponentPrototype* prototype, uint32_t emitter_index, dmhash_t animation)
+    {
+        ParticleFXPrototypeOverrides* overrides = EnsureOverridePropertiesForEmitter(prototype, emitter_index);
+        overrides->m_EmitterOverrides[emitter_index].m_Animation = animation;
+        return dmGameObject::PROPERTY_RESULT_OK;
     }
 
     dmGameObject::PropertyResult CompParticleFXSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
@@ -1041,10 +1043,12 @@ namespace dmGameSystem
 
                         const char* new_animation_name = dmHashReverseSafe64Alloc(&hash_ctx, current_animation);
                         dmLogWarning("Atlas doesn't contains animation '%s'. Animation '%s' will be used", error_message, new_animation_name);
+
+                        AddOverrideAnimation(dmGameObject::GetFactory(params.m_Instance), prototype, emitter_index, current_animation);
                     }
                     else
                     {
-                        dmLogWarning("Atlas doesn't contains animation '%s'. No animation will be used", error_message);
+                        dmLogWarning("Atlas doesn't contain animation '%s'. No animation will be used", error_message);
                     }
                     // else anim_id still == 0
                 }
@@ -1053,7 +1057,20 @@ namespace dmGameSystem
         }
         else if (property_id == PROP_ANIMATION)
         {
+            if (!resolved_options.m_HasPayloadHash)
+            {
+                return dmGameObject::PROPERTY_RESULT_INVALID_KEY;
+            }
 
+            dmhash_t new_animation = resolved_options.m_PayloadHash;
+            TextureSetResource* emitter_texture_set_res = GetEmitterTextureSet(prototype, emitter_index);
+            uint32_t* anim_id = emitter_texture_set_res ? emitter_texture_set_res->m_AnimationIds.Get(new_animation) : 0;
+            if (!anim_id)
+            {
+                dmLogError("Animation '%s' not found in atlas", dmHashReverseSafe64(new_animation));
+                return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
+            }
+            return AddOverrideAnimation(dmGameObject::GetFactory(params.m_Instance), prototype, emitter_index, new_animation);
         }
 
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
@@ -1115,6 +1132,7 @@ namespace dmGameSystem
         InstanceUserData* user_data         = (InstanceUserData*) dmParticle::GetInstanceUserData(params->m_ParticleContext, params->m_Instance);
         MaterialResource* material_res      = (MaterialResource*) params->m_MaterialResource;
         TextureSetResource* texture_set_res = (TextureSetResource*) params->m_TextureSetResource;
+        dmhash_t animation_id               = params->m_Animation;
 
         if (user_data && user_data->m_Overrides)
         {
@@ -1127,6 +1145,8 @@ namespace dmGameSystem
                     material_res = emitter_override->m_Material;
                 if (emitter_override->m_TextureSet)
                     texture_set_res = emitter_override->m_TextureSet;
+                if (emitter_override->m_Animation)
+                    animation_id = emitter_override->m_Animation;
             }
         }
 
@@ -1135,7 +1155,7 @@ namespace dmGameSystem
         if (texture_set_res)
         {
             dmGameSystemDDF::TextureSet* texture_set = texture_set_res->m_TextureSet;
-            uint32_t* anim_index = texture_set_res->m_AnimationIds.Get(params->m_Animation);
+            uint32_t* anim_index = texture_set_res->m_AnimationIds.Get(animation_id);
             if (!anim_index)
             {
                 return dmParticle::FETCH_RESOURCES_NOT_FOUND;
