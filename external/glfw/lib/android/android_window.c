@@ -45,6 +45,7 @@
 #include "android_log.h"
 #include "android_util.h"
 #include "android_joystick.h"
+#include "android_jni.h"
 
 extern struct android_app* g_AndroidApp;
 extern int g_AppCommands[MAX_APP_COMMANDS];
@@ -59,6 +60,7 @@ int g_autoCloseKeyboard = 0;
 // TODO: Hack. PRESS AND RELEASE is sent the same frame. Similar hack on iOS for handling of special keys
 int g_SpecialKeyActive = -1;
 static int g_PendingResize = 0;
+static int g_PendingResizeBecauseOfInsets = 0;
 
 JNIEXPORT void JNICALL Java_com_dynamo_android_DefoldActivity_FakeBackspace(JNIEnv* env, jobject obj)
 {
@@ -86,6 +88,11 @@ JNIEXPORT void JNICALL Java_com_dynamo_android_DefoldActivity_glfwInputCharNativ
     if (write(_glfwWinAndroid.m_Pipefd[1], &cmd, sizeof(cmd)) != sizeof(cmd)) {
         LOGF("Failed to write command");
     }
+}
+
+JNIEXPORT void JNICALL Java_com_dynamo_android_DefoldActivity_glfwSetPendingResizeBecauseOfInsets(JNIEnv* env, jobject obj)
+{
+    g_PendingResizeBecauseOfInsets = 1;
 }
 
 JNIEXPORT void JNICALL Java_com_dynamo_android_DefoldActivity_glfwSetMarkedTextNative(JNIEnv* env, jobject obj, jstring text)
@@ -297,10 +304,11 @@ static void _glfwPlatformSwapBuffersNoLock( void )
      report the old EGL size at the time of the event, so we defer the query
      until a swap occurs.
      */
-    if (g_PendingResize)
+    if (g_PendingResize || g_PendingResizeBecauseOfInsets)
     {
         update_width_height_info(&_glfwWin, &_glfwWinAndroid, 1);
         g_PendingResize = 0;
+        g_PendingResizeBecauseOfInsets = 0;
     }
 }
 
@@ -357,16 +365,12 @@ static void CreateGLSurface()
         // This thread attachment is a workaround for this crash 
         // https://github.com/defold/defold/issues/6956
         // only on Android 13 
-        JNIEnv* env = g_AndroidApp->activity->env;
-        JavaVM* vm = g_AndroidApp->activity->vm;
-        (*vm)->AttachCurrentThread(vm, &env, NULL);
+        int did_attach = 0;
+        JNIAttachCurrentThreadIfNeeded(&did_attach);
 
         make_current(&_glfwWinAndroid);
         
-        if (vm != 0)
-        {
-            (*vm)->DetachCurrentThread(vm);
-        }
+        JNIDetachCurrentThreadIfNeeded(did_attach);
         update_width_height_info(&_glfwWin, &_glfwWinAndroid, 1);
 
         computeIconifiedState();
@@ -670,6 +674,64 @@ void _glfwAndroidSetFullscreenParameters(int immersive_mode, int display_cutout)
     (*lJNIEnv)->CallVoidMethod(lJNIEnv, native_activity, set_immersive_mode, immersive_mode, display_cutout);
 
     (*lJavaVM)->DetachCurrentThread(lJavaVM);
+}
+
+int _glfwAndroidGetSafeAreaInsets(int* left, int* top, int* right, int* bottom)
+{
+    jint result;
+
+    JavaVM* lJavaVM = g_AndroidApp->activity->vm;
+    JNIEnv* lJNIEnv = g_AndroidApp->activity->env;
+
+    JavaVMAttachArgs lJavaVMAttachArgs;
+    lJavaVMAttachArgs.version = JNI_VERSION_1_6;
+    lJavaVMAttachArgs.name = "NativeThread";
+    lJavaVMAttachArgs.group = NULL;
+
+    result = (*lJavaVM)->AttachCurrentThread(lJavaVM, &lJNIEnv, &lJavaVMAttachArgs);
+    if (result == JNI_ERR) {
+        return 0;
+    }
+
+    jobject native_activity = g_AndroidApp->activity->clazz;
+    jclass native_activity_class = (*lJNIEnv)->GetObjectClass(lJNIEnv, native_activity);
+
+    jmethodID get_safe_area_insets = (*lJNIEnv)->GetMethodID(lJNIEnv, native_activity_class, "getSafeAreaInsets", "()[I");
+    if (!get_safe_area_insets)
+    {
+        (*lJavaVM)->DetachCurrentThread(lJavaVM);
+        return 0;
+    }
+
+    jintArray array = (jintArray)(*lJNIEnv)->CallObjectMethod(lJNIEnv, native_activity, get_safe_area_insets);
+    if (!array)
+    {
+        (*lJavaVM)->DetachCurrentThread(lJavaVM);
+        return 0;
+    }
+
+    jsize len = (*lJNIEnv)->GetArrayLength(lJNIEnv, array);
+    if (len < 4)
+    {
+        (*lJavaVM)->DetachCurrentThread(lJavaVM);
+        return 0;
+    }
+
+    jint* values = (*lJNIEnv)->GetIntArrayElements(lJNIEnv, array, NULL);
+    if (!values)
+    {
+        (*lJavaVM)->DetachCurrentThread(lJavaVM);
+        return 0;
+    }
+
+    *left = values[0];
+    *top = values[1];
+    *right = values[2];
+    *bottom = values[3];
+
+    (*lJNIEnv)->ReleaseIntArrayElements(lJNIEnv, array, values, JNI_ABORT);
+    (*lJavaVM)->DetachCurrentThread(lJavaVM);
+    return 1;
 }
 
 //========================================================================

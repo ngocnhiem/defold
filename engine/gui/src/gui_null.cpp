@@ -96,6 +96,24 @@ namespace dmGui
     {
     }
 
+    void SetSafeAreaAdjust(HContext context, bool enabled, uint32_t width, uint32_t height, float offset_x, float offset_y)
+    {
+    }
+
+    void UpdateSafeAreaAdjust(HContext context, SafeAreaMode mode, uint32_t window_width, uint32_t window_height,
+                              int32_t inset_left, int32_t inset_top, int32_t inset_right, int32_t inset_bottom)
+    {
+    }
+
+    SafeAreaMode ParseSafeAreaMode(const char* mode)
+    {
+        return SAFE_AREA_NONE;
+    }
+
+    void SetSceneSafeAreaMode(HScene scene, SafeAreaMode mode)
+    {
+    }
+
     void GetDefaultResolution(HContext context, uint32_t& width, uint32_t& height)
     {
         width = 0;

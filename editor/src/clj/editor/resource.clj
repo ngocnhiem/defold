@@ -25,6 +25,7 @@
             [util.digest :as digest]
             [util.fn :as fn]
             [util.http-server :as http-server]
+            [util.path :as path]
             [util.text-util :as text-util])
   (:import [clojure.lang PersistentHashMap]
            [com.defold.editor Editor]
@@ -263,7 +264,7 @@
   Resource
   (children [this] children)
   (ext [this] ext)
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] source-type)
   (exists? [this]
     (try
@@ -310,11 +311,14 @@
   io/Coercions
   (as-file [this] (File. abs-path))
 
+  path/Coercions
+  (as-path [_this] (path/as-path abs-path))
+
   http-server/ContentType
   (content-type [resource] (content-type resource))
 
   http-server/->Data
-  (->data [_] (fs/path abs-path)))
+  (->data [_] (path/as-path abs-path)))
 
 (defn make-file-resource [workspace ^String root-path ^File file children editable-proj-path? unloaded-proj-path?]
   {:pre [(g/node-id? workspace)
@@ -362,7 +366,7 @@
   Resource
   (children [this] nil)
   (ext [this] ext)
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] :file)
   (exists? [this] true)
   (read-only? [this] false)
@@ -416,7 +420,7 @@
   Resource
   (children [this] children)
   (ext [this] (FilenameUtils/getExtension name))
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] (if (zero? (count children)) :file :folder))
   (exists? [this] (not (nil? zip-entry)))
   (read-only? [this] true)
@@ -442,6 +446,9 @@
 
   io/Coercions
   (as-file [this] (io/as-file zip-uri))
+
+  path/Coercions
+  (as-path [_this] (path/as-path zip-uri))
 
   http-server/ContentType
   (content-type [resource] (content-type resource))

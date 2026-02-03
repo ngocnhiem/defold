@@ -44,6 +44,8 @@
 #include <gameobject/gameobject_ddf.h>
 #include <gameobject/lua_ddf.h>
 #include <gameobject/script.h>
+#include <gameobject/gameobject_props.h>
+
 #include <gamesys/gamesys_ddf.h>
 #include <gamesys/sprite_ddf.h>
 #include "../components/comp_label.h"
@@ -80,6 +82,7 @@ namespace dmGameSystem
     extern void GetSpriteWorldDynamicAttributePool(void* sprite_world, DynamicAttributePool** pool_out);
     extern void GetModelWorldRenderBuffers(void* world, dmRender::HBufferedRenderBuffer** vx_buffers, uint32_t* vx_buffers_count);
     extern void GetModelComponentRenderConstants(void* model_component, int render_item_ix, dmGameSystem::HComponentRenderConstants* render_constants);
+    extern void GetModelComponentAttributeRenderData(void* model_component, int render_item_ix, dmGraphics::HVertexBuffer* vx_buffer, dmGraphics::HVertexDeclaration* vx_decl, dmGraphics::HVertexDeclaration* inst_decl);
     extern void GetParticleFXWorldRenderBuffers(void* world, dmRender::HBufferedRenderBuffer* vx_buffer);
     extern void GetTileGridWorldRenderBuffers(void* world, dmRender::HBufferedRenderBuffer* vx_buffer);
 }
@@ -921,8 +924,6 @@ TEST_P(ComponentFailTest, Test)
 static void GetResourceProperty(dmGameObject::HInstance instance, dmhash_t comp_name, dmhash_t prop_name, dmhash_t* out_val) {
     dmGameObject::PropertyDesc desc;
     dmGameObject::PropertyOptions opt;
-    opt.m_Index = 0;
-
     dmGameObject::PropertyResult r = dmGameObject::GetProperty(instance, comp_name, prop_name, opt, desc);
 
     ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, r);
@@ -934,7 +935,6 @@ static void GetResourceProperty(dmGameObject::HInstance instance, dmhash_t comp_
 static dmGameObject::PropertyResult SetResourceProperty(dmGameObject::HInstance instance, dmhash_t comp_name, dmhash_t prop_name, dmhash_t in_val) {
     dmGameObject::PropertyVar prop_var(in_val);
     dmGameObject::PropertyOptions opt;
-    opt.m_Index = 0;
     return dmGameObject::SetProperty(instance, comp_name, prop_name, opt, prop_var);
 }
 
@@ -1389,7 +1389,6 @@ static float GetFloatProperty(dmGameObject::HInstance go, dmhash_t component_id,
 {
     dmGameObject::PropertyDesc property_desc;
     dmGameObject::PropertyOptions property_opt;
-    property_opt.m_Index = 0;
     dmGameObject::GetProperty(go, component_id, property_id, property_opt, property_desc);
     return property_desc.m_Variant.m_Number;
 }
@@ -1784,6 +1783,86 @@ TEST_F(FontTest, DynamicGlyph)
     }
 
     dmResource::Release(m_Factory, font);
+}
+
+// Verifies the Lua API for dynamic font collections updates resource refs and collection membership.
+TEST_F(FontTest, ScriptAddRemoveFont)
+{
+    dmGameSystem::ScriptLibContext scriptlibcontext;
+    scriptlibcontext.m_Factory         = m_Factory;
+    scriptlibcontext.m_Register        = m_Register;
+    scriptlibcontext.m_LuaState        = dmScript::GetLuaState(m_ScriptContext);
+    scriptlibcontext.m_GraphicsContext = m_GraphicsContext;
+    scriptlibcontext.m_ScriptContext   = m_ScriptContext;
+    scriptlibcontext.m_JobThread       = m_JobThread;
+
+    dmGameSystem::InitializeScriptLibs(scriptlibcontext);
+
+    // Create a temporary .ttf resource by copying an existing test font into the custom file mount.
+    // We avoid the default font path used by the dynamic font to exercise add/remove behavior.
+    const char* ttf_source_path = "/font/valid.ttf";
+    const char* ttf_test_path = "/font/valid_copy.ttf";
+    void* ttf_data = 0;
+    uint32_t ttf_size = 0;
+    ASSERT_EQ(dmResource::RESULT_OK, dmResource::GetRaw(m_Factory, ttf_source_path, &ttf_data, &ttf_size));
+    ASSERT_NE((void*)0, ttf_data);
+    ASSERT_EQ(dmResource::RESULT_OK, dmResource::AddFile(m_Factory, ttf_test_path, ttf_size, ttf_data));
+
+    dmhash_t ttf_hash = dmHashString64(ttf_test_path);
+    ASSERT_EQ(0, dmResource::GetRefCount(m_Factory, ttf_hash));
+
+    // Load the temp font so the hash-based Lua API can find it via the resource system.
+    dmGameSystem::TTFResource* ttf_resource = 0;
+    ASSERT_EQ(dmResource::RESULT_OK, dmResource::GetWithExt(m_Factory, ttf_test_path, "ttf", (void**) &ttf_resource));
+    ASSERT_NE((void*)0, ttf_resource);
+    ASSERT_EQ(1, dmResource::GetRefCount(m_Factory, ttf_hash));
+
+    dmGameSystem::FontResource* font = 0;
+    ASSERT_EQ(dmResource::RESULT_OK, dmResource::Get(m_Factory, "/font/dyn_glyph_bank_test_1.fontc", (void**) &font));
+    ASSERT_NE((void*)0, font);
+
+    dmRender::HFontMap font_map = dmGameSystem::ResFontGetHandle(font);
+    HFontCollection font_collection = dmRender::GetFontCollection(font_map);
+    uint32_t font_count_before = FontCollectionGetFontCount(font_collection);
+
+    // Add the font via Lua and verify refcount + collection size.
+    lua_State* L = scriptlibcontext.m_LuaState;
+    ASSERT_TRUE(RunString(L, "font.add_font(hash(\"/font/dyn_glyph_bank_test_1.fontc\"), hash(\"/font/valid_copy.ttf\"))"));
+    ASSERT_EQ(2, dmResource::GetRefCount(m_Factory, ttf_hash));
+    ASSERT_EQ(font_count_before + 1, FontCollectionGetFontCount(font_collection));
+
+    dmLogInfo("Expected errors ->");
+    // Adding the same font twice should fail and keep counts intact.
+    ASSERT_FALSE(RunString(L, "font.add_font(hash(\"/font/dyn_glyph_bank_test_1.fontc\"), hash(\"/font/valid_copy.ttf\"))"));
+    ASSERT_EQ(2, dmResource::GetRefCount(m_Factory, ttf_hash));
+    ASSERT_EQ(font_count_before + 1, FontCollectionGetFontCount(font_collection));
+
+    // Remove the font via Lua and verify refcount + collection size restored.
+    ASSERT_TRUE(RunString(L, "font.remove_font(hash(\"/font/dyn_glyph_bank_test_1.fontc\"), hash(\"/font/valid_copy.ttf\"))"));
+    ASSERT_EQ(1, dmResource::GetRefCount(m_Factory, ttf_hash));
+    ASSERT_EQ(font_count_before, FontCollectionGetFontCount(font_collection));
+
+    // The default font referenced by the .fontc should not be re-added (string path).
+    ASSERT_FALSE(RunString(L, "font.add_font(hash(\"/font/dyn_glyph_bank_test_1.fontc\"), \"/font/valid.ttf\")"));
+    ASSERT_EQ(font_count_before, FontCollectionGetFontCount(font_collection));
+
+    // The default font referenced by the .fontc should not be re-added (hashed path).
+    ASSERT_FALSE(RunString(L, "font.add_font(hash(\"/font/dyn_glyph_bank_test_1.fontc\"), hash(\"/font/valid.ttf\"))"));
+    ASSERT_EQ(font_count_before, FontCollectionGetFontCount(font_collection));
+
+    // The default font referenced by the .fontc should not be removable.
+    ASSERT_FALSE(RunString(L, "font.remove_font(hash(\"/font/dyn_glyph_bank_test_1.fontc\"), hash(\"/font/valid.ttf\"))"));
+    ASSERT_EQ(font_count_before, FontCollectionGetFontCount(font_collection));
+
+    dmLogInfo("<- End of expected errors.");
+
+    dmResource::Release(m_Factory, font);
+    dmResource::Release(m_Factory, ttf_resource);
+    ASSERT_EQ(0, dmResource::GetRefCount(m_Factory, ttf_hash));
+    ASSERT_EQ(dmResource::RESULT_OK, dmResource::RemoveFile(m_Factory, ttf_test_path));
+    free(ttf_data);
+
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 TEST_F(WindowTest, MouseLock)
@@ -5234,7 +5313,7 @@ TEST_F(MaterialTest, DynamicVertexAttributes)
 
         ASSERT_EQ(0, dynamic_attribute_pool.Size());
 
-        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &index, material, attr_name_hash, var, Test_GetMaterialAttributeCallback, (void*) &ctx));
+        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &index, material, attr_name_hash, var, Test_GetMaterialAttributeCallback, (void*) &ctx, 0));
         ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, GetMaterialAttribute(dynamic_attribute_pool, index, material, attr_name_hash, desc, Test_GetMaterialAttributeCallback, (void*) &ctx));
         ASSERT_EQ(dmGameObject::PROPERTY_TYPE_VECTOR3, desc.m_Variant.m_Type);
 
@@ -5270,7 +5349,7 @@ TEST_F(MaterialTest, DynamicVertexAttributes)
 
         ASSERT_EQ(0, dynamic_attribute_pool.Size());
 
-        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &index, material, attr_name_hash_y, var_y, Test_GetMaterialAttributeCallback, (void*) &ctx));
+        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &index, material, attr_name_hash_y, var_y, Test_GetMaterialAttributeCallback, (void*) &ctx, 0));
         ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, GetMaterialAttribute(dynamic_attribute_pool, index, material, attr_name_hash_full, desc, Test_GetMaterialAttributeCallback, (void*) &ctx));
         ASSERT_EQ(dmGameObject::PROPERTY_TYPE_VECTOR3, desc.m_Variant.m_Type);
 
@@ -5282,7 +5361,7 @@ TEST_F(MaterialTest, DynamicVertexAttributes)
         ASSERT_NEAR(var_y.m_Number, desc.m_Variant.m_V4[1], EPSILON);
         ASSERT_NEAR(0.0f,           desc.m_Variant.m_V4[2], EPSILON);
 
-        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &index, material, attr_name_hash_x, var_x, Test_GetMaterialAttributeCallback, (void*) &ctx));
+        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &index, material, attr_name_hash_x, var_x, Test_GetMaterialAttributeCallback, (void*) &ctx, 0));
         ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, GetMaterialAttribute(dynamic_attribute_pool, index, material, attr_name_hash_full, desc, Test_GetMaterialAttributeCallback, (void*) &ctx));
         ASSERT_EQ(dmGameObject::PROPERTY_TYPE_VECTOR3, desc.m_Variant.m_Type);
 
@@ -5310,7 +5389,7 @@ TEST_F(MaterialTest, DynamicVertexAttributes)
             var.m_Number = (float) i;
 
             uint16_t new_index = dmGameSystem::INVALID_DYNAMIC_ATTRIBUTE_INDEX;
-            ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &new_index, material, attr_name_hash, var, Test_GetMaterialAttributeCallback, (void*) &ctx));
+            ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, SetMaterialAttribute(dynamic_attribute_pool, &new_index, material, attr_name_hash, var, Test_GetMaterialAttributeCallback, (void*) &ctx, 0));
             ASSERT_EQ(dmGameObject::PROPERTY_RESULT_OK, GetMaterialAttribute(dynamic_attribute_pool, new_index, material, attr_name_hash, desc, Test_GetMaterialAttributeCallback, (void*) &ctx));
 
             ASSERT_NEAR(var.m_Number, desc.m_Variant.m_V4[0], EPSILON);
@@ -5347,7 +5426,7 @@ TEST_F(MaterialTest, DynamicVertexAttributes)
         dmGameObject::PropertyDesc desc = {};
 
         uint16_t new_index = dmGameSystem::INVALID_DYNAMIC_ATTRIBUTE_INDEX;
-        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_UNSUPPORTED_VALUE, SetMaterialAttribute(tmp_pool, &new_index, material, attr_name_hash, var, Test_GetMaterialAttributeCallback, (void*) &ctx));
+        ASSERT_EQ(dmGameObject::PROPERTY_RESULT_UNSUPPORTED_VALUE, SetMaterialAttribute(tmp_pool, &new_index, material, attr_name_hash, var, Test_GetMaterialAttributeCallback, (void*) &ctx, 0));
     }
 
     // Data conversion for attribute values
@@ -5536,6 +5615,109 @@ TEST_F(MaterialTest, GoGetSetConstants)
     ASSERT_NE((void*)0, go);
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+}
+
+TEST_F(MaterialTest, TestUniformBuffersLayout)
+{
+    dmGameSystem::MaterialResource* material_res;
+    dmResource::Result res = dmResource::Get(m_Factory, "/material/uniform_buffers.materialc", (void**)&material_res);
+    ASSERT_EQ(dmResource::RESULT_OK, res);
+    ASSERT_NE((void*)0, material_res);
+
+    dmRender::HMaterial material = material_res->m_Material;
+    ASSERT_NE((void*)0, material);
+
+    dmGraphics::ShaderResourceMember light_color_members[2];
+
+    // color : vec3
+    light_color_members[0].m_Name                 = (char*)"color";
+    light_color_members[0].m_NameHash             = dmHashString64("color");
+    light_color_members[0].m_Type.m_ShaderType    = dmGraphics::ShaderDesc::SHADER_TYPE_VEC3;
+    light_color_members[0].m_Type.m_UseTypeIndex  = 0;
+    light_color_members[0].m_ElementCount         = 1;
+    light_color_members[0].m_Offset               = 0;
+
+    // intensity : float
+    light_color_members[1].m_Name                 = (char*)"intensity";
+    light_color_members[1].m_NameHash             = dmHashString64("intensity");
+    light_color_members[1].m_Type.m_ShaderType    = dmGraphics::ShaderDesc::SHADER_TYPE_FLOAT;
+    light_color_members[1].m_Type.m_UseTypeIndex  = 0;
+    light_color_members[1].m_ElementCount         = 1;
+    light_color_members[1].m_Offset               = 0;
+
+    dmGraphics::ShaderResourceMember light_members[2];
+
+    // position : vec3
+    light_members[0].m_Name                 = (char*)"position";
+    light_members[0].m_NameHash             = dmHashString64("position");
+    light_members[0].m_Type.m_ShaderType    = dmGraphics::ShaderDesc::SHADER_TYPE_VEC3;
+    light_members[0].m_Type.m_UseTypeIndex  = 0;
+    light_members[0].m_ElementCount         = 1;
+    light_members[0].m_Offset               = 0;
+
+    // color_intensity : LightColor
+    light_members[1].m_Name                 = (char*)"color_intensity";
+    light_members[1].m_NameHash             = dmHashString64("color_intensity");
+    light_members[1].m_Type.m_TypeIndex     = 2;   // index into ShaderResourceTypeInfo[]
+    light_members[1].m_Type.m_UseTypeIndex  = 1;
+    light_members[1].m_ElementCount         = 1;
+    light_members[1].m_Offset               = 0;
+
+
+    dmGraphics::ShaderResourceMember light_data_members[2];
+
+    // lights : Light[4]
+    light_data_members[0].m_Name                 = (char*)"lights";
+    light_data_members[0].m_NameHash             = dmHashString64("lights");
+    light_data_members[0].m_Type.m_TypeIndex     = 1;   // Light
+    light_data_members[0].m_Type.m_UseTypeIndex  = 1;
+    light_data_members[0].m_ElementCount         = 4;
+    light_data_members[0].m_Offset               = 0;
+
+    // light_count : float
+    light_data_members[1].m_Name                 = (char*)"light_count";
+    light_data_members[1].m_NameHash             = dmHashString64("light_count");
+    light_data_members[1].m_Type.m_ShaderType    = dmGraphics::ShaderDesc::SHADER_TYPE_FLOAT;
+    light_data_members[1].m_Type.m_UseTypeIndex  = 0;
+    light_data_members[1].m_ElementCount         = 1;
+    light_data_members[1].m_Offset               = 0;
+
+
+    dmGraphics::ShaderResourceTypeInfo types[3];
+
+    // LightData (index 0)
+    types[0].m_Name        = (char*)"LightData";
+    types[0].m_NameHash    = dmHashString64("LightData");
+    types[0].m_Members     = light_data_members;
+    types[0].m_MemberCount = 2;
+
+    // Light (index 1)
+    types[1].m_Name        = (char*)"Light";
+    types[1].m_NameHash    = dmHashString64("Light");
+    types[1].m_Members     = light_members;
+    types[1].m_MemberCount = 2;
+
+    // LightColor (index 2)
+    types[2].m_Name        = (char*)"LightColor";
+    types[2].m_NameHash    = dmHashString64("LightColor");
+    types[2].m_Members     = light_color_members;
+    types[2].m_MemberCount = 2;
+
+    dmGraphics::UpdateShaderTypesOffsets(types, DM_ARRAY_SIZE(types));
+
+    dmGraphics::UniformBufferLayout layout;
+    dmGraphics::GetUniformBufferLayout(0, types, DM_ARRAY_SIZE(types), &layout);
+
+    dmGraphics::HProgram program = dmRender::GetMaterialProgram(material);
+    const dmGraphics::ShaderMeta* program_meta = dmGraphics::GetShaderMeta(program);
+
+    dmGraphics::UniformBufferLayout built_layout;
+    dmGraphics::GetUniformBufferLayout(0, program_meta->m_TypeInfos.Begin(), program_meta->m_TypeInfos.Size(), &built_layout);
+
+    ASSERT_EQ(layout.m_Size, built_layout.m_Size);
+    ASSERT_EQ(layout.m_Hash, built_layout.m_Hash);
+
+    dmResource::Release(m_Factory, material_res);
 }
 
 #endif // !defined(DM_PLATFORM_VENDOR)
@@ -5761,6 +5943,63 @@ TEST_F(ModelTest, GetAABB)
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
 }
 
+TEST_F(ModelTest, DynamicVertexAttributes)
+{
+    dmGameObject::HInstance go = Spawn(m_Factory, m_Collection, "/model/dynamic_vertex_attributes.goc", dmHashString64("/go"), 0, Point3(0, 0, 0), Quat(0, 0, 0, 1), Vector3(1, 1, 1));
+    ASSERT_NE((void*)0, go);
+
+    ASSERT_TRUE(dmGameObject::Update(m_Collection, &m_UpdateContext));
+    ASSERT_TRUE(dmGameObject::PostUpdate(m_Collection));
+
+    dmRender::RenderListBegin(m_RenderContext);
+    dmGameObject::Render(m_Collection);
+
+    dmRender::RenderListEnd(m_RenderContext);
+    dmRender::DrawRenderList(m_RenderContext, 0x0, 0x0, 0x0, dmRender::SORT_BACK_TO_FRONT);
+
+    uint32_t component_type;
+    dmGameObject::HComponent component;
+    dmGameObject::HComponentWorld world;
+    dmGameSystem::HComponentRenderConstants render_constants;
+
+    dmGameObject::Result res = dmGameObject::GetComponent(go, dmHashString64("model"), &component_type, &component, &world);
+    ASSERT_EQ(dmGameObject::RESULT_OK, res);
+
+    // Inspect the render data after render
+    dmGraphics::HVertexBuffer vx_buffer;
+    dmGraphics::HVertexDeclaration vx_decl;
+    dmGraphics::HVertexDeclaration inst_decl;
+    dmGameSystem::GetModelComponentAttributeRenderData(component, 0, &vx_buffer, &vx_decl, &inst_decl);
+
+    ASSERT_EQ(1, vx_decl->m_StreamCount);
+    ASSERT_EQ(dmHashString64("custom_color"), vx_decl->m_Streams[0].m_NameHash);
+
+    // Note: The vertex buffer contains only the custom data, not the position stream!
+    struct vx_format
+    {
+        dmVMath::Vector4 custom_color;
+    };
+
+    // Should be a cube with 24 vertices
+    uint32_t exp_num_vertices = 24;
+    uint32_t vx_buffer_size = dmGraphics::GetVertexBufferSize(vx_buffer);
+    ASSERT_EQ(exp_num_vertices, vx_buffer_size / sizeof(vx_format));
+
+    vx_format* vx_data = (vx_format*) dmGraphics::MapVertexBuffer(m_GraphicsContext, vx_buffer, dmGraphics::BUFFER_ACCESS_READ_ONLY);
+
+    // This should be the last value that the script "dynamic_vertex_attributes.script" sets
+    dmVMath::Vector4 exp = dmVMath::Vector4(0.0f, 1.0f, 0.0f, 1.0f);
+
+    for (int i = 0; i < exp_num_vertices; ++i)
+    {
+        ASSERT_VEC4(exp, vx_data[i].custom_color);
+    }
+
+    dmGraphics::UnmapVertexBuffer(m_GraphicsContext, vx_buffer);
+
+    ASSERT_TRUE(dmGameObject::Final(m_Collection));
+}
+
 TEST_F(ModelTest, PbrProperties)
 {
     dmGameObject::HInstance go = Spawn(m_Factory, m_Collection, "/model/pbr_properties.goc", dmHashString64("/go"), 0, Point3(0, 0, 0), Quat(0, 0, 0, 1), Vector3(1, 1, 1));
@@ -5940,21 +6179,23 @@ static dmHashTable64<dmhash_t> g_MockPerPropertyValues;
 
 static dmGameObject::PropertyResult MockSpineSceneSetProperty(dmGui::HScene scene, const dmGameObject::ComponentSetPropertyParams& params)
 {
-    if (!params.m_Options.m_HasKey)
+    dmhash_t key;
+    if (GetPropertyOptionsKey(params.m_Options, 0, &key) != dmGameObject::PROPERTY_RESULT_OK)
     {
         return dmGameObject::PROPERTY_RESULT_INVALID_KEY;
     }
-    g_MockPerPropertyValues.Put(params.m_Options.m_Key, params.m_Value.m_Hash);
+    g_MockPerPropertyValues.Put(key, params.m_Value.m_Hash);
     return dmGameObject::PROPERTY_RESULT_OK;
 }
 
 static dmGameObject::PropertyResult MockSpineSceneGetProperty(dmGui::HScene scene, const dmGameObject::ComponentGetPropertyParams& params, dmGameObject::PropertyDesc& out_value)
 {
-    if (!params.m_Options.m_HasKey)
+    dmhash_t key;
+    if (GetPropertyOptionsKey(params.m_Options, 0, &key) != dmGameObject::PROPERTY_RESULT_OK)
     {
         return dmGameObject::PROPERTY_RESULT_INVALID_KEY;
     }
-    dmhash_t* value = g_MockPerPropertyValues.Get(params.m_Options.m_Key);
+    dmhash_t* value = g_MockPerPropertyValues.Get(key);
     if (!value)
     {
         return dmGameObject::PROPERTY_RESULT_NOT_FOUND;
@@ -5981,8 +6222,7 @@ TEST_F(GuiTest, PerPropertyRegistration)
     
     // Test setting per-property with key
     dmGameObject::PropertyOptions options;
-    options.m_HasKey = 1;
-    options.m_Key = dmHashString64("test_node");
+    dmGameObject::AddPropertyOptionsKey(&options, dmHashString64("test_node"));
     
     dmGameObject::PropertyVar value(dmHashString64("test_spine_scene"));
     dmGameObject::PropertyResult result = dmGameObject::SetProperty(go, dmHashString64("gui"), spine_scene_hash, options, value);
@@ -6037,8 +6277,7 @@ TEST_F(GuiTest, PerPropertyPrecedence)
     ASSERT_NE((void*)0x0, go);
     
     dmGameObject::PropertyOptions options;
-    options.m_HasKey = 1;
-    options.m_Key = dmHashString64("test_node");
+    dmGameObject::AddPropertyOptionsKey(&options, dmHashString64("test_node"));
     
     // Test that per-property handler is called (not extension handlers)
     dmGameObject::PropertyVar value(dmHashString64("per_property_value"));

@@ -570,7 +570,7 @@ namespace dmGui
      * - `gui.TYPE_PIE`
      * - `gui.TYPE_PARTICLEFX`
      * - `gui.TYPE_CUSTOM`
-     * 
+     *
      * @return subtype [type:number|nil] id of the custom type
      */
     static int LuaGetType(lua_State* L)
@@ -650,8 +650,8 @@ namespace dmGui
         return 0;
     }
 
-    /*# gets the named property of a specified gui node 
-     * 
+    /*# gets the named property of a specified gui node
+     *
      * Instead of using specific getters such as gui.get_position or gui.get_scale,
      * you can use gui.get instead and supply the property as a string or a hash.
      * While this function is similar to go.get, there are a few more restrictions
@@ -677,7 +677,7 @@ namespace dmGui
      *
      * @name gui.get
      * @param node [type:node] node to get the property for
-     * @param property [type:string|hash|constant] the property to retrieve 
+     * @param property [type:string|hash|constant] the property to retrieve
      * @param [options] [type:table] optional options table (only applicable for material constants)
      * - `index` [type:number] index into array property (1 based)
      *
@@ -727,12 +727,15 @@ namespace dmGui
         }
 
         dmGameObject::PropertyOptions property_options = {};
+        dmGameObject::PropertyOption option = {};
         bool index_requested = false;
 
         if (lua_gettop(L) >= 3)
         {
-            dmGameObject::LuaToPropertyOptions(L, 3, &property_options, property_id, &index_requested);
+            dmGameObject::LuaToPropertyOption(L, 3, &option, &index_requested);
         }
+
+        AddPropertyOption(&property_options, option);
 
         dmMessage::URL target = {};
         dmGameObject::PropertyDesc property_desc;
@@ -762,7 +765,8 @@ namespace dmGui
 
             for (int i = 1; i < array_size; ++i)
             {
-                property_options.m_Index = i;
+                SetPropertyOptionsByIndex(&property_options, 0, i);
+
                 property_res = dmGui::GetMaterialProperty(scene, hnode, property_id, property_desc, &property_options) ?
                         dmGameObject::PROPERTY_RESULT_OK : dmGameObject::PROPERTY_RESULT_NOT_FOUND;
 
@@ -781,8 +785,8 @@ namespace dmGui
         return dmGameObject::CheckGetPropertyResult(L, "gui", property_res, property_desc, property_id, target, property_options, index_requested);
     }
 
-    /*# sets the named property of a specified gui node 
-     * 
+    /*# sets the named property of a specified gui node
+     *
      * Instead of using specific setteres such as gui.set_position or gui.set_scale,
      * you can use gui.set instead and supply the property as a string or a hash.
      * While this function is similar to go.get and go.set, there are a few more restrictions
@@ -817,7 +821,7 @@ namespace dmGui
      *
      * @name gui.set
      * @param node [type:node|url] node to set the property for, or msg.url() to the gui itself
-     * @param property [type:string|hash|constant] the property to set 
+     * @param property [type:string|hash|constant] the property to set
      * @param value [type:number|vector4|vector3|quaternion] the property to set
      * @param [options] [type:table] optional options table (only applicable for material constants)
      * - `index` [type:number] index into array property (1 based)
@@ -898,14 +902,17 @@ namespace dmGui
         }
 
         dmGameObject::PropertyOptions property_options = {};
+        dmGameObject::PropertyOption option = {};
+
         if (lua_gettop(L) > 3)
         {
-            int options_result = LuaToPropertyOptions(L, 4, &property_options, property_hash, 0);
+            int options_result = LuaToPropertyOption(L, 4, &option, 0);
             if (options_result != 0)
             {
                 return options_result;
             }
         }
+        AddPropertyOption(&property_options, option);
 
         if (dmScript::IsURL(L, 1))
         {
@@ -1616,9 +1623,9 @@ namespace dmGui
      * -- cancel animation of the x component.
      * gui.cancel_animations(node, "position.x")
      * ```
-     * 
+     *
      * Cancels all property animations on a node in a single call:
-     * 
+     *
      * ```lua
      * local node = gui.get_node("my_node")
      * -- animate to new position and scale
@@ -2390,7 +2397,7 @@ namespace dmGui
     }
 
     /*# sets the node material
-     * Set the material on a node. The material must be mapped to the gui scene in the gui editor, 
+     * Set the material on a node. The material must be mapped to the gui scene in the gui editor,
      * and assigning a material is supported for all node types. To set the default material that
      * is assigned to the gui scene node, use `gui.reset_material(node_id)` instead.
      *
@@ -3671,6 +3678,34 @@ namespace dmGui
         return 0;
     }
 
+    /*# sets the safe area mode for the gui scene
+     *
+     * Sets how the safe area is applied to this gui scene.
+     *
+     * @name gui.set_safe_area_mode
+     * @param mode [type:constant] safe area mode
+     *
+     * - `gui.SAFE_AREA_NONE`
+     * - `gui.SAFE_AREA_LONG`
+     * - `gui.SAFE_AREA_SHORT`
+     * - `gui.SAFE_AREA_BOTH`
+     */
+    static int LuaSetSafeMode(lua_State* L)
+    {
+        DM_LUA_STACK_CHECK(L, 0);
+
+        int mode = luaL_checkinteger(L, 1);
+        if (mode < SAFE_AREA_NONE || mode > SAFE_AREA_BOTH)
+        {
+            return luaL_error(L, "Invalid safe area mode");
+        }
+
+        Scene* scene = GuiScriptInstance_Check(L);
+        dmGui::SetSceneSafeAreaMode(scene, (dmGui::SafeAreaMode)mode);
+
+        return 0;
+    }
+
     /*# gets the node size mode
      * Returns the size of a node.
      * The size mode defines how the node will adjust itself in size. Automatic
@@ -4523,7 +4558,7 @@ namespace dmGui
     }
 
     /*# sets screen position to the node
-     * 
+     *
      * Set the screen position to the supplied node
      *
      * @name gui.set_screen_position
@@ -4541,7 +4576,7 @@ namespace dmGui
     }
 
     /*# convert screen position to the local node position
-     * 
+     *
      * Convert the screen position to the local position of supplied node
      *
      * @name gui.screen_to_local
@@ -5086,6 +5121,7 @@ namespace dmGui
         {"set_visible",     LuaSetVisible},
         {"get_adjust_mode", LuaGetAdjustMode},
         {"set_adjust_mode", LuaSetAdjustMode},
+        {"set_safe_area_mode",   LuaSetSafeMode},
         {"get_size_mode",   LuaGetSizeMode},
         {"set_size_mode",   LuaSetSizeMode},
         {"move_above",      LuaMoveAbove},
@@ -5386,6 +5422,30 @@ namespace dmGui
      * @constant
      */
 
+    /*# no safe area
+     * Safe area mode that ignores safe area insets.
+     * @name gui.SAFE_AREA_NONE
+     * @constant
+     */
+
+    /*# long side safe area
+     * Safe area mode that applies insets only on the long edges.
+     * @name gui.SAFE_AREA_LONG
+     * @constant
+     */
+
+    /*# short side safe area
+     * Safe area mode that applies insets only on the short edges.
+     * @name gui.SAFE_AREA_SHORT
+     * @constant
+     */
+
+    /*# both sides safe area
+     * Safe area mode that applies insets on all edges.
+     * @name gui.SAFE_AREA_BOTH
+     * @constant
+     */
+
     /*# elliptical pie node bounds
      * @name gui.PIEBOUNDS_ELLIPSE
      * @constant
@@ -5610,6 +5670,17 @@ namespace dmGui
         SETADJUST(STRETCH)
 
 #undef SETADJUST
+
+#define SETSAFEAREA(name) \
+        lua_pushnumber(L, (lua_Number) SAFE_AREA_##name); \
+        lua_setfield(L, -2, "SAFE_AREA_"#name);\
+
+        SETSAFEAREA(NONE)
+        SETSAFEAREA(LONG)
+        SETSAFEAREA(SHORT)
+        SETSAFEAREA(BOTH)
+
+#undef SETSAFEAREA
 
 #define SETPLAYBACK(name) \
         lua_pushnumber(L, (lua_Number) PLAYBACK_##name); \

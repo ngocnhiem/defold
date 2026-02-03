@@ -582,6 +582,10 @@ pane.curve-editor = Редактор Кривых
 pane.build-errors = Ошибки Сборки
 pane.search-results = Результаты Поиска
 
+# Assets
+
+assets.dependencies = Зависимости
+
 # Console
 
 console.button.clear = Очистить
@@ -747,6 +751,8 @@ menu.view = Вид
 menu.help = Справка
 
 # Commands
+
+command.tooltip = {command}{shortcut, select, none {} other { ({shortcut})}}
 
 command.file.new = Создать…
 command.file.new.option.any-file = Файл

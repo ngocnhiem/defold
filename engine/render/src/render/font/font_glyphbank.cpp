@@ -83,16 +83,36 @@ static FontResult GBFreeGlyph(HFont hfont, FontGlyph* glyph)
 
 static dmRenderDDF::GlyphBank::Glyph* FindByCodePoint(dmRenderDDF::GlyphBank* bank, uint32_t c)
 {
-//TODO: Make it a binary search!!!
+    // do a binary search of the glyphs
+    // requires the glyphs to be sorted
+    // a binary search repeatedly compares the target value to the middle
+    // element of a sorted array and halves the search range to the left or
+    // right until the value is found or the range is empty
     uint32_t n = bank->m_Glyphs.m_Count;
-    for (uint32_t i = 0; i < n; ++i)
+    int left = 0;
+    int right = n - 1;
+    while (left <= right)
     {
-        dmRenderDDF::GlyphBank::Glyph* g = &bank->m_Glyphs[i];
+        int mid = left + (right - left) / 2;
+
+        dmRenderDDF::GlyphBank::Glyph* g = &bank->m_Glyphs[mid];
         if (g->m_Character == c)
         {
             return g;
         }
+        
+        if (g->m_Character < c)
+        {
+            // the glyph is in the upper/right half of the range
+            left = mid + 1;
+        }
+        else
+        {
+            // the glyph is in the lower/left half of the range
+            right = mid - 1;
+        }
     }
+
     return 0;
 }
 
@@ -173,17 +193,6 @@ HFont CreateGlyphBankFont(const char* path, dmRenderDDF::GlyphBank* glyph_bank)
 #undef FOURCC
 
     font->m_GlyphBank = glyph_bank;
-
-    // Making sure that it's an increasing list of codepoints, as it's required
-    // by the binary search algorithm
-    int32_t c = -1;
-    uint32_t n = glyph_bank->m_Glyphs.m_Count;
-    for (uint32_t i = 0; i < n; ++i)
-    {
-        dmRenderDDF::GlyphBank::Glyph& glyph = glyph_bank->m_Glyphs[i];
-        assert(c < (int)glyph.m_Character);
-        c = glyph.m_Character;
-    }
 
     return (Font*)font;
 }

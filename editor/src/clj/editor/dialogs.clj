@@ -15,6 +15,7 @@
 (ns editor.dialogs
   (:require [cljfx.api :as fx]
             [cljfx.ext.list-view :as fx.ext.list-view]
+            [cljfx.composite :as fx.composite]
             [cljfx.fx.group :as fx.group]
             [cljfx.fx.h-box :as fx.h-box]
             [cljfx.fx.hyperlink :as fx.hyperlink]
@@ -26,6 +27,7 @@
             [cljfx.fx.progress-indicator :as fx.progress-indicator]
             [cljfx.fx.region :as fx.region]
             [cljfx.fx.scene :as fx.scene]
+            [cljfx.fx.stack-pane :as fx.stack-pane]
             [cljfx.fx.v-box :as fx.v-box]
             [cljfx.lifecycle :as fx.lifecycle]
             [cljfx.prop :as fx.prop]
@@ -44,6 +46,7 @@
             [util.coll :as coll]
             [util.thread-util :as thread-util])
   (:import [clojure.lang Named]
+           [com.defold.control ClippingContainer]
            [java.io File]
            [java.nio.file Path Paths]
            [java.util Collection List]
@@ -52,10 +55,25 @@
            [javafx.event Event]
            [javafx.scene.control ListView TextField]
            [javafx.scene.input KeyCode KeyEvent MouseButton MouseEvent]
-           [javafx.stage DirectoryChooser FileChooser FileChooser$ExtensionFilter Stage Window]
+           [javafx.stage DirectoryChooser FileChooser FileChooser$ExtensionFilter Screen Stage Window]
            [org.apache.commons.io FilenameUtils]))
 
 (set! *warn-on-reflection* true)
+
+(def clipping-container
+  (fx.composite/describe ClippingContainer :ctor [] :props fx.stack-pane/props))
+
+(def ^:private dialogs-css-delay
+  (delay (str (io/resource "dialogs.css"))))
+
+(defn max-dialog-stage-height []
+  (let [screens (Screen/getScreens)
+        n (.size screens)]
+    (loop [i 0
+           max-height 0.0]
+      (if (= i n)
+        max-height
+        (recur (unchecked-inc i) (max max-height (.getHeight (.getVisualBounds ^Screen (.get screens i)))))))))
 
 (defn dialog-stage
   "Dialog `:stage` that manages scene graph itself and provides layout common
@@ -79,8 +97,9 @@
   (-> props
       (dissoc :size :header :content :footer :root-props)
       (assoc :fx/type fxui/dialog-stage
+             :max-height (max-dialog-stage-height)
              :scene {:fx/type fx.scene/lifecycle
-                     :stylesheets [(str (io/resource "dialogs.css"))]
+                     :stylesheets [@dialogs-css-delay]
                      :root (-> root-props
                                (fxui/add-style-classes
                                  "dialog-body"
@@ -95,7 +114,12 @@
                                                     :children [header]}
                                                    {:fx/type fx.v-box/lifecycle
                                                     :style-class "dialog-content"
-                                                    :children [content]}
+                                                    :children [{:fx/type clipping-container
+                                                                :max-height (case size
+                                                                              :small 480.0
+                                                                              :default 600.0
+                                                                              :large 720.0)
+                                                                :children [content]}]}
                                                    {:fx/type fx.v-box/lifecycle
                                                     :style-class "dialog-with-content-footer"
                                                     :children [footer]}]
