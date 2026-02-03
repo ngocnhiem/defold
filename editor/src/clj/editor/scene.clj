@@ -64,6 +64,7 @@
            [com.jogamp.opengl.util GLPixelStorageModes]
            [editor.pose Pose]
            [editor.types AABB Camera Rect Region]
+           [java.awt Robot]
            [java.awt.image BufferedImage]
            [java.lang Math Runnable]
            [java.nio IntBuffer]
@@ -1071,8 +1072,6 @@
        (g/set-property camera-node :local-camera end-camera)))
    nil))
 
-(def current-input (atom {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]}))
-
 (def ^:private camera-speed 3.0)
 (def ^:private camera-speed-boost 3.0)
 (def ^:private camera-speed-precision 0.35)
@@ -1085,11 +1084,11 @@
 (def ^:private look-smoothing 0.25)
 
 (defn- update-camera-view! [image-view node-id dt])
-(defn- update-camera-view! [image-view node-id dt]
-  (let [pressed-keys (:keys @current-input)
-        is-secondary-button (contains? (:mouse-buttons @current-input) :secondary)
-        shift (contains? (:modifiers @current-input) :shift)
-        alt (contains? (:modifiers @current-input) :alt)
+(defn- update-camera-view! [current-input node-id dt]
+  (let [{:keys [mouse-buttons modifiers pressed-keys cursor-lock-pos]} @current-input
+        is-secondary-button (contains? mouse-buttons :secondary)
+        shift (contains? modifiers :shift)
+        alt (contains? modifiers :alt)
         speed (* camera-speed (cond shift camera-speed-boost alt camera-speed-precision :else 1.0))
         camera-node (view->camera node-id)
         current-camera (g/node-value camera-node :local-camera)
@@ -1100,6 +1099,8 @@
         {:keys [last-cursor cursor-pos]} @current-input
         raw-dx (- (first last-cursor) (first cursor-pos))
         raw-dy (- (second last-cursor) (second cursor-pos))
+        ;; raw-dx (- (first cursor-lock-pos) (first cursor-pos))
+        ;; raw-dy (- (second cursor-lock-pos) (second cursor-pos))
 
         [smooth-dx smooth-dy] (if is-secondary-button
                                 (let [[prev-dx prev-dy] @smoothed-look-delta
@@ -1163,9 +1164,13 @@
            :world-pos world-pos
            :world-dir world-dir)))
 
+(def current-input-state (atom {}))
 (defn register-event-handler-new! [^Parent parent view-id]
-  (reset! current-input {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]})
   (let [process-events? (atom true)
+        current-input (atom {:pressed-keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]
+                             :cursor-lock-pos nil
+                             :robot (Robot.)})
+        _ (reset! current-input-state current-input)
         event-handler (ui/event-handler e
                         (when @process-events?
                           (let [action (augment-action view-id (i/action-from-jfx e))
@@ -1205,7 +1210,7 @@
                                                          set))
             (when (or (.isLetterKey code)
                       (.isDigitKey code))
-              (swap! current-input update :keys disj code))))))
+              (swap! current-input update :pressed-keys disj code))))))
     (.setOnKeyPressed parent
       (ui/event-handler e
         (when @process-events?
@@ -1216,7 +1221,7 @@
                                                        set))
             (when (or (.isLetterKey code)
                       (.isDigitKey code))
-              (swap! current-input update :keys conj code))))))))
+              (swap! current-input update :pressed-keys conj code))))))))
 
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
@@ -1229,8 +1234,8 @@
                    (some? async-copy-state-atom))
           (update-image-view! image-view drawable async-copy-state-atom dt)
           (when-let [cursor-type (g/maybe-node-value node-id :cursor-type)]
-            (ui/set-cursor image-view (cursor cursor-type)))
-          (update-camera-view! image-view node-id  dt)
+            (ui/set-cursor current-input-state image-view (cursor cursor-type)))
+          (update-camera-view! @current-input-state node-id dt)
           #_(when-let [keys (g/maybe-node-value node-id :pressed-keys)]
             (when (and (not (coll/empty? keys))
                        (not (g/node-value (view->camera node-id) :animating))
