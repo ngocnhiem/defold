@@ -1034,10 +1034,8 @@
     ;; `CLOSED_HAND ``OPEN_HAND_HAND ``HAND `all render a pointer cursor on Linux and Windows.
     ;; `MOVE `renders the default cursor on macOS.
     :pan (if (os/is-mac-os?) Cursor/CLOSED_HAND Cursor/MOVE)
-    :none Cursor/MOVE
+    :none Cursor/NONE
     Cursor/DEFAULT))
-
-(def camera-speed 2.5)
 
 (defn- screen->world
   ^Vector3d [camera viewport ^Vector3d screen-pos]
@@ -1075,6 +1073,9 @@
 
 (def current-input (atom {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]}))
 
+(def ^:private camera-speed 3.0)
+(def ^:private camera-speed-boost 3.0)
+(def ^:private camera-speed-precision 0.35)
 (def ^:private camera-velocity (atom (Vector3d. 0.0 0.0 0.0)))
 (def ^:private acceleration 15.0)
 (def ^:private damping 8.0)
@@ -1089,7 +1090,7 @@
         is-secondary-button (contains? (:mouse-buttons @current-input) :secondary)
         shift (contains? (:modifiers @current-input) :shift)
         alt (contains? (:modifiers @current-input) :alt)
-        speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))
+        speed (* camera-speed (cond shift camera-speed-boost alt camera-speed-precision :else 1.0))
         camera-node (view->camera node-id)
         current-camera (g/node-value camera-node :local-camera)
         forward (c/camera-forward-vector current-camera)
@@ -1163,6 +1164,7 @@
            :world-dir world-dir)))
 
 (defn register-event-handler-new! [^Parent parent view-id]
+  (reset! current-input {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]})
   (let [process-events? (atom true)
         event-handler (ui/event-handler e
                         (when @process-events?
@@ -1173,6 +1175,8 @@
                             (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
                             (swap! current-input assoc :cursor-pos [(:x action) (:y action)])
                             (when (= :mouse-pressed (:type action))
+                              (when (= :secondary (:button action))
+                                (ui/set-cursor parent (cursor :none)))
                               (swap! current-input update :mouse-buttons conj (:button action))
                               (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
                                                                          (filter action)
@@ -1181,6 +1185,8 @@
                               (.requestFocus parent)
                               (.consume e))
                             (when (= :mouse-released (:type action))
+                              (when (= :secondary (:button action))
+                                (ui/set-cursor parent (cursor nil)))
                               (swap! current-input update :mouse-buttons disj (:button action))
                               (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
                                                                          (filter action)
