@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -132,11 +132,10 @@
 
 (g/defnode MoveManip
   (input selection g/Any)
-  (output position g/Any (g/fnk [selection]
-                                (let [evaluation-context (g/make-evaluation-context)
-                                      positions (->> (for [[nid props] selection
+  (output position g/Any (g/fnk [^:unsafe _evaluation-context selection]
+                                (let [positions (->> (for [[nid props] selection
                                                            [k ids] props]
-                                                       (map (fn [[id aabb]] [id (centroid aabb)]) (-> (g/node-value nid k evaluation-context)
+                                                       (map (fn [[id aabb]] [id (centroid aabb)]) (-> (g/node-value nid k _evaluation-context)
                                                                                                       (types/geom-aabbs ids))))
                                                      (reduce into [])
                                                      (map second))

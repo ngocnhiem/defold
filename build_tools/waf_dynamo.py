@@ -1,4 +1,4 @@
-# Copyright 2020-2025 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -255,7 +255,7 @@ def apidoc_extract_task(bld, src):
     def _parse_source(source_path):
         resource = bld.path.find_resource(source_path)
         if not resource:
-            sys.exit("Couldn't find resource: %s" % s)
+            sys.exit("Couldn't find resource: %s" % resource)
             return
 
         elements = {}
@@ -631,13 +631,17 @@ def default_flags(self):
         emflags_compile = zip(['-s'] * len(emflags_compile), emflags_compile)
         emflags_compile =[j for i in emflags_compile for j in i]
 
+        initial_memory = 'INITIAL_MEMORY=33554432'
+        if Options.options.with_asan and target_arch == 'wasm':
+            initial_memory = 'INITIAL_MEMORY=67108864'
+
         emflags_link = [
             'DISABLE_EXCEPTION_CATCHING=1',
             'ALLOW_UNIMPLEMENTED_SYSCALLS=0',
             'EXPORTED_RUNTIME_METHODS=["ccall","UTF8ToString","callMain","HEAPU8","stringToNewUTF8"]',
             'EXPORTED_FUNCTIONS=_main,_malloc,_free',
             'ERROR_ON_UNDEFINED_SYMBOLS=1',
-            'INITIAL_MEMORY=33554432',
+            initial_memory,
             'MAX_WEBGL_VERSION=2',
             'GL_SUPPORT_AUTOMATIC_ENABLE_EXTENSIONS=0',
             'IMPORTED_MEMORY=1',
@@ -677,6 +681,8 @@ def default_flags(self):
             emflags_link += ['PTHREAD_POOL_SIZE=1']
 
         if 'wasm' == target_arch:
+            if Options.options.with_ubsan:
+                emflags_link += ['ASSERTIONS=1']
             emflags_link += ['WASM=1', 'ALLOW_MEMORY_GROWTH=1']
             if int(opt_level) < 2:
                 flags += ['-gseparate-dwarf', '-gsource-map']
@@ -816,8 +822,10 @@ def asan_cxxflags(self):
     if getattr(self, 'skip_asan', False):
         return
     build_util = create_build_utility(self.env)
+    target_os = build_util.get_target_os()
+    target_arch = build_util.get_target_architecture()
     if Options.options.with_asan:
-        if build_util.get_target_os() in ('macos','ios','android','ps4','ps5'):
+        if target_os in ('linux','macos','ios','android','ps4','ps5') or ('wasm' in target_arch):
             self.env.append_value('CXXFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('CFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('LINKFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope'])
@@ -825,11 +833,12 @@ def asan_cxxflags(self):
             self.env.append_value('CXXFLAGS', ['/fsanitize=address', '-D_DISABLE_VECTOR_ANNOTATION', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('CFLAGS', ['/fsanitize=address', '-D_DISABLE_VECTOR_ANNOTATION', '-DDM_SANITIZE_ADDRESS'])
             # not a linker option
-    elif Options.options.with_ubsan and build_util.get_target_os() in ('macos','ios','android','ps4','ps5','nx64'):
-        self.env.append_value('CXXFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
-        self.env.append_value('CFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
-        self.env.append_value('LINKFLAGS', ['-fsanitize=undefined'])
-    elif Options.options.with_tsan and build_util.get_target_os() in ('macos','ios','android','ps4','ps5'):
+    elif Options.options.with_ubsan:
+        if target_os in ('linux','macos','ios','android','ps4','ps5','nx64') or ('wasm' in target_arch):
+            self.env.append_value('CXXFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
+            self.env.append_value('CFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
+            self.env.append_value('LINKFLAGS', ['-fsanitize=undefined'])
+    elif Options.options.with_tsan and build_util.get_target_os() in ('linux','macos','ios','android','ps4','ps5'):
         self.env.append_value('CXXFLAGS', ['-fsanitize=thread', '-DDM_SANITIZE_THREAD'])
         self.env.append_value('CFLAGS', ['-fsanitize=thread', '-DDM_SANITIZE_THREAD'])
         self.env.append_value('LINKFLAGS', ['-fsanitize=thread'])
@@ -1738,7 +1747,8 @@ def detect(conf):
     if Options.options.with_valgrind:
         conf.find_program('valgrind', var='VALGRIND', mandatory = False)
 
-    conf.find_program('ccache', var='CCACHE', mandatory = False)
+    if not Options.options.disable_ccache:
+        conf.find_program('ccache', var='CCACHE', mandatory = False)
 
     if Options.options.with_iwyu:
         conf.find_program('include-what-you-use', var='IWYU', mandatory = False)
@@ -2122,6 +2132,7 @@ def detect(conf):
     conf.env['STLIB_GRAPHICS_NULL']     = ['graphics_null', 'graphics_transcoder_null']
 
     conf.env['STLIB_FONT']            = ['font']
+    conf.env['STLIB_FONT_LAYOUT']     = ['font_skribidi', 'harfbuzz', 'sheenbidi', 'unibreak', 'skribidi']
 
     if platform_glfw_version(platform) == 3:
         conf.env['STLIB_DMGLFW'] = 'glfw3'

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -32,7 +32,8 @@
 #include <dmsdk/dlib/vmath.h>
 #include <graphics/graphics.h>
 #include <render/render.h>
-#include <render/font_renderer.h>
+#include <font/text_layout.h>
+#include <render/font/font_renderer.h>
 #include <gameobject/gameobject_ddf.h>
 
 #include "../resources/res_label.h"
@@ -356,6 +357,17 @@ namespace dmGameSystem
         return dmGameObject::UPDATE_RESULT_OK;
     }
 
+    dmGameObject::UpdateResult CompLabelLateUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
+    {
+        DM_PROFILE("LateUpdate");
+        LabelContext* label_context = (LabelContext*)params.m_Context;
+        LabelWorld* world = (LabelWorld*)params.m_World;
+
+        UpdateTransforms(world, label_context->m_Subpixels);
+
+        return dmGameObject::UPDATE_RESULT_OK;
+    }
+
     static void CreateDrawTextParams(LabelComponent* component, dmRender::DrawTextParams& params)
     {
         dmGameSystemDDF::LabelDesc* ddf = component->m_Resource->m_DDF;
@@ -560,22 +572,22 @@ namespace dmGameSystem
         return (dmGameObject::HComponent)&world->m_Components.Get(index);
     }
 
-    void CompLabelGetTextMetrics(const LabelComponent* component, struct dmRender::TextMetrics& metrics)
-    {
-        LabelResource* resource = component->m_Resource;
-        dmRender::HFontMap font_map = GetFontMap(component, resource);
 
-        dmRender::TextMetricsSettings settings;
+    // DEPRECATED
+    void CompLabelGetTextMetrics(const LabelComponent* component, dmRender::TextMetrics& metrics)
+    {
+        dmRender::HFontMap font_map = GetFontMap(component, component->m_Resource);
+
+        TextLayoutSettings settings = {0};
         settings.m_Width = component->m_Size.getX();
         settings.m_LineBreak = component->m_LineBreak;
         settings.m_Leading = component->m_Leading;
         settings.m_Tracking = component->m_Tracking;
-        dmRender::GetTextMetrics(font_map, component->m_Text, &settings, &metrics);
+        // legacy options for glyph bank fonts
+        settings.m_Monospace = dmRender::GetFontMapMonospaced(font_map);
+        settings.m_Padding = dmRender::GetFontMapPadding(font_map);
 
-        metrics.m_Width      = metrics.m_Width;
-        metrics.m_Height     = metrics.m_Height;
-        metrics.m_MaxAscent  = metrics.m_MaxAscent;
-        metrics.m_MaxDescent = metrics.m_MaxDescent;
+        dmRender::GetTextMetrics(font_map, component->m_Text, &settings, &metrics);
     }
 
     const char* CompLabelGetText(const LabelComponent* component)
@@ -632,7 +644,9 @@ namespace dmGameSystem
             out_value.m_Variant = dmGameObject::PropertyVar(component->m_LineBreak != 0);
             return dmGameObject::PROPERTY_RESULT_OK;
         }
-        return GetMaterialConstant(GetMaterial(component, component->m_Resource), get_property, params.m_Options.m_Index, out_value, false, CompLabelGetConstantCallback, component);
+        int32_t value_index = 0;
+        GetPropertyOptionsIndex(params.m_Options, 0, &value_index);
+        return GetMaterialConstant(GetMaterial(component, component->m_Resource), get_property, value_index, out_value, false, CompLabelGetConstantCallback, component);
     }
 
     dmGameObject::PropertyResult CompLabelSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
@@ -700,7 +714,10 @@ namespace dmGameSystem
             component->m_LineBreak = params.m_Value.m_Bool;
             return dmGameObject::PROPERTY_RESULT_OK;
         }
-        return SetMaterialConstant(GetMaterial(component, component->m_Resource), set_property, params.m_Value, params.m_Options.m_Index, CompLabelSetConstantCallback, component);
+
+        int32_t value_index = 0;
+        GetPropertyOptionsIndex(params.m_Options, 0, &value_index);
+        return SetMaterialConstant(GetMaterial(component, component->m_Resource), set_property, params.m_Value, value_index, CompLabelSetConstantCallback, component);
     }
 
     static bool CompLabelIterPropertiesGetNext(dmGameObject::SceneNodePropertyIterator* pit)

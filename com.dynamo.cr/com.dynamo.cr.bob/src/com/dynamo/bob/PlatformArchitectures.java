@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -26,7 +26,8 @@ public enum PlatformArchitectures {
     Web(new String[] {"js-web", "wasm-web", "wasm_pthread-web"}, new String[] {"js-web", "wasm-web", "wasm_pthread-web"}),
     NX64(new String[] {"arm64-nx64"}, new String[] {"arm64-nx64"}),
     PS4(new String[] {"x86_64-ps4"}, new String[] {"x86_64-ps4"}),
-    PS5(new String[] {"x86_64-ps5"}, new String[] {"x86_64-ps5"});
+    PS5(new String[] {"x86_64-ps5"}, new String[] {"x86_64-ps5"}),
+    XBoxOne(new String[] {"x86_64-xbone"}, new String[] {"x86_64-xbone"});
 
     String[] architectures;
     String[] defaultArchitectures;

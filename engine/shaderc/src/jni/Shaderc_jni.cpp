@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -122,10 +122,16 @@ void InitializeJNITypes(JNIEnv* env, TypeInfos* infos) {
         GET_FLD_TYPESTR(lastError, "Ljava/lang/String;");
         GET_FLD_ARRAY(mSLResourceMappings, "MSLResourceMapping");
         GET_FLD_ARRAY(hLSLResourceMappings, "HLSLResourceMapping");
+        GET_FLD_TYPESTR(hLSLRootSignature, "[B");
         GET_FLD_TYPESTR(hLSLNumWorkGroupsId, "B");
         GET_FLD_TYPESTR(workGroupSizeX, "I");
         GET_FLD_TYPESTR(workGroupSizeY, "I");
         GET_FLD_TYPESTR(workGroupSizeZ, "I");
+    }
+    {
+        SETUP_CLASS(HLSLRootSignatureJNI, "HLSLRootSignature");
+        GET_FLD_TYPESTR(lastError, "Ljava/lang/String;");
+        GET_FLD_TYPESTR(hLSLRootSignature, "[B");
     }
     #undef GET_FLD
     #undef GET_FLD_ARRAY
@@ -142,6 +148,7 @@ void FinalizeJNITypes(JNIEnv* env, TypeInfos* infos) {
     env->DeleteLocalRef(infos->m_HLSLResourceMappingJNI.cls);
     env->DeleteLocalRef(infos->m_MSLResourceMappingJNI.cls);
     env->DeleteLocalRef(infos->m_ShaderCompileResultJNI.cls);
+    env->DeleteLocalRef(infos->m_HLSLRootSignatureJNI.cls);
 }
 
 
@@ -254,10 +261,19 @@ jobject C2J_CreateShaderCompileResult(JNIEnv* env, TypeInfos* types, const Shade
     dmJNI::SetString(env, obj, types->m_ShaderCompileResultJNI.lastError, src->m_LastError);
     dmJNI::SetObjectDeref(env, obj, types->m_ShaderCompileResultJNI.mSLResourceMappings, C2J_CreateMSLResourceMappingArray(env, types, src->m_MSLResourceMappings.Begin(), src->m_MSLResourceMappings.Size()));
     dmJNI::SetObjectDeref(env, obj, types->m_ShaderCompileResultJNI.hLSLResourceMappings, C2J_CreateHLSLResourceMappingArray(env, types, src->m_HLSLResourceMappings.Begin(), src->m_HLSLResourceMappings.Size()));
+    dmJNI::SetObjectDeref(env, obj, types->m_ShaderCompileResultJNI.hLSLRootSignature, dmJNI::C2J_CreateUByteArray(env, src->m_HLSLRootSignature.Begin(), src->m_HLSLRootSignature.Size()));
     dmJNI::SetUByte(env, obj, types->m_ShaderCompileResultJNI.hLSLNumWorkGroupsId, src->m_HLSLNumWorkGroupsId);
     dmJNI::SetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeX, src->m_WorkGroupSizeX);
     dmJNI::SetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeY, src->m_WorkGroupSizeY);
     dmJNI::SetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeZ, src->m_WorkGroupSizeZ);
+    return obj;
+}
+
+jobject C2J_CreateHLSLRootSignature(JNIEnv* env, TypeInfos* types, const HLSLRootSignature* src) {
+    if (src == 0) return 0;
+    jobject obj = env->AllocObject(types->m_HLSLRootSignatureJNI.cls);
+    dmJNI::SetString(env, obj, types->m_HLSLRootSignatureJNI.lastError, src->m_LastError);
+    dmJNI::SetObjectDeref(env, obj, types->m_HLSLRootSignatureJNI.hLSLRootSignature, dmJNI::C2J_CreateUByteArray(env, src->m_HLSLRootSignature.Begin(), src->m_HLSLRootSignature.Size()));
     return obj;
 }
 
@@ -436,6 +452,26 @@ jobjectArray C2J_CreateShaderCompileResultPtrArray(JNIEnv* env, TypeInfos* types
     jobjectArray arr = env->NewObjectArray(src_count, types->m_ShaderCompileResultJNI.cls, 0);
     for (uint32_t i = 0; i < src_count; ++i) {
         jobject obj = C2J_CreateShaderCompileResult(env, types, src[i]);
+        env->SetObjectArrayElement(arr, i, obj);
+        env->DeleteLocalRef(obj);
+    }
+    return arr;
+}
+jobjectArray C2J_CreateHLSLRootSignatureArray(JNIEnv* env, TypeInfos* types, const HLSLRootSignature* src, uint32_t src_count) {
+    if (src == 0 || src_count == 0) return 0;
+    jobjectArray arr = env->NewObjectArray(src_count, types->m_HLSLRootSignatureJNI.cls, 0);
+    for (uint32_t i = 0; i < src_count; ++i) {
+        jobject obj = C2J_CreateHLSLRootSignature(env, types, &src[i]);
+        env->SetObjectArrayElement(arr, i, obj);
+        env->DeleteLocalRef(obj);
+    }
+    return arr;
+}
+jobjectArray C2J_CreateHLSLRootSignaturePtrArray(JNIEnv* env, TypeInfos* types, const HLSLRootSignature* const* src, uint32_t src_count) {
+    if (src == 0 || src_count == 0) return 0;
+    jobjectArray arr = env->NewObjectArray(src_count, types->m_HLSLRootSignatureJNI.cls, 0);
+    for (uint32_t i = 0; i < src_count; ++i) {
+        jobject obj = C2J_CreateHLSLRootSignature(env, types, src[i]);
         env->SetObjectArrayElement(arr, i, obj);
         env->DeleteLocalRef(obj);
     }
@@ -633,10 +669,34 @@ bool J2C_CreateShaderCompileResult(JNIEnv* env, TypeInfos* types, jobject obj, S
             env->DeleteLocalRef(field_object);
         }
     }
+    {
+        jobject field_object = env->GetObjectField(obj, types->m_ShaderCompileResultJNI.hLSLRootSignature);
+        if (field_object) {
+            uint32_t tmp_count;
+            uint8_t* tmp = dmJNI::J2C_CreateUByteArray(env, (jbyteArray)field_object, &tmp_count);
+            out->m_HLSLRootSignature.Set(tmp, tmp_count, tmp_count, false);
+            env->DeleteLocalRef(field_object);
+        }
+    }
     out->m_HLSLNumWorkGroupsId = dmJNI::GetUByte(env, obj, types->m_ShaderCompileResultJNI.hLSLNumWorkGroupsId);
     out->m_WorkGroupSizeX = dmJNI::GetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeX);
     out->m_WorkGroupSizeY = dmJNI::GetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeY);
     out->m_WorkGroupSizeZ = dmJNI::GetUInt(env, obj, types->m_ShaderCompileResultJNI.workGroupSizeZ);
+    return true;
+}
+
+bool J2C_CreateHLSLRootSignature(JNIEnv* env, TypeInfos* types, jobject obj, HLSLRootSignature* out) {
+    if (out == 0) return false;
+    out->m_LastError = dmJNI::GetString(env, obj, types->m_HLSLRootSignatureJNI.lastError);
+    {
+        jobject field_object = env->GetObjectField(obj, types->m_HLSLRootSignatureJNI.hLSLRootSignature);
+        if (field_object) {
+            uint32_t tmp_count;
+            uint8_t* tmp = dmJNI::J2C_CreateUByteArray(env, (jbyteArray)field_object, &tmp_count);
+            out->m_HLSLRootSignature.Set(tmp, tmp_count, tmp_count, false);
+            env->DeleteLocalRef(field_object);
+        }
+    }
     return true;
 }
 
@@ -1006,6 +1066,47 @@ ShaderCompileResult** J2C_CreateShaderCompileResultPtrArray(JNIEnv* env, TypeInf
     jsize len = env->GetArrayLength(arr);
     ShaderCompileResult** out = new ShaderCompileResult*[len];
     J2C_CreateShaderCompileResultPtrArrayInPlace(env, types, arr, out, len);
+    *out_count = (uint32_t)len;
+    return out;
+}
+void J2C_CreateHLSLRootSignatureArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, HLSLRootSignature* dst, uint32_t dst_count) {
+    jsize len = env->GetArrayLength(arr);
+    if (len != dst_count) {
+        printf("Number of elements mismatch. Expected %u, but got %u\n", dst_count, len);
+    }
+    if (len > dst_count)
+        len = dst_count;
+    for (uint32_t i = 0; i < len; ++i) {
+        jobject obj = env->GetObjectArrayElement(arr, i);
+        J2C_CreateHLSLRootSignature(env, types, obj, &dst[i]);
+        env->DeleteLocalRef(obj);
+    }
+}
+HLSLRootSignature* J2C_CreateHLSLRootSignatureArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count) {
+    jsize len = env->GetArrayLength(arr);
+    HLSLRootSignature* out = new HLSLRootSignature[len];
+    J2C_CreateHLSLRootSignatureArrayInPlace(env, types, arr, out, len);
+    *out_count = (uint32_t)len;
+    return out;
+}
+void J2C_CreateHLSLRootSignaturePtrArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, HLSLRootSignature** dst, uint32_t dst_count) {
+    jsize len = env->GetArrayLength(arr);
+    if (len != dst_count) {
+        printf("Number of elements mismatch. Expected %u, but got %u\n", dst_count, len);
+    }
+    if (len > dst_count)
+        len = dst_count;
+    for (uint32_t i = 0; i < len; ++i) {
+        jobject obj = env->GetObjectArrayElement(arr, i);
+        dst[i] = new HLSLRootSignature();
+        J2C_CreateHLSLRootSignature(env, types, obj, dst[i]);
+        env->DeleteLocalRef(obj);
+    }
+}
+HLSLRootSignature** J2C_CreateHLSLRootSignaturePtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count) {
+    jsize len = env->GetArrayLength(arr);
+    HLSLRootSignature** out = new HLSLRootSignature*[len];
+    J2C_CreateHLSLRootSignaturePtrArrayInPlace(env, types, arr, out, len);
     *out_count = (uint32_t)len;
     return out;
 }

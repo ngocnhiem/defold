@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -57,7 +57,7 @@ namespace dmRender
      * @typedef
      * @name HFont
      */
-    typedef struct FontMap* HFont;
+    typedef struct FontMap* HFontMap;
 
     // Old typedef, used internally. We want to migrate towards HFont
     typedef struct FontMap* HFontMap;
@@ -235,6 +235,7 @@ namespace dmRender
      * @param m_MajorOrder [type: uint32_t:2] If RENDER_ORDER_WORLD, then sorting is done based on the world position.
                                               Otherwise the sorting uses the m_Order value directly.
      * @param m_Dispatch [type: uint32_t:8] The dispatch function callback (dmRender::HRenderListDispatch)
+     * @param m_Visibility [type: uint32_t:1] Visibility flag. Used for frustrum culling. See enum Visibility
      */
     struct RenderListEntry
     {

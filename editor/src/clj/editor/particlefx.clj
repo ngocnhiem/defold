@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -30,6 +30,7 @@
             [editor.gl.vertex2 :as vtx]
             [editor.graph-util :as gu]
             [editor.graphics :as graphics]
+            [editor.graphics.types :as graphics.types]
             [editor.handler :as handler]
             [editor.id :as id]
             [editor.localization :as localization]
@@ -450,15 +451,14 @@
   (doseq [renderable renderables]
     (let [{:keys [color emitter-index emitter-sim-data material-attribute-infos max-particle-count vertex-attribute-bytes]} (:user-data renderable)]
       (when-let [shader (:shader emitter-sim-data)]
-        (let [shader-attribute-infos-by-name (shader/attribute-infos shader gl)
-              manufactured-attribute-keys [:position :texcoord0 :page-index :color]
-              shader-bound-attributes (graphics/shader-bound-attributes shader-attribute-infos-by-name material-attribute-infos manufactured-attribute-keys :coordinate-space-world)
-              vertex-description (graphics/make-vertex-description shader-bound-attributes)
+        (let [shader-attribute-reflection-infos (shader/attribute-reflection-infos shader gl)
+              combined-attribute-infos (graphics/combined-attribute-infos shader-attribute-reflection-infos material-attribute-infos :coordinate-space-world)
+              vertex-description (graphics.types/make-vertex-description combined-attribute-infos)
               pfx-sim-request-id (some-> renderable :updatable :node-id)]
           (when-let [pfx-sim-atom (when (and emitter-sim-data pfx-sim-request-id)
                                     (:pfx-sim (scene-cache/lookup-object ::pfx-sim pfx-sim-request-id nil)))]
             (let [pfx-sim @pfx-sim-atom
-                  raw-vbuf (plib/gen-emitter-vertex-data pfx-sim emitter-index color max-particle-count vertex-description shader-bound-attributes vertex-attribute-bytes)
+                  raw-vbuf (plib/gen-emitter-vertex-data pfx-sim emitter-index color max-particle-count vertex-description vertex-attribute-bytes)
                   context (:context pfx-sim)
                   vbuf (vtx/wrap-vertex-buffer vertex-description :static raw-vbuf)
                   all-raw-vbufs (assoc (:raw-vbufs pfx-sim) emitter-index raw-vbuf)]
@@ -1201,21 +1201,22 @@
             (g/operation-sequence op-seq)
             (select-fn [mod-node])))))))
 
-(defn- selection->emitter [selection]
-  (handler/adapt-single selection EmitterNode))
+(defn- selection->emitter [selection evaluation-context]
+  (handler/adapt-single selection EmitterNode evaluation-context))
 
-(defn- selection->particlefx [selection]
-  (handler/adapt-single selection ParticleFXNode))
+(defn- selection->particlefx [selection evaluation-context]
+  (handler/adapt-single selection ParticleFXNode evaluation-context))
 
 (handler/defhandler :edit.add-secondary-embedded-component :workbench
-  (active? [selection] (or (selection->emitter selection)
-                           (selection->particlefx selection)))
+  (active? [selection evaluation-context]
+    (or (selection->emitter selection evaluation-context)
+        (selection->particlefx selection evaluation-context)))
   (label [user-data] (if-not user-data
                        (localization/message "command.edit.add-secondary-embedded-component.variant.particlefx")
                        (->> user-data :modifier-type mod-types :message)))
   (run [selection user-data app-view]
-    (let [parent-id (or (selection->particlefx selection)
-                        (selection->emitter selection))]
+    (g/let-ec [parent-id (or (selection->particlefx selection evaluation-context)
+                             (selection->emitter selection evaluation-context))]
       (add-modifier-handler parent-id (:modifier-type user-data) (fn [node-ids] (app-view/select app-view node-ids)))))
   (options [selection user-data]
     (when (not user-data)
@@ -1286,21 +1287,22 @@
           (make-emitter self (assoc emitter :type type) select-fn true))))))
 
 (handler/defhandler :edit.add-embedded-component :workbench
-  (active? [selection] (selection->particlefx selection))
+  (active? [selection evaluation-context] (selection->particlefx selection evaluation-context))
   (label [user-data]
     (if-not user-data
       (localization/message "command.edit.add-embedded-component.variant.particlefx")
       (->> user-data :emitter-type (get emitter-types) :label)))
-  (run [selection user-data app-view] (let [pfx (selection->particlefx selection)]
-                                        (add-emitter-handler pfx (:emitter-type user-data) (fn [node-ids] (app-view/select app-view node-ids)))))
+  (run [selection user-data app-view]
+    (g/let-ec [pfx (selection->particlefx selection evaluation-context)]
+      (add-emitter-handler pfx (:emitter-type user-data) (fn [node-ids] (app-view/select app-view node-ids)))))
   (options [selection user-data]
-           (when (not user-data)
-             (mapv (fn [[type data]]
-                     {:label (:label data)
-                      :icon emitter-icon
-                      :command :edit.add-embedded-component
-                      :user-data {:emitter-type type}})
-                   emitter-types))))
+    (when (not user-data)
+      (mapv (fn [[type data]]
+              {:label (:label data)
+               :icon emitter-icon
+               :command :edit.add-embedded-component
+               :user-data {:emitter-type type}})
+            emitter-types))))
 
 
 ;;--------------------------------------------------------------------
@@ -1399,6 +1401,7 @@
       :sanitize-fn sanitize-particle-fx
       :icon particle-fx-icon
       :icon-class :design
+      :category (localization/message "resource.category.components")
       :tags #{:component :non-embeddable}
       :tag-opts {:component {:transform-properties #{:position :rotation}}}
       :view-types [:scene :text]

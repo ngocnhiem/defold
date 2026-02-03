@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -497,7 +497,7 @@ namespace dmGameSystem
         return dmGameObject::CREATE_RESULT_OK;
     }
 
-    dmGameObject::UpdateResult CompTileGridUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
+    dmGameObject::UpdateResult CompTileGridLateUpdate(const dmGameObject::ComponentsUpdateParams& params, dmGameObject::ComponentsUpdateResult& update_result)
     {
         TileGridWorld* world = (TileGridWorld*)params.m_World;
         dmArray<TileGridComponent*>& components = world->m_Components;
@@ -505,12 +505,14 @@ namespace dmGameSystem
         for (uint32_t i = 0; i < n; ++i)
         {
             TileGridComponent* component = components[i];
-            if (!component->m_Enabled || !component->m_AddedToUpdate) {
+            if (!component->m_Enabled || !component->m_AddedToUpdate)
+            {
                 continue;
             }
 
             component->m_Occupied = UpdateRegions(component);
-            if (!component->m_Occupied) {
+            if (!component->m_Occupied)
+            {
                 continue;
             }
 
@@ -967,7 +969,9 @@ namespace dmGameSystem
         {
             return GetResourceProperty(dmGameObject::GetFactory(params.m_Instance), GetTextureSet(component), out_value);
         }
-        return GetMaterialConstant(GetMaterial(component), params.m_PropertyId, params.m_Options.m_Index, out_value, true, CompTileGridGetConstantCallback, component);
+        int32_t value_index = 0;
+        GetPropertyOptionsIndex(params.m_Options, 0, &value_index);
+        return GetMaterialConstant(GetMaterial(component), params.m_PropertyId, value_index, out_value, true, CompTileGridGetConstantCallback, component);
     }
 
     dmGameObject::PropertyResult CompTileGridSetProperty(const dmGameObject::ComponentSetPropertyParams& params)
@@ -983,7 +987,9 @@ namespace dmGameSystem
             ReHash(component);
             return res;
         }
-        return SetMaterialConstant(GetMaterial(component), params.m_PropertyId, params.m_Value, params.m_Options.m_Index, CompTileGridSetConstantCallback, component);
+        int32_t value_index = 0;
+        GetPropertyOptionsIndex(params.m_Options, 0, &value_index);
+        return SetMaterialConstant(GetMaterial(component), params.m_PropertyId, params.m_Value, value_index, CompTileGridSetConstantCallback, component);
     }
 
     static bool CompTileGridIterPropertiesGetNext(dmGameObject::SceneNodePropertyIterator* pit)

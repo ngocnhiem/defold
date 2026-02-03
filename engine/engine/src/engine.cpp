@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -38,6 +38,7 @@
 #include <dlib/sslsocket.h>
 #include <dlib/sys.h>
 #include <dlib/thread.h>
+#include <platform/platform_window.h>
 #include <dlib/time.h>
 #include <graphics/graphics.h>
 #include <extension/extension.hpp>
@@ -68,6 +69,10 @@
     #include <emscripten/emscripten.h>
 #endif
 
+#if defined(__EMSCRIPTEN__)
+    #include "engine_web.h"
+#endif
+
 // Embedded resources
 // Unfortunately, the draw_line et. al are used in production code
 extern unsigned char DEBUG_SPC[];
@@ -83,6 +88,8 @@ extern uint32_t      DEBUG_SPC_SIZE;
 
     extern unsigned char GAME_PROJECT[];
     extern uint32_t GAME_PROJECT_SIZE;
+
+    #include <dmsdk/gamesys/resources/res_font.h>
 #endif
 
 #if defined(__ANDROID__)
@@ -112,6 +119,9 @@ namespace dmEngine
 #define SYSTEM_SOCKET_NAME "@system"
 
     dmEngineService::HEngineService g_EngineService = 0;
+
+    bool g_EngineUpdateEnabled = true;
+    bool g_EngineRenderEnabled = true;
 
     static ExtensionAppExitCode GetAppExitStatusFromAction(int action)
     {
@@ -191,6 +201,24 @@ namespace dmEngine
     };
 
 
+    static void UpdateGuiSafeAreaAdjust(Engine* engine, uint32_t window_width, uint32_t window_height)
+    {
+        dmPlatform::HWindow window = dmGraphics::GetWindow(engine->m_GraphicsContext);
+        dmPlatform::SafeArea safe_area;
+        if (!dmPlatform::GetSafeArea(window, &safe_area))
+        {
+            safe_area.m_InsetLeft = 0;
+            safe_area.m_InsetTop = 0;
+            safe_area.m_InsetRight = 0;
+            safe_area.m_InsetBottom = 0;
+        }
+
+        dmGui::UpdateSafeAreaAdjust(engine->m_GuiContext, (dmGui::SafeAreaMode)engine->m_GuiSafeAreaMode,
+                                    window_width, window_height,
+                                    safe_area.m_InsetLeft, safe_area.m_InsetTop,
+                                    safe_area.m_InsetRight, safe_area.m_InsetBottom);
+    }
+
     static void OnWindowResize(void* user_data, uint32_t width, uint32_t height)
     {
         uint32_t data_size = sizeof(dmRenderDDF::WindowResized);
@@ -225,6 +253,8 @@ namespace dmEngine
         {
             dmGui::SetPhysicalResolution(engine->m_GuiContext, width, height);
         }
+
+        UpdateGuiSafeAreaAdjust(engine, width, height);
 
         dmGameSystem::OnWindowResized(width, height);
     }
@@ -1300,6 +1330,9 @@ namespace dmEngine
             dmLogWarning("`rig.max_instance_count` deprecated. Use component specific counters.");
         }
 
+        const char* safe_area_mode = dmConfigFile::GetString(engine->m_Config, "gui.safe_area_mode", "none");
+        engine->m_GuiSafeAreaMode = (uint8_t)dmGui::ParseSafeAreaMode(safe_area_mode);
+
         dmGui::NewContextParams gui_params;
         gui_params.m_ScriptContext = engine->m_GuiScriptContext;
         gui_params.m_HidContext = engine->m_HidContext;
@@ -1319,6 +1352,8 @@ namespace dmEngine
         gui_params.m_Dpi = physical_dpi;
 
         engine->m_GuiContext = dmGui::NewContext(&gui_params);
+
+        UpdateGuiSafeAreaAdjust(engine, physical_width, physical_height);
 
         dmPhysics::NewContextParams physics_params;
         physics_params.m_WorldCount = dmConfigFile::GetInt(engine->m_Config, "physics.world_count", 4);
@@ -1479,7 +1514,7 @@ namespace dmEngine
                     if (!filename || strlen(filename) == 0) {
                         continue;
                     }
-                    
+
                     // We need the size, in order to send it as a proper LuaModule message
                     void* data;
                     uint32_t datasize;
@@ -1657,8 +1692,8 @@ namespace dmEngine
         if (engine->m_EngineService)
         {
             dmEngineService::InitProfiler(engine->m_EngineService, engine->m_Factory, engine->m_Register);
-            
-            dmEngineService::EngineState state;  
+
+            dmEngineService::EngineState state;
             state.m_ConnectionAppMode = engine->m_ConnectionAppMode;
             dmEngineService::InitState(engine->m_EngineService, &state);
         }
@@ -1687,6 +1722,16 @@ bail:
             engine->m_ThrottleCooldownMax = cooldown;
             engine->m_ThrottleCooldown = 0;
         }
+    }
+
+    void SetUpdateEnabled(bool enabled)
+    {
+        g_EngineUpdateEnabled = enabled;
+    }
+
+    void SetRenderEnabled(bool enabled)
+    {
+        g_EngineRenderEnabled = enabled;
     }
 
     static void GOActionCallback(dmhash_t action_id, dmInput::Action* action, void* user_data)
@@ -1802,6 +1847,11 @@ bail:
     // Return true if the frame should be skipped
     static bool UpdateFrameThrottle(HEngine engine, float dt, bool has_input)
     {
+        if (!g_EngineUpdateEnabled) // override from external call (e.g. HTML5)
+        {
+            return true;
+        }
+
         if (!engine->m_ThrottleEnabled)
         {
             return false;
@@ -1862,6 +1912,8 @@ bail:
         HProfile profile = ProfileFrameBegin();
         {
             DM_PROFILE("Frame");
+
+            bool do_render = g_EngineRenderEnabled && !dmRender::IsRenderPaused(engine->m_RenderContext);
 
             {
                 DM_PROFILE("Sim");
@@ -1995,7 +2047,7 @@ bail:
 
                 // Don't render while iconified
                 if (!dmGraphics::GetWindowStateParam(engine->m_GraphicsContext, dmPlatform::WINDOW_STATE_ICONIFIED)
-                    && !dmRender::IsRenderPaused(engine->m_RenderContext))
+                    && do_render)
                 {
                     // Call pre render functions for extensions, if available.
                     // We do it here before we render rest of the frame
@@ -2038,7 +2090,7 @@ bail:
                 dmGameObject::PostUpdate(engine->m_MainCollection);
                 dmGameObject::PostUpdate(engine->m_Register);
 
-                if (!dmRender::IsRenderPaused(engine->m_RenderContext))
+                if (do_render)
                 {
                     dmRender::ClearRenderObjects(engine->m_RenderContext);
                 }
@@ -2062,7 +2114,7 @@ bail:
                 dmEngineService::Update(engine->m_EngineService, profile);
             }
 
-            if (!dmRender::IsRenderPaused(engine->m_RenderContext))
+            if (do_render)
             {
 #if !defined(DM_RELEASE)
                 dmProfiler::RenderProfiler(profile, engine->m_GraphicsContext, engine->m_RenderContext, ResFontGetHandle(engine->m_SystemFont));
@@ -2099,7 +2151,7 @@ bail:
                 }
 
                 dmGraphics::Flip(engine->m_GraphicsContext);
-                
+
                 RecordData* record_data = &engine->m_RecordData;
                 if (record_data->m_Recorder)
                 {
@@ -2202,30 +2254,34 @@ bail:
 
     static void Reboot(HEngine engine, dmSystemDDF::Reboot* reboot)
     {
+        engine->m_RunResult.Free();
+        memset(engine->m_RunResult.m_Argv, 0, sizeof(engine->m_RunResult.m_Argv));
+
         int argc = 0;
         engine->m_RunResult.m_Argv[argc++] = strdup("dmengine");
 
         // This value should match the count in dmSystemDDF::Reboot
         const int ARG_COUNT = 6;
-        char* args[ARG_COUNT] =
+        const char* args[ARG_COUNT] =
         {
-            reboot->m_Arg1 ? strdup(reboot->m_Arg1) : 0,
-            reboot->m_Arg2 ? strdup(reboot->m_Arg2) : 0,
-            reboot->m_Arg3 ? strdup(reboot->m_Arg3) : 0,
-            reboot->m_Arg4 ? strdup(reboot->m_Arg4) : 0,
-            reboot->m_Arg5 ? strdup(reboot->m_Arg5) : 0,
-            reboot->m_Arg6 ? strdup(reboot->m_Arg6) : 0,
+            reboot->m_Arg1,
+            reboot->m_Arg2,
+            reboot->m_Arg3,
+            reboot->m_Arg4,
+            reboot->m_Arg5,
+            reboot->m_Arg6,
         };
 
         for (int i = 0; i < ARG_COUNT; ++i)
         {
-            // NOTE: +1 here, see above
-            engine->m_RunResult.m_Argv[i + 1] = args[i];
-            if (args[i] == 0 || args[i][0] == '\0')
+            const char* arg = args[i];
+            if (arg == 0 || arg[0] == '\0')
             {
                 break;
             }
 
+            // NOTE: +1 here, see above
+            engine->m_RunResult.m_Argv[i + 1] = strdup(arg);
             argc++;
         }
 
@@ -2446,8 +2502,13 @@ void dmEngineInitialize()
     dLib::SetDebugMode(false);
 #endif
 
-    if (dLib::IsDebugMode())
-        ProfileInitialize();
+    ProfileInitialize();
+
+#if defined(__EMSCRIPTEN__)
+    dmEngineSetUpdateEnabled(1);
+    dmEngineSetRenderEnabled(1);
+#endif
+
     dmEngine::PlatformInitialize();
 
     dmThread::SetThreadName(dmThread::GetCurrentThread(), "engine_main");
@@ -2483,8 +2544,7 @@ void dmEngineFinalize()
 
     dmEngine::PlatformFinalize();
 
-    if (dLib::IsDebugMode())
-        ProfileFinalize();
+    ProfileFinalize();
 }
 
 const char* ParseArgOneOperand(const char* arg_str, int argc, char *argv[])

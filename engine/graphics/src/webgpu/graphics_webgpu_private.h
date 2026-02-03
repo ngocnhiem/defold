@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -21,11 +21,9 @@
 #include <dmsdk/dlib/vmath.h>
 #include <dlib/opaque_handle_container.h>
 
-#include "../graphics_private.h"
+#include <dmsdk/graphics/graphics_webgpu.h>
 
-#ifdef __EMSCRIPTEN__
-#include <webgpu/webgpu.h>
-#endif
+#include "../graphics_private.h"
 
 #ifdef DM_GRAPHICS_WEBGPU_WAGYU
 #define DM_GRAPHICS_WEBGPU2
@@ -53,7 +51,7 @@ namespace dmGraphics
         size_t                     m_LastRenderPass = 0;
     };
 
-    struct WebGPUUniformBuffer
+    struct WebGPUScratchUniformBuffer
     {
         struct Alloc
         {
@@ -63,6 +61,12 @@ namespace dmGraphics
         };
         dmArray<Alloc*> m_Allocs;
         size_t          m_Alloc = 0;
+    };
+
+    struct WebGPUUniformBuffer
+    {
+        UniformBuffer m_BaseUniformBuffer;
+        WGPUBuffer    m_Buffer;
     };
 
     struct WebGPUShaderModule
@@ -201,6 +205,7 @@ namespace dmGraphics
         int32_t                            m_ViewportRect[4];
 
         WebGPUBuffer*                      m_CurrentVertexBuffers[MAX_VERTEX_BUFFERS];
+        WebGPUUniformBuffer*               m_CurrentUniformBuffers[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
         uint64_t                           m_TextureFormatSupport;
 
         TextureFilter                      m_DefaultTextureMinFilter;
@@ -230,12 +235,12 @@ namespace dmGraphics
         uint32_t                           m_LastSubmittedRenderPass;
 
         // Current state
-        PipelineState       m_CurrentPipelineState;
-        WebGPURenderPass    m_CurrentRenderPass;
-        WebGPUComputePass   m_CurrentComputePass;
-        WebGPUUniformBuffer m_CurrentUniforms;
-        WebGPUProgram*      m_CurrentProgram;
-        WebGPURenderTarget* m_CurrentRenderTarget;
+        PipelineState                      m_CurrentPipelineState;
+        WebGPURenderPass                   m_CurrentRenderPass;
+        WebGPUComputePass                  m_CurrentComputePass;
+        WebGPUScratchUniformBuffer         m_CurrentScratchUniforms;
+        WebGPUProgram*                     m_CurrentProgram;
+        WebGPURenderTarget*                m_CurrentRenderTarget;
 
         uint32_t            m_OriginalWidth;
         uint32_t            m_OriginalHeight;

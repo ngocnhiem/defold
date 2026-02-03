@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -28,7 +28,8 @@
 
 /*# Size-bounded string formating.
  *
- * Size-bounded string formating. Resulting string is guaranteed to be 0-terminated.
+ * Size-bounded string formating. Resulting string is guaranteed to be 0-terminated. Unlike snprintf, which
+ * always returns the untruncated string length, this function returns -1 if the string was truncated.
  *
  * @name dmSnPrintf
  * @param buffer [type:char*] Buffer to write to

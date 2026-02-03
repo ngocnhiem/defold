@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -276,10 +276,15 @@ public class Shaderc {
         public String lastError;
         public MSLResourceMapping[] mSLResourceMappings;
         public HLSLResourceMapping[] hLSLResourceMappings;
+        public byte[] hLSLRootSignature;
         public byte hLSLNumWorkGroupsId = 0;
         public int workGroupSizeX = 0;
         public int workGroupSizeY = 0;
         public int workGroupSizeZ = 0;
+    };
+    public static class HLSLRootSignature {
+        public String lastError;
+        public byte[] hLSLRootSignature;
     };
 }
 

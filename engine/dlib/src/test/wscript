@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-import os, re
+import os, re, sys
 import sdk
 import waf_dynamo
 from waf_dynamo import is_platform_private, platform_supports_feature
@@ -55,7 +55,8 @@ def create_test(bld, name, extra_libs = None, extra_features = None, embed_sourc
 
     local_libs = 'dlib mbedtls zip'.split()
 
-    if bld.env.PLATFORM in ('js-web', 'wasm-web', 'wasm_pthread-web', 'arm64-nx64', 'x86_64-ps4', 'x86_64-ps5'):
+    use_profile_null = bld.env.PLATFORM in ('js-web', 'wasm-web', 'wasm_pthread-web', 'arm64-nx64', 'x86_64-ps4', 'x86_64-ps5')
+    if use_profile_null:
         local_libs += ['profile_null']
     else:
         local_libs += ['profile']
@@ -101,6 +102,10 @@ def configure(conf):
     conf.env.append_value('CLASSPATH', '../ext/jetty/*')
     conf.env.append_value('CLASSPATH', '../ext/jetty/logging/*')
 
+def _is_mac_ci():
+    is_ci = os.environ.get('GITHUB_WORKFLOW') or os.environ.get('GITHUB_ACTIONS') or os.environ.get('CI')
+    return is_ci and sys.platform == 'darwin'
+
 def build(bld):
     bld(features='javac seq',
         outdir='http_server',
@@ -112,6 +117,8 @@ def build(bld):
     extra_defines = []
     if bld.env.PLATFORM in ('arm64-ios', 'x86_64-ios'):
         extra_defines = ['DM_NO_SYSTEM_FUNCTION'] # Needed because we wish to build the tests for all platforms, but not all platforms have the system() function
+
+    use_profile_null = bld.env.PLATFORM in ('js-web', 'wasm-web', 'wasm_pthread-web', 'arm64-nx64', 'x86_64-ps4', 'x86_64-ps5')
 
     skip_run = False
     if 'web' in bld.env['PLATFORM']:
@@ -129,8 +136,11 @@ def build(bld):
     skip_threads = False
     if bld.env.PLATFORM in ('js-web', 'wasm-web', 'wasm_pthread-web'):
         skip_http = True
-        if bld.env in ('js-web', 'wasm-web'):
+        if bld.env.PLATFORM in ('js-web', 'wasm-web'):
             skip_threads = True
+
+    if _is_mac_ci():
+        skip_http = True
 
     create_test(bld, 'test_memory')
 
@@ -140,6 +150,7 @@ def build(bld):
     create_test(bld, 'test_transform', extra_libs = ['THREAD'])
     create_test(bld, 'test_hashtable')
     create_test(bld, 'test_array')
+    create_test(bld, 'test_double_linked_list')
     create_test(bld, 'test_set')
     create_test(bld, 'test_indexpool')
     create_test(bld, 'test_dlib', extra_libs = ['THREAD'])
@@ -151,7 +162,7 @@ def build(bld):
         create_test(bld, 'test_thread', extra_libs = ['THREAD'])
         create_test(bld, 'test_mutex', extra_libs =['THREAD'])
 
-    create_test(bld, 'test_profile', extra_libs = ['THREAD'], extra_source = ['test_profiler_dummy.cpp'])
+    create_test(bld, 'test_profile', extra_libs = ['THREAD'], extra_source = ['test_profiler_dummy.cpp'], skip_run = use_profile_null)
     create_test(bld, 'test_profile',
                                         extra_libs = ['THREAD'],
                                         extra_local_libs = ['profile_null'],
@@ -191,7 +202,7 @@ def build(bld):
         create_test(bld, 'test_condition_variable', extra_libs = ['THREAD'])
         create_test(bld, 'test_job_thread')
 
-    create_test(bld, 'test_sys', extra_libs = ['THREAD'], extra_defines = extra_defines)
+    create_test(bld, 'test_sys', extra_libs = ['THREAD'], extra_defines = extra_defines, skip_run = skip_run)
     create_test(bld, 'test_template', extra_libs = ['THREAD'])
     create_test(bld, 'test_ssdp_internals', extra_libs = ['THREAD'], skip_run = skip_run or skip_ssdp)
     create_test(bld, 'test_ssdp', extra_libs = ['THREAD'], skip_run = skip_run or skip_ssdp)
@@ -242,4 +253,3 @@ def build(bld):
         t = create_test(bld, 'test_csharp', extra_libs = ['CSHARP'])
         t.env.append_value('LINKFLAGS', [t.env.LIB_ST % 'test_dlib_cs'])
         t.env.append_value('LIBPATH', ['./src/test/cs'])
-

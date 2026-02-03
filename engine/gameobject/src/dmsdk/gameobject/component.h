@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -308,16 +308,6 @@ namespace dmGameObject
     typedef UpdateResult (*ComponentsUpdate)(const ComponentsUpdateParams& params, ComponentsUpdateResult& result);
 
     /*#
-     * Component fixed update function. Updates all component of this type for all game objects
-     * @typedef
-     * @name ComponentsFixedUpdate
-     * @param params [type: const dmGameObject::ComponentsUpdateParams&] Update parameters
-     * @param params [type: dmGameObject::ComponentsUpdateResult&] (out) Update result
-     * @return result [type: UpdateResult] UPDATE_RESULT_OK on success
-     */
-    typedef UpdateResult (*ComponentsFixedUpdate)(const ComponentsUpdateParams& params, ComponentsUpdateResult& result);
-
-    /*#
      * Parameters to ComponentsRender callback.
      * @struct
      * @name ComponentsRenderParams
@@ -478,7 +468,7 @@ namespace dmGameObject
      * @member m_Instance [type: HInstance] Game object instance
      * @member m_PropertyId [type: dmhash_t] Id of the property
      * @member m_UserData [type: uintptr_t*] User data storage pointer
-     * @member m_Options [type: PropertyOptions] Options for getting the property
+     * @member m_Options [type: HPropertyOptions] Options for getting the property
      */
     struct ComponentGetPropertyParams
     {
@@ -487,7 +477,7 @@ namespace dmGameObject
         HInstance m_Instance;
         dmhash_t m_PropertyId;
         uintptr_t* m_UserData;
-        PropertyOptions m_Options;
+        HPropertyOptions m_Options;
     };
 
     /*#
@@ -510,7 +500,7 @@ namespace dmGameObject
      * @member m_PropertyId [type: dmhash_t] Id of the property
      * @member m_UserData [type: uintptr_t*] User data storage pointer
      * @member m_Value [type: PropertyVar] New value of the property
-     * @member m_Options [type: PropertyOptions] Options for setting the property
+     * @member m_Options [type: HPropertyOptions] Options for setting the property
      */
     struct ComponentSetPropertyParams
     {
@@ -520,7 +510,7 @@ namespace dmGameObject
         dmhash_t m_PropertyId;
         uintptr_t* m_UserData;
         PropertyVar m_Value;
-        PropertyOptions m_Options;
+        HPropertyOptions m_Options;
     };
 
     /*#
@@ -636,9 +626,18 @@ namespace dmGameObject
      * Set the component update callback. Called when it's time to update all component instances.
      * @name ComponentTypeSetFixedUpdateFn
      * @param type [type: HComponentType] the type
-     * @param fn [type: ComponentsFixedUpdate] callback
+     * @param fn [type: ComponentsUpdate] callback
      */
-    void ComponentTypeSetFixedUpdateFn(HComponentType type, ComponentsFixedUpdate fn);
+    void ComponentTypeSetFixedUpdateFn(HComponentType type, ComponentsUpdate fn);
+
+
+    /*# set the component late update callback
+     * Set the component late update callback. Called after regular update of all component instances but before render and before post update.
+     * @name ComponentTypeSetLateUpdateFn
+     * @param type [type: HComponentType] the type
+     * @param fn [type: ComponentsUpdate] callback
+     */
+    void ComponentTypeSetLateUpdateFn(HComponentType type, ComponentsUpdate fn);
 
     /*# set the component post update callback
      * Set the component post update callback. Called for each collection after the update, before the render.

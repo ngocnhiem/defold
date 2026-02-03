@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -69,6 +69,7 @@
 (def ^:private TBreakpoint
   {:resource s/Any
    :row Long
+   :enabled Boolean
    (s/optional-key :condition) String})
 
 (g/deftype Breakpoints [TBreakpoint])
@@ -90,18 +91,15 @@
 
 (defn- load-resource-node [project resource-node-id resource source-value transpiler-tx-data-fn]
   (try
-    ;; TODO(save-value-cleanup): This shouldn't be able to happen anymore. Remove this check after some time in the wild.
-    (assert (and (not= :folder (resource/source-type resource))
-                 (resource/exists? resource)))
     (let [{:keys [read-fn load-fn] :as resource-type} (resource/resource-type resource)
           transpiler-tx-data (transpiler-tx-data-fn resource-node-id resource)]
       (cond-> []
 
               load-fn
-              (into (flatten
-                      (if (nil? read-fn)
+              (into coll/flatten-xf
+                    (if (nil? read-fn)
                         (load-fn project resource-node-id resource)
-                        (load-fn project resource-node-id resource source-value))))
+                        (load-fn project resource-node-id resource source-value)))
 
               (and (:auto-connect-save-data? resource-type)
                    (resource/save-tracked? resource))
@@ -281,7 +279,10 @@
           code-transpilers (code-transpilers basis project)]
       (code.transpilers/make-resource-load-tx-data-fn code-transpilers evaluation-context))))
 
-(defn- load-nodes-tx-data [node-load-infos project render-progress! resource-metrics]
+(defn load-nodes-tx-data
+  [project node-load-infos render-generate-tx-data-progress! render-apply-tx-data-progress! resource-metrics]
+  {:pre [(ifn? render-generate-tx-data-progress!)
+         (ifn? render-apply-tx-data-progress!)]}
   (let [node-count (count node-load-infos)
 
         resource-metrics-load-timer
@@ -302,25 +303,31 @@
 
         transpiler-tx-data-fn
         (g/with-auto-evaluation-context evaluation-context
-          (get-transpiler-tx-data-fn! project evaluation-context))]
+          (get-transpiler-tx-data-fn! project evaluation-context))
 
-    (e/concat
-      (coll/transfer node-load-infos :eduction
-        (coll/mapcat-indexed
-          (fn [^long node-index node-load-info]
-            (let [resource (:resource node-load-info)
-                  proj-path (resource/proj-path resource)
-                  progress-message (localization/message "progress.loading-resource" {"resource" proj-path})
-                  progress (progress/make progress-message node-count (inc node-index))]
-              (e/concat
-                (g/callback render-progress! progress)
-                (du/when-metrics
-                  (g/callback start-resource-metrics-load-timer!))
-                (du/measuring resource-metrics proj-path :generate-load-tx-data
-                  (node-load-info-tx-data node-load-info project transpiler-tx-data-fn))
-                (du/when-metrics
-                  (g/callback stop-resource-metrics-load-timer! proj-path)))))))
-      (g/callback render-progress! (progress/make-indeterminate (localization/message "progress.finalizing"))))))
+        node-load-info-tx-data-fn
+        (if (identical? progress/null-render-progress! render-generate-tx-data-progress!)
+          (fn node-load-info-tx-data-fn [node-load-info _progress]
+            (node-load-info-tx-data node-load-info project transpiler-tx-data-fn))
+          (fn node-load-info-tx-data-fn [node-load-info progress]
+            (render-generate-tx-data-progress! (update progress :message localization/set-message-key "progress.processing-resource"))
+            (node-load-info-tx-data node-load-info project transpiler-tx-data-fn)))]
+
+    (coll/transfer node-load-infos :eduction
+      (coll/mapcat-indexed
+        (fn [^long node-index node-load-info]
+          (let [resource (:resource node-load-info)
+                proj-path (resource/proj-path resource)
+                progress-message (localization/message "progress.loading-resource" {"resource" proj-path})
+                progress (progress/make progress-message node-count (inc node-index))]
+            (e/concat
+              (g/callback render-apply-tx-data-progress! progress)
+              (du/when-metrics
+                (g/callback start-resource-metrics-load-timer!))
+              (du/measuring resource-metrics proj-path :generate-load-tx-data
+                (node-load-info-tx-data-fn node-load-info progress))
+              (du/when-metrics
+                (g/callback stop-resource-metrics-load-timer! proj-path)))))))))
 
 (defn read-node-load-infos [node-id+resource-pairs ^long progress-size render-progress! resource-metrics]
   {:pre [(or (nil? node-id+resource-pairs) (counted? node-id+resource-pairs))]}
@@ -330,15 +337,15 @@
             (progress/make progress-message progress-size (inc node-index)))
           (fn indeterminate-progress-fn [progress-message ^long _node-index]
             (progress/make-indeterminate progress-message)))]
-    (into []
-          (map-indexed
-            (fn [^long node-index [node-id resource]]
-              (let [proj-path (resource/proj-path resource)
-                    progress-message (localization/message "progress.reading-resource" {"resource" proj-path})
-                    progress (progress-fn progress-message node-index)]
-                (render-progress! progress)
-                (read-node-load-info node-id resource resource-metrics))))
-          node-id+resource-pairs)))
+    (->> node-id+resource-pairs
+         (map-indexed vector)
+         (pmap (fn [[node-index [node-id resource]]]
+                 (let [proj-path (resource/proj-path resource)
+                       progress-message (localization/message "progress.reading-resource" {"resource" proj-path})
+                       progress (progress-fn progress-message node-index)]
+                   (render-progress! progress)
+                   (read-node-load-info node-id resource resource-metrics))))
+         (into []))))
 
 (defn node-load-infos->stored-disk-state [node-load-infos]
   (let [[disk-sha256s-by-node-id
@@ -815,7 +822,8 @@
             (e/concat
               prelude-tx-data
               (workspace/merge-disk-sha256s workspace disk-sha256s-by-node-id)
-              (load-nodes-tx-data node-load-infos project render-progress! resource-metrics)))
+              (load-nodes-tx-data project node-load-infos progress/null-render-progress! render-progress! resource-metrics)
+              (g/callback render-progress! (progress/make-indeterminate (localization/message "progress.finalizing")))))
 
           migrated-resource-node-ids
           (into #{}
@@ -853,8 +861,7 @@
 
 (defn workspace
   ([project]
-   (g/with-auto-evaluation-context evaluation-context
-     (workspace project evaluation-context)))
+   (g/raw-property-value (g/unsafe-basis) project :workspace))
   ([project evaluation-context]
    (g/node-value project :workspace evaluation-context)))
 
@@ -1161,34 +1168,34 @@
        (filter (comp (set open-resource-nodes) first))
        (into {})))
 
-(defn- perform-selection [project all-selections]
+(defn- perform-selection [basis project all-selections old-all-selections]
   (let [all-node-ids (->> all-selections
                           vals
                           (reduce into [])
                           distinct
-                          vec)
-        old-all-selections (g/node-value project :all-selections)]
-    (when-not (= old-all-selections all-selections)
+                          vec)]
+    (when (not= old-all-selections all-selections)
       (concat
         (g/set-property project :all-selections all-selections)
-        (for [[node-id label] (g/sources-of project :all-selected-node-ids)]
+        (for [[node-id label] (g/sources-of basis project :all-selected-node-ids)]
           (g/disconnect node-id label project :all-selected-node-ids))
-        (for [[node-id label] (g/sources-of project :all-selected-node-properties)]
+        (for [[node-id label] (g/sources-of basis project :all-selected-node-properties)]
           (g/disconnect node-id label project :all-selected-node-properties))
         (for [node-id all-node-ids]
           (concat
-            (g/connect node-id :_node-id    project :all-selected-node-ids)
+            (g/connect node-id :_node-id project :all-selected-node-ids)
             (g/connect node-id :_properties project :all-selected-node-properties)))))))
 
 (defn select
-  ([project resource-node node-ids open-resource-nodes]
-   (assert (every? some? node-ids) "Attempting to select nil values")
-   (let [node-ids (if (seq node-ids)
-                    (-> node-ids distinct vec)
-                    [resource-node])
-         all-selections (-> (g/node-value project :all-selections)
-                            (update-selection open-resource-nodes resource-node node-ids))]
-     (perform-selection project all-selections))))
+  [project resource-node node-ids open-resource-nodes evaluation-context]
+  (assert (every? some? node-ids) "Attempting to select nil values")
+  (let [basis (:basis evaluation-context)
+        node-ids (if (seq node-ids)
+                   (-> node-ids distinct vec)
+                   [resource-node])
+        old-all-selections (g/node-value project :all-selections evaluation-context)
+        all-selections (update-selection old-all-selections open-resource-nodes resource-node node-ids)]
+    (perform-selection basis project all-selections old-all-selections)))
 
 (defn- perform-sub-selection
   ([project all-sub-selections]
@@ -1395,21 +1402,25 @@
               restore-properties-tx-data)))))
 
     (du/measuring process-metrics :update-selection
-      (let [old->new (into {}
-                           (map (fn [[p n]]
-                                  [(old-node-ids-by-proj-path p) n]))
-                           new-node-ids-by-proj-path)
-            dissoc-deleted (fn [x] (apply dissoc x (:mark-deleted plan)))]
-        (g/transact transact-opts
-          (concat
-            (let [all-selections (-> (g/node-value project :all-selections)
-                                     (dissoc-deleted)
-                                     (remap-selection old->new (comp vector first)))]
-              (perform-selection project all-selections))
-            (let [all-sub-selections (-> (g/node-value project :all-sub-selections)
-                                         (dissoc-deleted)
-                                         (remap-selection old->new (constantly [])))]
-              (perform-sub-selection project all-sub-selections))))))
+      (g/let-ec [basis (:basis evaluation-context)
+                 old->new (into {}
+                                (map (fn [[p n]]
+                                       [(old-node-ids-by-proj-path p) n]))
+                                new-node-ids-by-proj-path)
+                 dissoc-deleted (fn [x] (apply dissoc x (:mark-deleted plan)))
+                 old-all-selections (g/node-value project :all-selections evaluation-context)
+                 old-all-sub-selections (g/node-value project :all-sub-selections evaluation-context)
+                 tx-data (g/eager-tx-data
+                           (concat
+                             (let [all-selections (-> old-all-selections
+                                                      (dissoc-deleted)
+                                                      (remap-selection old->new (comp vector first)))]
+                               (perform-selection basis project all-selections old-all-selections))
+                             (let [all-sub-selections (-> old-all-sub-selections
+                                                          (dissoc-deleted)
+                                                          (remap-selection old->new (constantly [])))]
+                               (perform-sub-selection project all-sub-selections))))]
+        (g/transact transact-opts tx-data)))
 
     ;; Invalidating outputs is the only change that does not reset the undo
     ;; history. This is a quick way to find out if we have any significant
@@ -1427,16 +1438,16 @@
                :transaction-metrics @transaction-metrics}))))
 
 (defn reload-plugins! [project touched-resources]
-  (g/with-auto-evaluation-context evaluation-context
-    (let [workspace (workspace project evaluation-context)
-          localization (workspace/localization workspace evaluation-context)
-          code-preprocessors (workspace/code-preprocessors workspace evaluation-context)
-          code-transpilers (code-transpilers project)]
-      (workspace/unpack-editor-plugins! workspace touched-resources)
-      (code.preprocessors/reload-lua-preprocessors! code-preprocessors java/class-loader localization)
-      (code.transpilers/reload-lua-transpilers! code-transpilers workspace java/class-loader localization)
-      (texture.engine/reload-texture-compressors! java/class-loader localization)
-      (workspace/load-clojure-editor-plugins! workspace touched-resources))))
+  (g/let-ec [basis (:basis evaluation-context)
+             workspace (workspace project evaluation-context)
+             localization (workspace/localization workspace evaluation-context)
+             code-preprocessors (workspace/code-preprocessors workspace evaluation-context)
+             code-transpilers (code-transpilers basis project)]
+    (workspace/unpack-editor-plugins! workspace touched-resources)
+    (code.preprocessors/reload-lua-preprocessors! code-preprocessors java/class-loader localization)
+    (code.transpilers/reload-lua-transpilers! code-transpilers workspace java/class-loader localization)
+    (texture.engine/reload-texture-compressors! java/class-loader localization)
+    (workspace/load-clojure-editor-plugins! workspace touched-resources)))
 
 (defn settings
   ([project]
@@ -1472,7 +1483,7 @@
            :message (localization/message "notification.fetch-libraries.dependencies-changed.prompt")
            :actions [{:message (localization/message "notification.fetch-libraries.dependencies-changed.action.fetch")
                       :on-action #(ui/execute-command
-                                    (ui/contexts (ui/main-scene))
+                                    (ui/contexts (ui/main-scene) true)
                                     :project.fetch-libraries
                                     nil)}]})
         (notifications/close notifications notification-id)))))
@@ -1575,6 +1586,7 @@
   (input texture-profiles g/Any)
   (input collision-group-nodes g/Any :array :substitute gu/array-subst-remove-errors)
   (input build-settings g/Any)
+  (input dependencies g/Any)
   (input breakpoints Breakpoints :array :substitute gu/array-subst-remove-errors)
   (input proj-path+meta-info-pairs g/Any :array :substitute gu/array-subst-remove-errors)
 
@@ -1613,6 +1625,7 @@
   (output exclude-gles-sm100 g/Any (g/fnk [settings] (get settings ["shader" "exclude_gles_sm100"])))
   (output display-profiles g/Any :cached (gu/passthrough display-profiles))
   (output texture-profiles g/Any :cached (gu/passthrough texture-profiles))
+  (output dependencies g/Any (gu/passthrough dependencies))
   (output nil-resource resource/Resource (g/constantly nil))
   (output collision-groups-data g/Any :cached produce-collision-groups-data)
   (output default-tex-params g/Any :cached produce-default-tex-params)
@@ -1681,7 +1694,7 @@
             creation-tx-data (g/make-nodes graph-id [resource-node-id [node-type :resource resource]]
                                (g/connect resource-node-id :_node-id project :nodes)
                                (g/connect resource-node-id :node-id+resource project :node-id+resources))
-            created-resource-node-id (first (g/tx-data-nodes-added creation-tx-data))
+            created-resource-node-id (first (g/tx-data-added-node-ids creation-tx-data))
             created-resource-nodes' (assoc (or created-resource-nodes {}) resource created-resource-node-id)
             tx-data-context-map' (assoc tx-data-context-map :created-resource-nodes created-resource-nodes')]
         [tx-data-context-map' created-resource-node-id creation-tx-data]))))
@@ -1746,12 +1759,11 @@
 
       {:node-id node-id
        :created-in-tx (nil? existing-resource-node-id)
-       :tx-data (vec
-                  (flatten
-                    (concat
-                      creation-tx-data
-                      load-tx-data
-                      (gu/connect-existing-outputs node-type node-id consumer-node connections))))})))
+       :tx-data (g/eager-tx-data
+                  (concat
+                    creation-tx-data
+                    load-tx-data
+                    (gu/connect-existing-outputs node-type node-id consumer-node connections)))})))
 
 (deftype ProjectResourceListener [project-id]
   resource/ResourceListener
@@ -1783,6 +1795,7 @@
                 (g/connect extensions :_node-id project :editor-extensions)
                 (g/connect script-intelligence :_node-id project :script-intelligence)
                 (g/connect workspace-id :build-settings project :build-settings)
+                (g/connect workspace-id :dependencies project :dependencies)
                 (g/connect workspace-id :resource-list project :resources)
                 (g/connect workspace-id :resource-map project :resource-map)
                 (g/set-graph-value graph :project-id project)

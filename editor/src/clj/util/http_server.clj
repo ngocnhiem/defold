@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -21,7 +21,8 @@
             [editor.future :as future]
             [editor.util :as util]
             [reitit.core :as reitit]
-            [service.log :as log])
+            [service.log :as log]
+            [util.path :as path])
   (:import [com.sun.net.httpserver Headers HttpHandler HttpServer]
            [java.io Closeable File IOException]
            [java.net InetSocketAddress URI URL]
@@ -217,7 +218,7 @@
     (format "http://%s:%d" (.getHostString address) (.getPort address))))
 
 (extend-protocol ConnectionContentLength
-  Path (connection-content-length [path] (fs/path-size path))
+  Path (connection-content-length [path] (path/byte-size path))
   Object (connection-content-length [_])
   nil (connection-content-length [_]))
 
@@ -248,6 +249,9 @@
   URI (->connection [uri] (->connection (.toURL uri)))
   Object (->connection [x] x)
   nil (->connection [x] x))
+
+(defn error [response]
+  (ex-info "HTTP server error" {::response response}))
 
 (defn start!
   "Start a generic HTTP server
@@ -314,8 +318,9 @@
                   (catch Throwable e (future/failed e)))
                 (future/catch
                   (fn [e]
-                    (error-reporting/report-exception! e)
-                    internal-server-error))
+                    (or (::response (ex-data e))
+                        (do (error-reporting/report-exception! e)
+                            internal-server-error))))
                 (future/then
                   (fn [response]
                     (future/io

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -149,7 +149,7 @@ protected:
 class ScriptBaseTest : public GamesysTest<const char*>
 {
 public:
-    void SetUp()
+    void SetUp() override
     {
         GamesysTest::SetUp();
 
@@ -384,7 +384,7 @@ struct ResourcePropParams {
 class ResourcePropTest : public GamesysTest<ResourcePropParams>
 {
 protected:
-    void SetUp()
+    void SetUp() override
     {
         GamesysTest::SetUp();
     }
@@ -563,6 +563,7 @@ void GamesysTest<T>::SetUp()
     m_Params.m_ConfigFile = m_Config;
     ExtensionParamsSetContext(&m_Params, "lua", dmScript::GetLuaState(m_ScriptContext));
     ExtensionParamsSetContext(&m_Params, "config", m_Config);
+    ExtensionParamsSetContext(&m_Params, "job_thread", m_JobThread);
 
     dmExtension::AppInitialize(&m_AppParams);
     dmExtension::Initialize(&m_Params);
@@ -704,6 +705,8 @@ void GamesysTest<T>::TearDown()
     SetupComponentCreateContext(component_create_ctx);
     dmGameObject::DestroyRegisteredComponentTypes(&component_create_ctx);
 
+    dmResource::DeregisterTypes(m_Factory, &m_Contexts);
+
     dmExtension::Finalize(&m_Params);
     dmExtension::AppFinalize(&m_AppParams);
 
@@ -713,6 +716,7 @@ void GamesysTest<T>::TearDown()
     dmGui::DeleteContext(m_GuiContext, m_ScriptContext);
     dmRender::DeleteRenderContext(m_RenderContext, m_ScriptContext);
     dmJobThread::Destroy(m_JobThread);
+    dmGraphics::CloseWindow(m_GraphicsContext);
     dmGraphics::DeleteContext(m_GraphicsContext);
     dmPlatform::CloseWindow(m_Window);
     dmPlatform::DeleteWindow(m_Window);

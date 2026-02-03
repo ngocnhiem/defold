@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -64,20 +64,20 @@
 
 (def ^:private form-sections
   {:navigation false
-   :sections [{:title "Render"
+   :sections [{:localization-key "render"
                :fields [{:path [:script]
                          :type :resource
                          :filter "render_script"
-                         :label "Script"}
+                         :localization-key "render.script"}
                         {:path [:named-render-resources]
                          :type :table
-                         :label "Render Resources"
+                         :localization-key "render.render-resources"
                          :columns [{:path [:name]
-                                    :label "Name"
+                                    :localization-key "render.render-resources.name"
                                     :type :string
                                     :default "New Render Resource"}
                                    {:path [:path]
-                                    :label "Render Resource"
+                                    :localization-key "render.render-resources.resource"
                                     :type :resource
                                     :filter ["material" "render_target" "compute"]
                                     :default nil}]}]}]})
@@ -193,5 +193,6 @@
     :sanitize-fn sanitize-render
     :icon "icons/32/Icons_30-Render.png"
     :icon-class :property
+    :category (localization/message "resource.category.project_settings")
     :view-types [:cljfx-form-view :text]
     :label (localization/message "resource.type.render")))

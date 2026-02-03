@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -122,10 +122,10 @@
 (def ^:private form-sections
   {:navigation false
    :sections
-   [{:title "Animation Set"
+   [{:localization-key "animationset"
      :fields [{:path [:animations]
                :type :list
-               :label "Animations"
+               :localization-key "animationset.animations"
                :element {:type :resource
                          :filter model-scene/animation-file-types
                          :default nil}}]}]})
@@ -187,6 +187,7 @@
     :ext "animationset"
     :icon animation-set-icon
     :icon-class :property
+    :category (localization/message "resource.category.resources")
     :label (localization/message "resource.type.animationset")
     :load-fn load-animation-set
     :sanitize-fn sanitize-animation-set

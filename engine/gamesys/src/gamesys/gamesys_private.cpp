@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -46,13 +46,21 @@ namespace dmGameSystem
             const char* path_name_receiver = dmHashReverseSafe64(receiver->m_Path);
             const char* fragment_name_receiver = dmHashReverseSafe64(receiver->m_Fragment);
 
-            n+= dmSnPrintf(buf + n, sizeof(buf) - n, " Message '%s' sent from %s:%s#%s to %s:%s#%s.",
+            int length = dmSnPrintf(buf + n, sizeof(buf) - n, " Message '%s' sent from %s:%s#%s to %s:%s#%s.",
                             id_str,
                             socket_name_sender, path_name_sender, fragment_name_sender,
                             socket_name_receiver, path_name_receiver, fragment_name_receiver);
+            if (length == -1)
+            {
+                n = sizeof(buf);
+            }
+            else
+            {
+                n += length;
+            }
         }
 
-        if (n >= (int) sizeof(buf) - 1) {
+        if (n > (int) sizeof(buf) - 1) {
             dmLogError("Buffer underflow when formatting message-error (LogMessageError)");
         }
 
@@ -396,7 +404,7 @@ namespace dmGameSystem
         }
     }
 
-    void FreeMaterialAttribute(DynamicAttributePool& pool, uint32_t dynamic_attribute_index)
+    void FreeMaterialAttribute(DynamicAttributePool& pool, uint16_t dynamic_attribute_index)
     {
         if (dynamic_attribute_index == INVALID_DYNAMIC_ATTRIBUTE_INDEX)
         {
@@ -469,7 +477,7 @@ namespace dmGameSystem
 
     dmGameObject::PropertyResult GetMaterialAttribute(
         DynamicAttributePool&            pool,
-        uint32_t                         dynamic_attribute_index,
+        uint16_t                         dynamic_attribute_index,
         dmRender::HMaterial              material,
         dmhash_t                         name_hash,
         dmGameObject::PropertyDesc&      out_desc,
@@ -521,13 +529,14 @@ namespace dmGameSystem
     }
 
     dmGameObject::PropertyResult SetMaterialAttribute(
-        DynamicAttributePool&            pool,
-        uint32_t*                        dynamic_attribute_index,
-        dmRender::HMaterial              material,
-        dmhash_t                         name_hash,
-        const dmGameObject::PropertyVar& var,
-        CompGetMaterialAttributeCallback callback,
-        void*                            callback_user_data)
+        DynamicAttributePool&               pool,
+        uint16_t*                           dynamic_attribute_index,
+        dmRender::HMaterial                 material,
+        dmhash_t                            name_hash,
+        const dmGameObject::PropertyVar&    var,
+        CompGetMaterialAttributeCallback    callback,
+        void*                               callback_user_data,
+        const dmGraphics::VertexAttribute** attribute_out)
     {
         if (var.m_Type != dmGameObject::PROPERTY_TYPE_NUMBER &&
             var.m_Type != dmGameObject::PROPERTY_TYPE_VECTOR3 &&
@@ -575,7 +584,7 @@ namespace dmGameSystem
             pool.Set(new_index, new_info);
 
             dynamic_info = &pool.Get(new_index);
-            *dynamic_attribute_index = new_index;
+            *dynamic_attribute_index = (uint16_t)new_index;
             needs_initial_copying = true;
         }
         else
@@ -630,6 +639,13 @@ namespace dmGameSystem
         else
         {
             memcpy(values, var.m_V4, sizeof(var.m_V4));
+        }
+
+        // Optional: We can opt-out of expensive code in some places if we know
+        //           which attribute it is that we are overriding.
+        if (attribute_out)
+        {
+            *attribute_out = info.m_Attribute;
         }
 
         return dmGameObject::PROPERTY_RESULT_OK;

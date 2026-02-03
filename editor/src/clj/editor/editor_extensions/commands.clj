@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,8 +18,10 @@
             [editor.editor-extensions.actions :as actions]
             [editor.editor-extensions.coerce :as coerce]
             [editor.editor-extensions.error-handling :as error-handling]
+            [editor.editor-extensions.localization :as ext.localization]
             [editor.editor-extensions.prefs-docs :as prefs-docs]
             [editor.editor-extensions.runtime :as rt]
+            [editor.editor-extensions.ui-docs :as ui-docs]
             [editor.future :as future]
             [editor.handler :as handler]
             [editor.lsp.async :as lsp.async]
@@ -62,10 +64,11 @@
                                             #(-> %
                                                  (g/node-value :resource evaluation-context)
                                                  resource/proj-path
-                                                 some?))
+                                                 some?)
+                                            evaluation-context)
                                           (node-ids->lua-selection q))
                                   (some-> selection
-                                          (handler/adapt-every resource/Resource)
+                                          (handler/adapt-every resource/Resource evaluation-context)
                                           (->> (into
                                                  []
                                                  (keep
@@ -80,17 +83,23 @@
 
 (defmethod gen-selection-query :outline [q acc _]
   (gen-query acc [env cont]
-             (when-let [res (some-> (:selection env)
-                                    (handler/adapt-every outline/OutlineNode)
-                                    (node-ids->lua-selection q))]
-               (cont assoc :selection res))))
+             (let [evaluation-context (or (:evaluation-context env) (g/make-evaluation-context))]
+               (when-let [res (some-> (:selection env)
+                                      (handler/adapt-every outline/OutlineNode evaluation-context)
+                                      (node-ids->lua-selection q))]
+                 (when-not (:evaluation-context env)
+                   (g/update-cache-from-evaluation-context! evaluation-context))
+                 (cont assoc :selection res)))))
 
 (defmethod gen-selection-query :scene [q acc _]
   (gen-query acc [env cont]
-             (when-let [res (some-> (:selection env)
-                                    (handler/adapt-every scene/SceneNode)
-                                    (node-ids->lua-selection q))]
-               (cont assoc :selection res))))
+             (let [evaluation-context (or (:evaluation-context env) (g/make-evaluation-context))]
+               (when-let [res (some-> (:selection env)
+                                      (handler/adapt-every scene/SceneNode evaluation-context)
+                                      (node-ids->lua-selection q))]
+                 (when-not (:evaluation-context env)
+                   (g/update-cache-from-evaluation-context! evaluation-context))
+                 (cont assoc :selection res)))))
 
 (defn- compile-query [q project]
   (reduce-kv
@@ -106,9 +115,9 @@
 
 (def ^:private command-definition-coercer
   (coerce/hash-map
-    :req {:label coerce/string
+    :req {:label ui-docs/string-or-message-pattern-coercer
           :locations (coerce/vector-of
-                       (coerce/enum "Assets" "Bundle" "Debug" "Edit" "Outline" "Project" "Scene" "View")
+                       (coerce/enum "Assets" "Bundle" "Debug" "Edit" "Outline" "Project" "Scene" "View" "Help")
                        :distinct true
                        :min-count 1)}
     :opt {:query (coerce/hash-map
@@ -146,7 +155,8 @@
                              "Outline" :outline
                              "Project" :global
                              "Scene" :global
-                             "View" :global})
+                             "View" :global
+                             "Help" :global})
                        locations)
         locations (into #{}
                         (map {"Assets" :editor.asset-browser/context-menu-end
@@ -156,7 +166,8 @@
                               "Outline" :editor.outline-view/context-menu-end
                               "Project" ::project/project-end
                               "Scene" :editor.scene-selection/context-menu-end
-                              "View" :editor.app-view/view-end})
+                              "View" :editor.app-view/view-end
+                              "Help" :editor.app-view/help-end})
                         locations)]
     (cond-> {:contexts contexts
              :label label

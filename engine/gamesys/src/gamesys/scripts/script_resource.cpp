@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,14 +18,15 @@
 #include <dlib/dstrings.h>
 #include <dlib/hash.h>
 #include <dlib/log.h>
+#include <font/text_layout.h>
+#include <gameobject/gameobject.h>
 #include <gamesys/mesh_ddf.h>
 #include <gamesys/texture_set_ddf.h>
 #include <graphics/graphics_ddf.h>
 #include <graphics/graphics.h>
-#include <render/font_renderer.h>
+#include <render/font/font_renderer.h>
 #include <resource/resource.h>
 #include <resource/resource_util.h>
-#include <gameobject/gameobject.h>
 
 #include "script_resource.h"
 #include "script_buffer.h"
@@ -683,6 +684,7 @@ static int CheckCreateTextureResourceParams(lua_State* L, CreateTextureResourceP
     params->m_Collection      = dmGameObject::GetCollection(sender_instance);
     params->m_UsageFlags      = usage_flags;
     params->m_Data            = 0;
+    params->m_DataSize        = 0;
     return 0;
 }
 
@@ -722,7 +724,7 @@ static void HandleRequestCompleted(dmGraphics::HTexture texture, void* user_data
 
     if (request->m_RawData)
     {
-        delete request->m_RawData;
+        delete[] request->m_RawData;
     }
     if (request->m_Buffer)
     {
@@ -1157,7 +1159,8 @@ static int CreateTextureAsync(lua_State* L)
 
     void* resource = 0x0;
     dmResource::Result res = dmResource::CreateResource(g_ResourceModule.m_Factory, create_params.m_Path, texture_resource_buffer.Begin(), texture_resource_buffer.Size(), &resource);
-    DestroyTextureImage(texture_image, create_params.m_Buffer == 0);
+
+    DestroyTextureImage(texture_image, create_texture_resource_params.m_Buffer == 0 && create_texture_resource_params.m_Data == 0);
 
     if (res != dmResource::RESULT_OK)
     {
@@ -1916,6 +1919,14 @@ static void MakeNumberArrayFromLuaTable(lua_State* L, const char* field, void** 
 
 static void DestroyTextureSet(dmGameSystemDDF::TextureSet& texture_set)
 {
+    for (uint32_t i = 0; i < texture_set.m_Geometries.m_Count; ++i)
+    {
+        dmGameSystemDDF::SpriteGeometry& geometry = texture_set.m_Geometries[i];
+        delete[] geometry.m_Vertices.m_Data;
+        delete[] geometry.m_Uvs.m_Data;
+        delete[] geometry.m_Indices.m_Data;
+    }
+
     delete[] texture_set.m_Animations.m_Data;
     delete[] texture_set.m_Geometries.m_Data;
     delete[] texture_set.m_FrameIndices.m_Data;
@@ -2553,6 +2564,8 @@ static int CreateAtlas(lua_State* L)
     dmArray<uint8_t> ddf_buffer;
     dmDDF::Result ddf_result = dmDDF::SaveMessageToArray(&texture_set_ddf, dmGameSystemDDF::TextureSet::m_DDFDescriptor, ddf_buffer);
     assert(ddf_result == dmDDF::RESULT_OK);
+
+    DestroyTextureSet(texture_set_ddf);
 
     void* resource = 0x0;
     dmResource::Result res = dmResource::CreateResource(g_ResourceModule.m_Factory, path_str, ddf_buffer.Begin(), ddf_buffer.Size(), &resource);
@@ -3208,6 +3221,8 @@ static int CreateBuffer(lua_State* L)
     // before overwriting the resource buffer we just created, we need to garbage collect it
     dmBuffer::Destroy(resource->m_Buffer);
 
+    if (resource->m_BufferDDF != 0x0)
+        dmDDF::FreeMessage(resource->m_BufferDDF);
     resource->m_BufferDDF = 0;
     resource->m_Buffer    = buffer;
     resource->m_Stride    = dmBuffer::GetStructSize(buffer);
@@ -3530,14 +3545,19 @@ static int GetTextMetrics(lua_State* L)
         line_break = CheckTableBoolean(L, table_index, "line_break", line_break);
     }
 
-    dmRender::TextMetricsSettings settings;
+    dmRender::HFontMap font_map = dmGameSystem::ResFontGetHandle(font);
+
+    TextLayoutSettings settings = {0};
     settings.m_Width = width;
     settings.m_LineBreak = line_break;
     settings.m_Leading = leading;
     settings.m_Tracking = tracking;
+    // legacy options for glyph bank fonts
+    settings.m_Monospace = dmRender::GetFontMapMonospaced(font_map);
+    settings.m_Padding = dmRender::GetFontMapPadding(font_map);
 
     dmRender::TextMetrics metrics;
-    dmRender::GetTextMetrics(dmGameSystem::ResFontGetHandle(font), text, &settings, &metrics);
+    dmRender::GetTextMetrics(font_map, text, &settings, &metrics);
     PushTextMetricsTable(L, &metrics);
     return 1;
 }

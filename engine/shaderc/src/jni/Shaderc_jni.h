@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -103,10 +103,16 @@ struct ShaderCompileResultJNI {
     jfieldID lastError;
     jfieldID mSLResourceMappings;
     jfieldID hLSLResourceMappings;
+    jfieldID hLSLRootSignature;
     jfieldID hLSLNumWorkGroupsId;
     jfieldID workGroupSizeX;
     jfieldID workGroupSizeY;
     jfieldID workGroupSizeZ;
+};
+struct HLSLRootSignatureJNI {
+    jclass cls;
+    jfieldID lastError;
+    jfieldID hLSLRootSignature;
 };
 struct TypeInfos {
     ShaderCompilerOptionsJNI m_ShaderCompilerOptionsJNI;
@@ -118,6 +124,7 @@ struct TypeInfos {
     HLSLResourceMappingJNI m_HLSLResourceMappingJNI;
     MSLResourceMappingJNI m_MSLResourceMappingJNI;
     ShaderCompileResultJNI m_ShaderCompileResultJNI;
+    HLSLRootSignatureJNI m_HLSLRootSignatureJNI;
 };
 void InitializeJNITypes(JNIEnv* env, TypeInfos* infos);
 void FinalizeJNITypes(JNIEnv* env, TypeInfos* infos);
@@ -146,6 +153,7 @@ jobject C2J_CreateShaderReflection(JNIEnv* env, TypeInfos* types, const ShaderRe
 jobject C2J_CreateHLSLResourceMapping(JNIEnv* env, TypeInfos* types, const HLSLResourceMapping* src);
 jobject C2J_CreateMSLResourceMapping(JNIEnv* env, TypeInfos* types, const MSLResourceMapping* src);
 jobject C2J_CreateShaderCompileResult(JNIEnv* env, TypeInfos* types, const ShaderCompileResult* src);
+jobject C2J_CreateHLSLRootSignature(JNIEnv* env, TypeInfos* types, const HLSLRootSignature* src);
 jobjectArray C2J_CreateShaderCompilerOptionsArray(JNIEnv* env, TypeInfos* types, const ShaderCompilerOptions* src, uint32_t src_count);
 jobjectArray C2J_CreateShaderCompilerOptionsPtrArray(JNIEnv* env, TypeInfos* types, const ShaderCompilerOptions* const* src, uint32_t src_count);
 jobjectArray C2J_CreateResourceTypeArray(JNIEnv* env, TypeInfos* types, const ResourceType* src, uint32_t src_count);
@@ -164,6 +172,8 @@ jobjectArray C2J_CreateMSLResourceMappingArray(JNIEnv* env, TypeInfos* types, co
 jobjectArray C2J_CreateMSLResourceMappingPtrArray(JNIEnv* env, TypeInfos* types, const MSLResourceMapping* const* src, uint32_t src_count);
 jobjectArray C2J_CreateShaderCompileResultArray(JNIEnv* env, TypeInfos* types, const ShaderCompileResult* src, uint32_t src_count);
 jobjectArray C2J_CreateShaderCompileResultPtrArray(JNIEnv* env, TypeInfos* types, const ShaderCompileResult* const* src, uint32_t src_count);
+jobjectArray C2J_CreateHLSLRootSignatureArray(JNIEnv* env, TypeInfos* types, const HLSLRootSignature* src, uint32_t src_count);
+jobjectArray C2J_CreateHLSLRootSignaturePtrArray(JNIEnv* env, TypeInfos* types, const HLSLRootSignature* const* src, uint32_t src_count);
 //----------------------------------------
 // From Jni to C
 //----------------------------------------
@@ -176,6 +186,7 @@ bool J2C_CreateShaderReflection(JNIEnv* env, TypeInfos* types, jobject obj, Shad
 bool J2C_CreateHLSLResourceMapping(JNIEnv* env, TypeInfos* types, jobject obj, HLSLResourceMapping* out);
 bool J2C_CreateMSLResourceMapping(JNIEnv* env, TypeInfos* types, jobject obj, MSLResourceMapping* out);
 bool J2C_CreateShaderCompileResult(JNIEnv* env, TypeInfos* types, jobject obj, ShaderCompileResult* out);
+bool J2C_CreateHLSLRootSignature(JNIEnv* env, TypeInfos* types, jobject obj, HLSLRootSignature* out);
 ShaderCompilerOptions* J2C_CreateShaderCompilerOptionsArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
 void J2C_CreateShaderCompilerOptionsArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, ShaderCompilerOptions* dst, uint32_t dst_count);
 ShaderCompilerOptions** J2C_CreateShaderCompilerOptionsPtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
@@ -212,5 +223,9 @@ ShaderCompileResult* J2C_CreateShaderCompileResultArray(JNIEnv* env, TypeInfos* 
 void J2C_CreateShaderCompileResultArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, ShaderCompileResult* dst, uint32_t dst_count);
 ShaderCompileResult** J2C_CreateShaderCompileResultPtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
 void J2C_CreateShaderCompileResultPtrArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, ShaderCompileResult** dst, uint32_t dst_count);
+HLSLRootSignature* J2C_CreateHLSLRootSignatureArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
+void J2C_CreateHLSLRootSignatureArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, HLSLRootSignature* dst, uint32_t dst_count);
+HLSLRootSignature** J2C_CreateHLSLRootSignaturePtrArray(JNIEnv* env, TypeInfos* types, jobjectArray arr, uint32_t* out_count);
+void J2C_CreateHLSLRootSignaturePtrArrayInPlace(JNIEnv* env, TypeInfos* types, jobjectArray arr, HLSLRootSignature** dst, uint32_t dst_count);
 } // jni
 } // dmShaderc
