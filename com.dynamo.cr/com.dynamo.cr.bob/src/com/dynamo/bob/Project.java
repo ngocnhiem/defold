@@ -1750,8 +1750,9 @@ public class Project {
             registerTextureCompressors();
         }
 
-        final String variant = option("variant", Bob.VARIANT_RELEASE);
-        ResourceUtil.enableMinification(variant.equals(Bob.VARIANT_RELEASE));
+        boolean experimental_path_minification = hasOption("experimental-path-minification");
+
+        ResourceUtil.enableMinification(experimental_path_minification);
         ResourceUtil.setBuildDirectory(buildDirectory);
         ResourceUtil.disableMinify(".luac");
         ResourceUtil.disableMinify(".scriptc");

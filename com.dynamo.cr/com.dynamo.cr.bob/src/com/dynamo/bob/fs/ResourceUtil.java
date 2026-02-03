@@ -147,16 +147,15 @@ public class ResourceUtil {
 
         // Normally I wouldn't put 65k files into the same folder, but here we are also
         // relying on the fact that the hash has a good distribution, and thus getting us an "equal" spread
-        // over the different buckets.
+        // over the different buckets. // MAWE
         int bucket0 = (int)((hash >> 0 ) & 0xFFFFL);
         int bucket1 = (int)((hash >> 16) & 0xFFFFL);
         int bucket2 = (int)((hash >> 32) & 0xFFFFL);
         int bucket3 = (int)((hash >> 48) & 0xFFFFL);
 
         String prefix = isBuildPath ? buildDirectory : "";
-        String minifiedPath = String.format("%s/%s/%s/%s/%s/%s%s", prefix,
-                Long.toHexString(bucket0), Long.toHexString(bucket1), Long.toHexString(bucket2), Long.toHexString(bucket3),
-                hex, suffix);
+        String minifiedPath = String.format("%s/%s/%s/%s/%s%s", prefix,
+                Long.toHexString(bucket0), Long.toHexString(bucket1), Long.toHexString(bucket2), Long.toHexString(bucket3), suffix);
 
         cachedPaths.put(path, minifiedPath);
         minifiedPaths.add(minifiedPath);
