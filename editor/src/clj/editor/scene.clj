@@ -1073,19 +1073,22 @@
        (g/set-property camera-node :local-camera end-camera)))
    nil))
 
-(def current-input (atom {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor {:x 0.0 :y 0.0} :cursor-pos {:x 0.0 :y 0.0}}))
+(def current-input (atom {:keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]}))
 
 (def ^:private camera-velocity (atom (Vector3d. 0.0 0.0 0.0)))
 (def ^:private acceleration 15.0)
 (def ^:private damping 8.0)
 (def ^:private camera-angular-velocity (atom (Quat4d. 0.0 0.0 0.0 1.0)))
 (def ^:private look-sensitivity 0.2)
+(def ^:private smoothed-look-delta (atom [0.0 0.0]))
+(def ^:private look-smoothing 0.25)
 
+(defn- update-camera-view! [image-view node-id dt])
 (defn- update-camera-view! [image-view node-id dt]
   (let [pressed-keys (:keys @current-input)
         is-secondary-button (contains? (:mouse-buttons @current-input) :secondary)
-        shift (contains? pressed-keys KeyCode/SHIFT)
-        alt (contains? pressed-keys KeyCode/ALT)
+        shift (contains? (:modifiers @current-input) :shift)
+        alt (contains? (:modifiers @current-input) :alt)
         speed (* camera-speed (cond shift 2.5 alt 0.35 :else 1.0))
         camera-node (view->camera node-id)
         current-camera (g/node-value camera-node :local-camera)
@@ -1094,14 +1097,24 @@
         up (c/camera-up-vector current-camera)
         target-dir (Vector3d. 0.0 0.0 0.0)
         {:keys [last-cursor cursor-pos]} @current-input
-        dx (- (first last-cursor) (first cursor-pos))
-        dy (- (second last-cursor) (second cursor-pos))
+        raw-dx (- (first last-cursor) (first cursor-pos))
+        raw-dy (- (second last-cursor) (second cursor-pos))
 
-        new-camera (if (and is-secondary-button (or (not= dx 0.0) (not= dy 0.0)))
+        [smooth-dx smooth-dy] (if is-secondary-button
+                                (let [[prev-dx prev-dy] @smoothed-look-delta
+                                      new-dx (+ prev-dx (* look-smoothing (- raw-dx prev-dx)))
+                                      new-dy (+ prev-dy (* look-smoothing (- raw-dy prev-dy)))]
+                                  (reset! smoothed-look-delta [new-dx new-dy])
+                                  [new-dx new-dy])
+                                (do
+                                  (reset! smoothed-look-delta [0.0 0.0])
+                                  [0.0 0.0]))
+
+        new-camera (if (and is-secondary-button (or (not= smooth-dx 0.0) (not= smooth-dy 0.0)))
                      (let [rate (* look-sensitivity dt)
                            current-rotation (Quat4d. (:rotation current-camera))
-                           q1 (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 (* dy rate))))
-                           q2 (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 (* dx rate))))
+                           q1 (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 (* smooth-dy rate))))
+                           q2 (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 (* smooth-dx rate))))
                            new-rotation (doto (Quat4d. q2) (.mul current-rotation) (.mul q1))]
                        (assoc current-camera :rotation new-rotation))
                      current-camera)]
@@ -1133,6 +1146,71 @@
         (when (not= final-camera current-camera)
           (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
           (set-camera! camera-node current-camera final-camera false))))))
+
+(defn augment-action [view action]
+  (let [x          (:x action)
+        y          (:y action)
+        screen-pos (Vector3d. x y 0)
+        camera     (g/node-value (view->camera view) :camera)
+        viewport   (g/node-value view :viewport)
+        world-pos  (Point3d. (screen->world camera viewport screen-pos))
+        world-dir  (doto (screen->world camera viewport (doto (Vector3d. screen-pos) (.setZ 1)))
+                         (.sub world-pos)
+                         (.normalize))]
+    (assoc action
+           :screen-pos screen-pos
+           :world-pos world-pos
+           :world-dir world-dir)))
+
+(defn register-event-handler-new! [^Parent parent view-id]
+  (let [process-events? (atom true)
+        event-handler (ui/event-handler e
+                        (when @process-events?
+                          (let [action (augment-action view-id (i/action-from-jfx e))
+                                x (:x action)
+                                y (:y action)
+                                pos [x y 0.0]]
+                            (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
+                            (swap! current-input assoc :cursor-pos [(:x action) (:y action)])
+                            (when (= :mouse-pressed (:type action))
+                              (swap! current-input update :mouse-buttons conj (:button action))
+                              (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                                         (filter action)
+                                                                         set))
+                              ;; Request focus and consume event to prevent someone else from stealing focus
+                              (.requestFocus parent)
+                              (.consume e))
+                            (when (= :mouse-released (:type action))
+                              (swap! current-input update :mouse-buttons disj (:button action))
+                              (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                                         (filter action)
+                                                                         set))))))]
+    (.setOnMousePressed parent event-handler)
+    (.setOnMouseReleased parent event-handler)
+    (.setOnMouseMoved parent event-handler)
+    (.setOnMouseDragged parent event-handler)
+    (.setOnKeyReleased parent
+      (ui/event-handler e
+        (when @process-events?
+          (let [code (.getCode e)
+                action (i/action-from-jfx e)]
+            (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                         (filter action)
+                                                         set))
+            (when (or (.isLetterKey code)
+                      (.isDigitKey code))
+              (swap! current-input update :keys disj code))))))
+    (.setOnKeyPressed parent
+      (ui/event-handler e
+        (when @process-events?
+          (let [code (.getCode e)
+                action (i/action-from-jfx e)]
+            (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
+                                                       (filter action)
+                                                       set))
+            (when (or (.isLetterKey code)
+                      (.isDigitKey code))
+              (swap! current-input update :keys conj code))))))))
 
 (defn refresh-scene-view! [node-id dt]
   (let [basis (g/now)
@@ -1180,21 +1258,6 @@
         (g/set-property node-id :drawable nil)
         (g/set-property node-id :picking-drawable nil)
         (g/set-property node-id :async-copy-state nil)))))
-
-(defn augment-action [view action]
-  (let [x          (:x action)
-        y          (:y action)
-        screen-pos (Vector3d. x y 0)
-        camera     (g/node-value (view->camera view) :camera)
-        viewport   (g/node-value view :viewport)
-        world-pos  (Point3d. (screen->world camera viewport screen-pos))
-        world-dir  (doto (screen->world camera viewport (doto (Vector3d. screen-pos) (.setZ 1)))
-                         (.sub world-pos)
-                         (.normalize))]
-    (assoc action
-           :screen-pos screen-pos
-           :world-pos world-pos
-           :world-dir world-dir)))
 
 (defn- active-scene-view
   ([app-view]
@@ -1655,56 +1718,6 @@
                   KeyCode/RIGHT (ui/run-command (.getSource event) :scene.move-right)
                   ::unhandled)))
     (.consume event)))
-
-(defn register-event-handler-new! [^Parent parent view-id]
-  (let [process-events? (atom true)
-        event-handler (ui/event-handler e
-                        (when @process-events?
-                          (let [action (augment-action view-id (i/action-from-jfx e))
-                                x (:x action)
-                                y (:y action)
-                                pos [x y 0.0]]
-                            (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
-                            (swap! current-input assoc :cursor-pos [(:x action) (:y action)])
-                            (when (= :mouse-pressed (:type action))
-                              (swap! current-input update :mouse-buttons conj (:button action))
-                              (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
-                                                                         (filter action)
-                                                                         set))
-                              ;; Request focus and consume event to prevent someone else from stealing focus
-                              (.requestFocus parent)
-                              (.consume e))
-                            (when (= :mouse-released (:type action))
-                              (swap! current-input update :mouse-buttons disj (:button action))
-                              (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
-                                                                         (filter action)
-                                                                         set))))))]
-    (.setOnMousePressed parent event-handler)
-    (.setOnMouseReleased parent event-handler)
-    (.setOnMouseMoved parent event-handler)
-    (.setOnMouseDragged parent event-handler)
-    (.setOnKeyReleased parent
-      (ui/event-handler e
-        (when @process-events?
-          (let [code (.getCode e)
-                action (i/action-from-jfx e)]
-            (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
-                                                         (filter action)
-                                                         set))
-            (when (or (.isLetterKey code)
-                      (.isDigitKey code))
-              (swap! current-input update :keys disj code))))))
-    (.setOnKeyPressed parent
-      (ui/event-handler e
-        (when @process-events?
-          (let [code (.getCode e)
-                action (i/action-from-jfx e)]
-            (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
-                                                       (filter action)
-                                                       set))
-            (when (or (.isLetterKey code)
-                      (.isDigitKey code))
-              (swap! current-input update :keys conj code))))))))
 
 (defn register-event-handler! [^Parent parent view-id]
   (let [process-events? (atom true)
