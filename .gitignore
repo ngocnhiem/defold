@@ -29,10 +29,13 @@ __pycache__
 *.apidoc_
 engine/.clang_complete
 /.vscode
+/.vs
 /.idea
 .npm
 /**/.project
 /**/.gradle
+*.eclipse.buildship.core.prefs
+*.classpath
 
 # When opening the folder through certain IDE's (e.g. VSCode)
 scripts/android-v4/.classpath
@@ -88,3 +91,4 @@ editor/.lsp/sqlite.db
 AGENTS.md
 /share/ext/astcenc/build/
 /share/ext/astcenc/source
+/engine/dlib/test_http_server.log

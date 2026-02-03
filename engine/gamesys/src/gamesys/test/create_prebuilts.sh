@@ -1,4 +1,4 @@
-# Copyright 2020-2025 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -56,3 +56,9 @@ cp build/default/model/pbr_properties_textured.modelc ../model/pbr_properties_te
 cp build/default/model/pbr_properties_textured.rigscenec ../model/pbr_properties_textured.prebuilt_rigscenec
 cp build/default/model/pbr_properties_textured.meshsetc ../model/pbr_properties_textured.prebuilt_meshsetc
 cp build/default/model/pbr_properties_textured.skeletonc ../model/pbr_properties_textured.prebuilt_skeletonc
+
+# Dynamic vertex attributes
+cp build/default/model/dynamic_vertex_attributes.modelc ../model/dynamic_vertex_attributes.prebuilt_modelc
+cp build/default/model/dynamic_vertex_attributes.rigscenec ../model/dynamic_vertex_attributes.prebuilt_rigscenec
+cp build/default/model/dynamic_vertex_attributes.meshsetc ../model/dynamic_vertex_attributes.prebuilt_meshsetc
+cp build/default/model/dynamic_vertex_attributes.skeletonc ../model/dynamic_vertex_attributes.prebuilt_skeletonc

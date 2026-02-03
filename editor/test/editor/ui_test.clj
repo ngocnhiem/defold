@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -57,9 +57,9 @@
 
 (defrecord TestSelectionProvider [selection]
   handler/SelectionProvider
-  (selection [this] selection)
-  (succeeding-selection [this] [])
-  (alt-selection [this] []))
+  (selection [_this _evaluation-context] selection)
+  (succeeding-selection [_this _evaluation-context] [])
+  (alt-selection [_this _evaluation-context] []))
 
 (defn- make-menu-items [scene menu-id command-context]
   (g/with-auto-evaluation-context evaluation-context

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -355,12 +355,7 @@ static dmExtension::Result ScriptFontFinalize(dmExtension::Params* params)
     return dmGameSystem::FontGenFinalize(params);
 }
 
-static dmExtension::Result ScriptFontUpdate(dmExtension::Params* params)
-{
-    return dmGameSystem::FontGenUpdate(params);
-}
-
-DM_DECLARE_EXTENSION(ScriptFont, "ScriptFont", 0, 0, ScriptFontInitialize, ScriptFontUpdate, 0, ScriptFontFinalize)
+DM_DECLARE_EXTENSION(ScriptFont, "ScriptFont", 0, 0, ScriptFontInitialize, 0, 0, ScriptFontFinalize)
 
 } // namespace
 

@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -130,10 +130,10 @@
                   (prefs/global prefs-path)
                   (doto (prefs/global) prefs/migrate-global-prefs!))
                 keymap/migrate-from-file!)
-        localization (localization/make-editor prefs)
+        localization (localization/make-editor prefs error-reporting/report-exception!)
         analytics-url (:analytics-url connection-properties)
         analytics-send-interval 300
-        cid (analytics/start! analytics-url analytics-send-interval)]
+        cid (analytics/start! analytics-url localization analytics-send-interval)]
     (Shutdown/addShutdownAction analytics/shutdown!)
     (error-reporting/setup-error-reporting! {:notifier {:notify-fn (partial notify-user localization)}
                                              :sentry (-> connection-properties

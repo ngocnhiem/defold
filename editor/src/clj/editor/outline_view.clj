@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -36,10 +36,10 @@
             [editor.ui :as ui]
             [internal.util :as util]
             [util.coll :as coll]
+            [util.defonce :as defonce]
             [util.eduction :as e])
-  (:import [com.defold.control OutlineTreeViewSkin TreeCell]
+  (:import [com.defold.control ExtendedTreeViewSkin TreeCell]
            [java.awt Toolkit]
-           [javafx.event Event]
            [javafx.geometry Orientation]
            [javafx.scene Node]
            [javafx.scene.control Label ScrollBar SelectionMode TextField ToggleButton TreeItem TreeView]
@@ -129,18 +129,16 @@
           (fn set-selected-node-id-paths [^TreeView tree-view [new-selected-node-id-paths _key]]
             (let [selection-model (.getSelectionModel tree-view)
                   old-selected-node-id-paths (coll/transfer (.getSelectedItems selection-model) #{}
-                                               (keep #(:node-id-path (.getValue ^TreeItem %))))]
+                                               (keep #(some-> % TreeItem/.getValue :node-id-path)))]
               (when-not (= old-selected-node-id-paths new-selected-node-id-paths)
                 (let [new-selected-indices (coll/transfer (range (.getExpandedItemCount tree-view)) []
                                              (filter #(contains? new-selected-node-id-paths (:node-id-path (.getValue (.getTreeItem tree-view %))))))]
                   (.clearSelection selection-model)
                   (when-not (coll/empty? new-selected-indices)
-                    (let [first-index (new-selected-indices 0)
-                          focus-model (.getFocusModel tree-view)]
+                    (let [first-index (new-selected-indices 0)]
                       (.selectIndices selection-model (peek new-selected-indices) (into-array Integer/TYPE (pop new-selected-indices)))
-                      (when (.shouldScrollTo ^OutlineTreeViewSkin (.getSkin tree-view) first-index)
-                        (.scrollTo tree-view first-index))
-                      (ui/run-later (.focus focus-model first-index)))))))))
+                      (ui/scroll-tree-view-to-encompass-selection! tree-view)
+                      (ui/run-later (.focus (.getFocusModel tree-view) first-index)))))))))
         fx.lifecycle/scalar))))
 
 ;; Iff every item-iterator has the same parent, return that parent, else nil
@@ -310,7 +308,7 @@
 
   (output tree-view TreeView :cached update-tree-view)
   (output tree-selection g/Any :cached (g/fnk [tree-view] (ui/selection tree-view)))
-  (output tree-selection-root-its g/Any :cached (g/fnk [tree-view] (vec (ui/selection-root-items tree-view (comp :node-id-path item->value) (comp :node-id item->value)))))
+  (output tree-selection-root-its g/Any :cached (g/fnk [tree-view] (ui/selection-root-items tree-view :node-id)))
   (output succeeding-tree-selection g/Any :cached (g/fnk [tree-view tree-selection-root-its]
                                                     (ui/succeeding-selection tree-view tree-selection-root-its)))
   (output alt-tree-selection g/Any :cached (g/fnk [tree-selection]
@@ -392,21 +390,29 @@
    (g/node-value outline-view :tree-selection-root-its evaluation-context)))
 
 (handler/defhandler :edit.delete :workbench
-  (active? [selection] (handler/selection->node-ids selection))
+  (active? [selection evaluation-context] (handler/selection->node-ids selection evaluation-context))
   (enabled? [selection outline-view evaluation-context]
             (and (< 0 (count selection))
                  (-> (root-iterators outline-view evaluation-context)
                    outline/delete?)))
   (run [app-view selection selection-provider outline-view]
-       (let [next (-> (handler/succeeding-selection selection-provider)
-                    handler/selection->node-ids)]
-         (g/transact
-           (concat
-             (g/operation-label (localization/message "operation.delete"))
-             (for [node-id (handler/selection->node-ids selection)]
-               (g/delete-node (g/override-root node-id)))
-             (when (seq next)
-               (app-view/select app-view next)))))))
+    (g/let-ec [basis (:basis evaluation-context)
+               old-selected-node-ids (handler/selection->node-ids selection evaluation-context)
+
+               deleted-node-ids
+               (coll/transfer old-selected-node-ids []
+                 (map #(g/override-root basis %))
+                 (distinct))
+
+               new-selected-node-ids
+               (-> (handler/succeeding-selection selection-provider evaluation-context)
+                   (handler/selection->node-ids evaluation-context))]
+      (g/transact
+        (concat
+          (g/operation-label (localization/message "operation.delete"))
+          (map g/delete-node deleted-node-ids)
+          (when (seq new-selected-node-ids)
+            (app-view/select app-view new-selected-node-ids)))))))
 
 (def data-format-fn (fn []
                       (let [json "application/json"]
@@ -414,7 +420,7 @@
                             (DataFormat. (into-array String [json]))))))
 
 (handler/defhandler :edit.copy :workbench
-  (active? [selection] (handler/selection->node-ids selection))
+  (active? [selection evaluation-context] (handler/selection->node-ids selection evaluation-context))
   (enabled? [selection] (< 0 (count selection)))
   (run [outline-view project]
        (let [root-its (root-iterators outline-view)
@@ -430,7 +436,7 @@
       (first item-iterators))))
 
 (handler/defhandler :edit.paste :workbench
-  (active? [selection] (handler/selection->node-ids selection))
+  (active? [selection evaluation-context] (handler/selection->node-ids selection evaluation-context))
   (enabled? [project selection outline-view evaluation-context]
             (let [cb (Clipboard/getSystemClipboard)
                   target-item-it (paste-target-it (root-iterators outline-view evaluation-context))
@@ -446,7 +452,7 @@
       (set-paste-parent! (root-iterators outline-view)))))
 
 (handler/defhandler :edit.cut :workbench
-  (active? [selection] (handler/selection->node-ids selection))
+  (active? [selection evaluation-context] (handler/selection->node-ids selection evaluation-context))
   (enabled? [selection outline-view evaluation-context]
             (let [item-iterators (root-iterators outline-view evaluation-context)]
               (and (< 0 (count item-iterators))
@@ -455,8 +461,9 @@
        (let [item-iterators (root-iterators outline-view)
              cb (Clipboard/getSystemClipboard)
              data-format (data-format-fn)
-             next (-> (handler/succeeding-selection selection-provider)
-                    handler/selection->node-ids)]
+             next (g/with-auto-evaluation-context evaluation-context
+                    (-> (handler/succeeding-selection selection-provider evaluation-context)
+                        (handler/selection->node-ids evaluation-context)))]
          (.setContent cb {data-format (outline/cut! project item-iterators (if next (app-view/select app-view next)))}))))
 
 (defn- drag-detected [project outline-view ^MouseEvent e]
@@ -476,33 +483,28 @@
       node
       (target (.getParent node)))))
 
+(defn- find-tree-cell-ancestor [^Node node]
+  (when node
+    (if (instance? TreeCell node)
+      node
+      (recur (.getParent node)))))
+
 (defn- drag-over [project outline-view ^DragEvent e]
-  (if (not (instance? TreeCell (.getTarget e)))
-    (when-let [parent (.getParent ^Node (.getTarget e))]
-      (Event/fireEvent parent (.copyFor e (.getSource e) parent)))
-    (let [^TreeCell cell (.getTarget e)]
-      ;; Auto scrolling
-      (let [view (.getTreeView cell)
-            view-y (.getY (.sceneToLocal view (.getSceneX e) (.getSceneY e)))
-            height (.getHeight (.getBoundsInLocal view))]
-        (when (< view-y 15)
-          (.scrollTo view (dec (.getIndex cell))))
-        (when (> view-y (- height 15))
-          (.scrollTo view (inc (.getIndex cell)))))
-      (let [db (.getDragboard e)]
-        (when (and (instance? TreeCell cell)
-                   (not (.isEmpty cell))
-                   (.hasContent db (data-format-fn)))
-          (let [item-iterators (if (ui/drag-internal? e)
-                                 (root-iterators outline-view)
-                                 [])]
-            (when (outline/drop? project item-iterators (.getTreeItem cell)
-                                 (.getContent db (data-format-fn)))
-              (let [modes (if (ui/drag-internal? e)
-                            [TransferMode/MOVE]
-                            [TransferMode/COPY])]
-                (.acceptTransferModes e (into-array TransferMode modes)))
-              (.consume e))))))))
+  (when-let [^TreeCell cell (find-tree-cell-ancestor (.getTarget e))]
+    (let [db (.getDragboard e)]
+      (when (and (instance? TreeCell cell)
+                 (not (.isEmpty cell))
+                 (.hasContent db (data-format-fn)))
+        (let [item-iterators (if (ui/drag-internal? e)
+                               (root-iterators outline-view)
+                               [])]
+          (when (outline/drop? project item-iterators (.getTreeItem cell)
+                               (.getContent db (data-format-fn)))
+            (let [modes (if (ui/drag-internal? e)
+                          [TransferMode/MOVE]
+                          [TransferMode/COPY])]
+              (.acceptTransferModes e (into-array TransferMode modes)))
+            (.consume e)))))))
 
 (defn- drag-dropped [project app-view outline-view ^DragEvent e]
   (let [^TreeCell cell (target (.getTarget e))
@@ -595,9 +597,8 @@
 
 (defn- cancel-rename!
   [^TreeView tree-view]
-  (when-let [future (ui/user-data tree-view ::future-rename)]
-    (ui/cancel future)
-    (ui/user-data! tree-view ::future-rename nil)))
+  (when (ui/user-data tree-view ::editing-id)
+    (set-editing-id! tree-view nil)))
 
 (defn- click-handler!
   [^TreeView tree-view ^Label text-label ^MouseEvent event]
@@ -614,14 +615,6 @@
         (do
           (cancel-rename! tree-view)
           (ui/run-command (.getSource event) :file.open-selected {} false (fn [] (.consume event))))
-
-        (= (get-selected-node-id tree-view)
-           (ui/user-data text-label ::node-id))
-        (let [future-rename (ui/->future (/ db-click-threshold 1000)
-                                         (fn []
-                                           (ui/user-data! tree-view ::future-rename nil)
-                                           (ui/run-command (.getSource event) :edit.rename)))]
-          (ui/user-data! tree-view ::future-rename future-rename))
 
         :else nil))))
 
@@ -741,14 +734,14 @@
       (.setOnDragEntered drag-entered-handler)
       (.setOnDragExited drag-exited-handler))))
 
-(defrecord SelectionProvider [outline-view]
+(defonce/record SelectionProvider [outline-view]
   handler/SelectionProvider
-  (selection [this]
-    (g/node-value outline-view :tree-selection))
-  (succeeding-selection [this]
-    (g/node-value outline-view :succeeding-tree-selection))
-  (alt-selection [this]
-    (g/node-value outline-view :alt-tree-selection)))
+  (selection [_this evaluation-context]
+    (g/node-value outline-view :tree-selection evaluation-context))
+  (succeeding-selection [_this evaluation-context]
+    (g/node-value outline-view :succeeding-tree-selection evaluation-context))
+  (alt-selection [_this evaluation-context]
+    (g/node-value outline-view :alt-tree-selection evaluation-context)))
 
 (defn key-pressed-handler!
   [app-view ^TreeView tree-view ^KeyEvent event]
@@ -776,7 +769,7 @@
   (let [drag-entered-handler (ui/event-handler e (drag-entered project outline-view e))
         drag-exited-handler (ui/event-handler e (drag-exited e))]
     (doto tree-view
-      (.setSkin (OutlineTreeViewSkin. tree-view))
+      (.setSkin (ExtendedTreeViewSkin. tree-view))
       (ui/customize-tree-view! {:double-click-expand? true})
       (.. getSelectionModel (setSelectionMode SelectionMode/MULTIPLE))
       (.setOnDragDetected (ui/event-handler e 
@@ -788,6 +781,7 @@
       (ui/register-context-menu ::outline-menu)
       (.addEventHandler ContextMenuEvent/CONTEXT_MENU_REQUESTED (ui/event-handler event (cancel-rename! tree-view)))
       (.addEventFilter KeyEvent/KEY_PRESSED (ui/event-handler event (key-pressed-handler! app-view tree-view event)))
+      (.addEventFilter DragEvent/DRAG_OVER (ui/event-handler e (ui/handle-tree-view-scroll-on-drag! tree-view e)))
       (ui/context! :outline {:outline-view outline-view} (SelectionProvider. outline-view) {} {java.lang.Long :node-id
                                                                                                resource/Resource :link}))))
 

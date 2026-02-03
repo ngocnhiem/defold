@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -379,8 +379,9 @@
 (defn- set-texture-binding-id [sampler-name _ node-id _ new]
   (create-texture-binding-tx node-id sampler-name new))
 
-(g/defnk produce-properties [_declared-properties _node-id default-animation material-attribute-infos material-max-page-count material-samplers material-shader texture-binding-infos vertex-attribute-overrides]
-  (let [extension (workspace/resource-kind-extensions (project/workspace (project/get-project _node-id)) :atlas)
+(g/defnk produce-properties [^:unsafe _evaluation-context _declared-properties _node-id default-animation material-attribute-infos material-max-page-count material-samplers material-shader resource texture-binding-infos vertex-attribute-overrides]
+  (let [workspace (resource/workspace resource)
+        extension (workspace/resource-kind-extensions workspace :atlas _evaluation-context)
         is-paged-material (and (shader/shader-lifecycle? material-shader)
                                (shader/is-using-array-samplers? material-shader))
         texture-binding-index (util/name-index texture-binding-infos :sampler)
@@ -492,10 +493,7 @@
     (reduce
       (fn [acc i]
         (let [start-texture-unit (-> (acc (dec i)) :gpu-texture :texture-units peek inc)]
-          (update-in acc [i :gpu-texture :texture-units]
-                     (fn [texture-units]
-                       (vec (range start-texture-unit
-                                   (+ start-texture-unit (count texture-units))))))))
+          (update-in acc [i :gpu-texture] texture/set-base-unit start-texture-unit)))
       infos
       (range 1 (count infos)))))
 
@@ -683,6 +681,7 @@
     :sanitize-fn sanitize-sprite
     :icon sprite-icon
     :icon-class :design
+    :category (localization/message "resource.category.components")
     :view-types [:scene :text]
     :tags #{:component}
     :tag-opts {:component {:transform-properties #{:position :rotation :scale}}}

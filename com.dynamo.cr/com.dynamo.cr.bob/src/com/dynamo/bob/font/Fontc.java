@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -308,9 +308,11 @@ public class Fontc {
                     characters.add((int) c);
                 }
             }
+
+            // remove duplicates AND sort (TreeSet is sorted)
+            Set<Integer> deDup = new TreeSet<Integer>(characters);
+            characters = new ArrayList<Integer>(deDup);
         }
-        Set<Integer> deDup = new TreeSet<Integer>(characters);
-        characters = new ArrayList<Integer>(deDup);
 
         if (fontDesc.getOutlineWidth() > 0.0f) {
             outlineStroke = new BasicStroke(fontDesc.getOutlineWidth() * 2.0f);

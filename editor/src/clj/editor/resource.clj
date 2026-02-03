@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -25,6 +25,7 @@
             [util.digest :as digest]
             [util.fn :as fn]
             [util.http-server :as http-server]
+            [util.path :as path]
             [util.text-util :as text-util])
   (:import [clojure.lang PersistentHashMap]
            [com.defold.editor Editor]
@@ -263,7 +264,7 @@
   Resource
   (children [this] children)
   (ext [this] ext)
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] source-type)
   (exists? [this]
     (try
@@ -310,11 +311,14 @@
   io/Coercions
   (as-file [this] (File. abs-path))
 
+  path/Coercions
+  (as-path [_this] (path/as-path abs-path))
+
   http-server/ContentType
   (content-type [resource] (content-type resource))
 
   http-server/->Data
-  (->data [_] (fs/path abs-path)))
+  (->data [_] (path/as-path abs-path)))
 
 (defn make-file-resource [workspace ^String root-path ^File file children editable-proj-path? unloaded-proj-path?]
   {:pre [(g/node-id? workspace)
@@ -362,7 +366,7 @@
   Resource
   (children [this] nil)
   (ext [this] ext)
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] :file)
   (exists? [this] true)
   (read-only? [this] false)
@@ -416,7 +420,7 @@
   Resource
   (children [this] children)
   (ext [this] (FilenameUtils/getExtension name))
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] (if (zero? (count children)) :file :folder))
   (exists? [this] (not (nil? zip-entry)))
   (read-only? [this] true)
@@ -442,6 +446,9 @@
 
   io/Coercions
   (as-file [this] (io/as-file zip-uri))
+
+  path/Coercions
+  (as-path [_this] (path/as-path zip-uri))
 
   http-server/ContentType
   (content-type [resource] (content-type resource))
@@ -605,6 +612,17 @@
       (.write digest-output-stream (.getBytes proj-path "UTF-8")))
     (.flush digest-output-stream)
     (digest/completed-stream->hex digest-output-stream)))
+
+(defn resource->path-inclusive-sha1
+  "Returns SHA-1 digest as bytes."
+  ^bytes [resource]
+  (with-open [input-stream (io/input-stream resource)
+              digest-output-stream (digest/make-digest-output-stream "SHA-1")]
+    (io/copy input-stream digest-output-stream)
+    (when-some [^String proj-path (proj-path resource)]
+      (.write digest-output-stream (.getBytes proj-path "UTF-8")))
+    (.flush digest-output-stream)
+    (.digest (.getMessageDigest digest-output-stream))))
 
 (defn read-source-value+sha256-hex
   "Returns a pair of [read-fn-result, disk-sha256-or-nil]. If the resource is a
