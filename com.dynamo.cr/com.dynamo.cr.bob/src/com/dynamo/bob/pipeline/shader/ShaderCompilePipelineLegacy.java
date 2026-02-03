@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -253,7 +253,8 @@ public class ShaderCompilePipelineLegacy extends ShaderCompilePipeline {
             result.data = compileResult.getBytes();
             return result;
         } else if(shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_51 ||
-                  shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_50) {
+                  shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_50 ||
+                  shaderLanguage == ShaderDesc.Language.LANGUAGE_MSL_22) {
             Shaderc.ShaderCompileResult result = this.generateCrossCompiledShader(shaderType, shaderLanguage, this.ShaderLanguageToVersion(shaderLanguage));
             if (result.data == null) {
                 throw new CompileExceptionError("Cannot cross-compile shader of type: " + shaderType + ", to language: " + shaderLanguage + ", reason: " + result.lastError);

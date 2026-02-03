@@ -1,4 +1,4 @@
-# Copyright 2020-2025 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -70,7 +70,7 @@ if 'waf_dynamo_vendor' not in sys.modules:
 
 
 def is_platform_private(platform):
-    return platform in ['arm64-nx64', 'x86_64-ps4', 'x86_64-ps5']
+    return platform in ['arm64-nx64', 'x86_64-ps4', 'x86_64-ps5', 'x86_64-xbone']
 
 def platform_supports_feature(platform, feature, data):
     if is_platform_private(platform):
@@ -165,6 +165,10 @@ def platform_graphics_libs_and_symbols(platform):
         graphics_libs = ['GRAPHICS']
         graphics_lib_symbols = ['GraphicsAdapterPS5']
 
+    if platform in ['x86_64-xbone']:
+        graphics_lib = 'GRAPHICS'
+        graphics_lib_symbols = ['GraphicsAdapterDX12']
+
     return graphics_libs, graphics_lib_symbols
 
 # Note that some of these version numbers are also present in build.py (TODO: put in a waf_versions.py or similar)
@@ -249,7 +253,7 @@ def apidoc_extract_task(bld, src):
     def _parse_source(source_path):
         resource = bld.path.find_resource(source_path)
         if not resource:
-            sys.exit("Couldn't find resource: %s" % s)
+            sys.exit("Couldn't find resource: %s" % resource)
             return
 
         elements = {}
@@ -424,17 +428,19 @@ def default_flags(self):
     target_os = build_util.get_target_os()
     target_arch = build_util.get_target_architecture()
 
+    use_cl_exe = target_os in [TargetOS.WINDOWS, TargetOS.XBONE]
+
     opt_level = Options.options.opt_level
     if opt_level == "2" and TargetOS.WEB == target_os:
         opt_level = "3" # emscripten highest opt level
-    elif opt_level == "0" and TargetOS.WINDOWS in target_os:
+    elif opt_level == "0" and use_cl_exe:
         opt_level = "d" # how to disable optimizations in windows
 
     # For nicer output (i.e. in CI logs), and still get some performance, let's default to -O1
     if (Options.options.with_asan or Options.options.with_ubsan or Options.options.with_tsan) and opt_level != '0':
         opt_level = 1
 
-    FLAG_ST = '/%s' if TargetOS.WINDOWS == target_os else '-%s'
+    FLAG_ST = '/%s' if use_cl_exe else '-%s'
 
     # Common for all platforms
     flags = []
@@ -454,18 +460,18 @@ def default_flags(self):
         flags += [self.env.DEFINES_ST % 'NDEBUG']
 
     for f in ['CFLAGS', 'CXXFLAGS', 'LINKFLAGS']:
+        if use_cl_exe and f == 'LINKFLAGS':
+            continue # There is no such option for link.exe
         self.env.append_value(f, [FLAG_ST % ('O%s' % opt_level)])
 
     if Options.options.show_includes:
-        if TargetOS.WINDOWS == target_os:
+        if use_cl_exe:
             flags += ['/showIncludes']
         else:
             flags += ['-H']
 
     for f in ['CFLAGS', 'CXXFLAGS']:
         self.env.append_value(f, flags)
-
-    use_cl_exe = build_util.get_target_platform() in ['win32', 'x86_64-win32']
 
     if not use_cl_exe:
         self.env.append_value('CXXFLAGS', ['-std=c++11']) # Due to Basis library
@@ -623,13 +629,17 @@ def default_flags(self):
         emflags_compile = zip(['-s'] * len(emflags_compile), emflags_compile)
         emflags_compile =[j for i in emflags_compile for j in i]
 
+        initial_memory = 'INITIAL_MEMORY=33554432'
+        if Options.options.with_asan and target_arch == 'wasm':
+            initial_memory = 'INITIAL_MEMORY=67108864'
+
         emflags_link = [
             'DISABLE_EXCEPTION_CATCHING=1',
             'ALLOW_UNIMPLEMENTED_SYSCALLS=0',
             'EXPORTED_RUNTIME_METHODS=["ccall","UTF8ToString","callMain","HEAPU8","stringToNewUTF8"]',
             'EXPORTED_FUNCTIONS=_main,_malloc,_free',
             'ERROR_ON_UNDEFINED_SYMBOLS=1',
-            'INITIAL_MEMORY=33554432',
+            initial_memory,
             'MAX_WEBGL_VERSION=2',
             'GL_SUPPORT_AUTOMATIC_ENABLE_EXTENSIONS=0',
             'IMPORTED_MEMORY=1',
@@ -669,6 +679,8 @@ def default_flags(self):
             emflags_link += ['PTHREAD_POOL_SIZE=1']
 
         if 'wasm' == target_arch:
+            if Options.options.with_ubsan:
+                emflags_link += ['ASSERTIONS=1']
             emflags_link += ['WASM=1', 'ALLOW_MEMORY_GROWTH=1']
             if int(opt_level) < 2:
                 flags += ['-gseparate-dwarf', '-gsource-map']
@@ -764,7 +776,7 @@ def web_exported_functions(self):
 
     for name in ('CFLAGS', 'CXXFLAGS', 'LINKFLAGS'):
         arr = self.env[name]
-        if use_crash and name in 'LINKFLAGS':
+        if use_crash and name == 'LINKFLAGS':
             for i, v in enumerate(arr):
                 if v.startswith('EXPORTED_FUNCTIONS'):
                     arr[i] = v + ",_JSWriteDump,_dmExportedSymbols"
@@ -808,8 +820,10 @@ def asan_cxxflags(self):
     if getattr(self, 'skip_asan', False):
         return
     build_util = create_build_utility(self.env)
+    target_os = build_util.get_target_os()
+    target_arch = build_util.get_target_architecture()
     if Options.options.with_asan:
-        if build_util.get_target_os() in ('macos','ios','android','ps4','ps5'):
+        if target_os in ('linux','macos','ios','android','ps4','ps5') or ('wasm' in target_arch):
             self.env.append_value('CXXFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('CFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('LINKFLAGS', ['-fsanitize=address', '-fno-omit-frame-pointer', '-fsanitize-address-use-after-scope'])
@@ -817,11 +831,12 @@ def asan_cxxflags(self):
             self.env.append_value('CXXFLAGS', ['/fsanitize=address', '-D_DISABLE_VECTOR_ANNOTATION', '-DDM_SANITIZE_ADDRESS'])
             self.env.append_value('CFLAGS', ['/fsanitize=address', '-D_DISABLE_VECTOR_ANNOTATION', '-DDM_SANITIZE_ADDRESS'])
             # not a linker option
-    elif Options.options.with_ubsan and build_util.get_target_os() in ('macos','ios','android','ps4','ps5','nx64'):
-        self.env.append_value('CXXFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
-        self.env.append_value('CFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
-        self.env.append_value('LINKFLAGS', ['-fsanitize=undefined'])
-    elif Options.options.with_tsan and build_util.get_target_os() in ('macos','ios','android','ps4','ps5'):
+    elif Options.options.with_ubsan:
+        if target_os in ('linux','macos','ios','android','ps4','ps5','nx64') or ('wasm' in target_arch):
+            self.env.append_value('CXXFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
+            self.env.append_value('CFLAGS', ['-fsanitize=undefined', '-DDM_SANITIZE_UNDEFINED'])
+            self.env.append_value('LINKFLAGS', ['-fsanitize=undefined'])
+    elif Options.options.with_tsan and build_util.get_target_os() in ('linux','macos','ios','android','ps4','ps5'):
         self.env.append_value('CXXFLAGS', ['-fsanitize=thread', '-DDM_SANITIZE_THREAD'])
         self.env.append_value('CFLAGS', ['-fsanitize=thread', '-DDM_SANITIZE_THREAD'])
         self.env.append_value('LINKFLAGS', ['-fsanitize=thread'])
@@ -1730,7 +1745,8 @@ def detect(conf):
     if Options.options.with_valgrind:
         conf.find_program('valgrind', var='VALGRIND', mandatory = False)
 
-    conf.find_program('ccache', var='CCACHE', mandatory = False)
+    if not Options.options.disable_ccache:
+        conf.find_program('ccache', var='CCACHE', mandatory = False)
 
     if Options.options.with_iwyu:
         conf.find_program('include-what-you-use', var='IWYU', mandatory = False)
@@ -1764,6 +1780,8 @@ def detect(conf):
 
     dynamo_home = build_util.get_dynamo_home()
     conf.env['DYNAMO_HOME'] = dynamo_home
+
+    conf.find_program('protoc', var='PROTOC', mandatory = True, path_list = [os.path.join(dynamo_home, "ext", "bin", host_platform)])
 
     # these may be the same if we're building the host tools
     sdkinfo = sdk.get_sdk_info(SDK_ROOT, build_util.get_target_platform())
@@ -1912,36 +1930,38 @@ def detect(conf):
 
     platform_setup_tools(conf, build_util)
 
-    # jg: this whole thing is a 'dirty hack' to be able to pick up our own SDKs
-    if TargetOS.WINDOWS == target_os:
-        includes = sdkinfo['includes']['path']
-        libdirs = sdkinfo['lib_paths']['path']
-        bindirs = sdkinfo['bin_paths']['path']
+    if not is_platform_private(platform):
+        # jg: this whole thing is a 'dirty hack' to be able to pick up our own SDKs
+        if TargetOS.WINDOWS == target_os:
+            includes = sdkinfo['includes']['path']
+            libdirs = sdkinfo['lib_paths']['path']
+            bindirs = sdkinfo['bin_paths']['path']
 
-        bindirs.append(build_util.get_binary_path())
-        bindirs.append(build_util.get_dynamo_ext('bin', build_util.get_target_platform()))
+            bindirs.append(build_util.get_binary_path())
+            bindirs.append(build_util.get_dynamo_ext('bin', build_util.get_target_platform()))
 
-        # The JDK dir doesn't get added since we use no_autodetect
-        bindirs.append(os.path.join(os.getenv('JAVA_HOME'), 'bin'))
+            # The JDK dir doesn't get added since we use no_autodetect
+            bindirs.append(os.path.join(os.getenv('JAVA_HOME'), 'bin'))
 
-        # there's no lib prefix anymore so we need to set our our lib dir first so we don't
-        # pick up the wrong hid.lib from the windows sdk
-        libdirs.insert(0, build_util.get_dynamo_home('lib', build_util.get_target_platform()))
-        if build_util.get_target_platform() == 'win32':
-            libdirs.insert(1, build_util.get_dynamo_home('lib', 'x86-win32'))
+            # there's no lib prefix anymore so we need to set our our lib dir first so we don't
+            # pick up the wrong hid.lib from the windows sdk
+            libdirs.insert(0, build_util.get_dynamo_home('lib', build_util.get_target_platform()))
+            if build_util.get_target_platform() == 'win32':
+                libdirs.insert(1, build_util.get_dynamo_home('lib', 'x86-win32'))
 
-        conf.env['PATH']     = bindirs + sys.path + conf.env['PATH']
-        conf.env['INCLUDES'] = includes
-        conf.env['LIBPATH']  = libdirs
-        conf.load('msvc', funs='no_autodetect')
+            conf.env['PATH']     = bindirs + sys.path + conf.env['PATH']
+            conf.env['INCLUDES'] = includes
+            conf.env['LIBPATH']  = libdirs
+            conf.load('msvc', funs='no_autodetect')
 
-        if not Options.options.skip_codesign:
-            conf.find_program('signtool', var='SIGNTOOL', mandatory = True, path_list = bindirs)
-    else:
-        conf.options.check_c_compiler = 'clang gcc'
-        conf.options.check_cxx_compiler = 'clang++ g++'
-        conf.load('compiler_c')
-        conf.load('compiler_cxx')
+            if not Options.options.skip_codesign:
+                conf.find_program('signtool', var='SIGNTOOL', mandatory = True, path_list = bindirs)
+        else:
+            conf.options.check_c_compiler = 'clang gcc'
+            conf.options.check_cxx_compiler = 'clang++ g++'
+
+            conf.load('compiler_c')
+            conf.load('compiler_cxx')
 
     # Since we're using an old waf version, we remove unused arguments
     remove_flag(conf.env['shlib_CFLAGS'], '-compatibility_version', 1)
@@ -2113,6 +2133,7 @@ def detect(conf):
     conf.env['STLIB_GRAPHICS_NULL']     = ['graphics_null', 'graphics_transcoder_null']
 
     conf.env['STLIB_FONT']            = ['font']
+    conf.env['STLIB_FONT_LAYOUT']     = ['font_skribidi', 'harfbuzz', 'sheenbidi', 'unibreak', 'skribidi']
 
     if platform_glfw_version(platform) == 3:
         conf.env['STLIB_DMGLFW'] = 'glfw3'

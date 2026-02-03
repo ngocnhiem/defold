@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -16,6 +16,7 @@
   (:require [dynamo.graph :as g]
             [editor.build-target :as bt]
             [editor.graph-util :as gu]
+            [editor.localization :as localization]
             [editor.protobuf :as protobuf]
             [editor.protobuf-forms-util :as protobuf-forms-util]
             [editor.resource :as resource]
@@ -27,10 +28,11 @@
 (set! *warn-on-reflection* true)
 
 (def pb-def {:ext "display_profiles"
-             :label "Display Profiles"
+             :label (localization/message "resource.type.display-profiles")
              :view-types [:cljfx-form-view :text]
              :icon "icons/32/Icons_50-Display-profiles.png"
              :icon-class :property
+             :category (localization/message "resource.category.project_settings")
              :pb-class Render$DisplayProfiles})
 
 (def ^:private comma-separated-string->non-empty-vector
@@ -77,12 +79,12 @@
 (g/defnk produce-form-data-desc [_node-id]
   {:navigation false
    :sections
-   [{:title "Display Profiles"
+   [{:localization-key "display-profiles"
      :fields [{:path [:auto-layout-selection]
-               :label "Auto Layout Selection"
+               :localization-key "display-profiles.auto-layout-selection"
                :type :boolean}
               {:path [:profiles]
-               :label "Profile"
+               :localization-key "display-profiles.profile"
                :type :2panel
                :panel-key {:path [:name] :type :string :default "New Display Profile"}
                :on-add #(add-profile! _node-id "New Display Profile" [])
@@ -90,16 +92,16 @@
                :set (fn [v path val] (g/set-property! (:node-id v) (first path) val))
                :panel-form {:sections
                             [{:fields [{:path [:qualifiers]
-                                        :label "Qualifiers"
+                                        :localization-key "display-profiles.profile.qualifiers"
                                         :type :table
                                         :columns [{:path [:width]
-                                                   :label "Width"
+                                                   :localization-key "display-profiles.profile.qualifiers.width"
                                                    :type :integer}
                                                   {:path [:height]
-                                                   :label "Height"
+                                                   :localization-key "display-profiles.profile.qualifiers.height"
                                                    :type :integer}
                                                   {:path [:device-models]
-                                                   :label "Device Models"
+                                                   :localization-key "display-profiles.profile.qualifiers.device-models"
                                                    :type :string}]}]}]}}]}]})
 
 (g/defnk produce-form-data [_node-id form-data-desc form-values]
@@ -170,4 +172,5 @@
     :load-fn load-display-profiles
     :icon (:icon pb-def)
     :icon-class (:icon-class pb-def)
+    :category (localization/message "resource.category.project_settings")
     :view-types (:view-types pb-def)))

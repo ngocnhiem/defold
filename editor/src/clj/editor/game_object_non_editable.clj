@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -381,7 +381,7 @@
     (resource-node/register-ddf-resource-type workspace
       :editable false
       :ext "go"
-      :label "Non-Editable Game Object"
+      :label (localization/message "resource.type.go.non-editable")
       :node-type NonEditableGameObjectNode
       :ddf-type GameObject$PrototypeDesc
       :dependencies-fn (game-object-common/make-game-object-dependencies-fn #(workspace/get-resource-type-map workspace :non-editable))

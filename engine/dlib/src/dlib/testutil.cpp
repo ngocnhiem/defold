@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -53,8 +53,8 @@ const char* GetIpFromConfig(dmConfigFile::HConfig config, char* ip, uint32_t ipl
         return 0;
     }
 
-    uint32_t nwritten = dmSnPrintf(ip, iplen, "%s", _ip);
-    if (nwritten >= iplen)
+    int nwritten = dmSnPrintf(ip, iplen, "%s", _ip);
+    if (nwritten == -1)
         return 0;
     return ip;
 }

@@ -1,4 +1,4 @@
-import os
+import os, sys
 import waflib.Task, waflib.TaskGen
 from waflib.TaskGen import extension, extension
 from waf_dynamo import new_copy_task
@@ -13,7 +13,7 @@ def create_simple_protoc_task(name, ext, compiled_ext, type, before, shell = Tru
         out = node.change_ext(compiled_ext)
         task.set_outputs(out)
 
-    cmd = 'protoc --encode=%s -I ../src/test -I ${DYNAMO_HOME}/share/proto ../src/test/test_resource_ddf.proto < ${SRC} > ${TGT}' % type
+    cmd = '${PROTOC} --encode=%s -I ../src/test -I ${DYNAMO_HOME}/share/proto ../src/test/test_resource_ddf.proto < ${SRC} > ${TGT}' % type
     waflib.Task.task_factory(name, cmd, before=before, shell=shell, color=color)
     extension(ext)(create)
 
@@ -36,7 +36,6 @@ def add_to_zip_file(task):
             src = name + ext
             dst = os.path.relpath(src, cwd)
             zipf.write(src, dst)
-
 
 def build(bld):
     resources = bld(source = ['test.cont_pb', 'test_ref.cont_pb', 'empty.script'])
@@ -108,7 +107,9 @@ def build(bld):
 
     bld.add_group()
 
-    defines = ['DM_TEST_HTTP_SUPPORTED']
+    defines = []
+    if not ('GITHUB_CI' in bld.env.DEFINES and sys.platform == 'darwin'):
+        defines = ['DM_TEST_HTTP_SUPPORTED']
     if bld.env.PLATFORM in ['arm64-nx64']:
         defines = []
 
@@ -192,7 +193,7 @@ def build(bld):
 
     bld.program(features     = 'cxx embed test',
                 includes     = '.. ../../proto',
-                use          = 'TESTMAIN DDF DLIB PROFILE_NULL SOCKET THREAD LUA resource',
+                use          = 'TESTMAIN DDF DLIB PROFILE_NULL SOCKET THREAD LUA APP resource',
                 proto_gen_py = True,
                 target       = 'test_resource_archive',
                 source       = 'test_resource_archive.cpp',
@@ -200,7 +201,7 @@ def build(bld):
 
     bld.program(features     = 'cxx test',
                 includes     = '.. ../../proto',
-                use          = 'TESTMAIN DDF DLIB PROFILE_NULL SOCKET THREAD LUA resource',
+                use          = 'TESTMAIN DDF DLIB PROFILE_NULL SOCKET THREAD LUA APP resource',
                 exported_symbols = ['ResourceProviderFile', 'ResourceProviderZip', 'ResourceProviderArchive'],
                 target       = 'test_resource_mounts',
                 source       = 'test_resource_mounts.cpp',
@@ -209,7 +210,7 @@ def build(bld):
     bld.program(features     = ['cxx', 'embed', 'test'] + skip_http_test,
                 includes     = '.. ../../proto',
                 defines      = defines,
-                use          = 'TESTMAIN DDF DLIB PROFILE_NULL SOCKET THREAD LUA resource',
+                use          = 'TESTMAIN DDF DLIB PROFILE_NULL SOCKET THREAD LUA APP resource',
                 web_libs     = ['library_sys.js'],
                 proto_gen_py = True,
                 exported_symbols = ['ResourceProviderFile', 'ResourceProviderHttp', 'ResourceProviderArchive'],

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
 import com.dynamo.bob.Bob;
 import com.dynamo.bob.Platform;
@@ -95,6 +96,7 @@ public class ShaderCompilePipeline {
             case LANGUAGE_GLSL_SM430 -> 430;
             case LANGUAGE_HLSL_50    -> 50;
             case LANGUAGE_HLSL_51    -> 51;
+            case LANGUAGE_MSL_22     -> 22;
             default -> 0;
         };
     }
@@ -119,7 +121,8 @@ public class ShaderCompilePipeline {
         return ShaderLanguageIsGLSL(shaderLanguage) ||
                shaderLanguage == ShaderDesc.Language.LANGUAGE_WGSL ||
                shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_50 ||
-               shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_51;
+               shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_51 ||
+               shaderLanguage == ShaderDesc.Language.LANGUAGE_MSL_22;
     }
 
     private static byte[] RemapTextureSamplers(ArrayList<Shaderc.ShaderResource> textures, String source) {
@@ -227,6 +230,8 @@ public class ShaderCompilePipeline {
         if (shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_51 ||
             shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_50) {
             compiler = ShadercJni.NewShaderCompiler(module.spirvContext, Shaderc.ShaderLanguage.SHADER_LANGUAGE_HLSL.getValue());
+        } else if (shaderLanguage == ShaderDesc.Language.LANGUAGE_MSL_22) {
+            compiler = ShadercJni.NewShaderCompiler(module.spirvContext, Shaderc.ShaderLanguage.SHADER_LANGUAGE_MSL.getValue());
         } else {
             compiler = ShadercJni.NewShaderCompiler(module.spirvContext, Shaderc.ShaderLanguage.SHADER_LANGUAGE_GLSL.getValue());
         }
@@ -488,6 +493,13 @@ public class ShaderCompilePipeline {
         }
 
         throw new CompileExceptionError("Cannot crosscompile to shader language: " + shaderLanguage);
+    }
+
+    public Shaderc.HLSLRootSignature createRootSignature(ShaderDesc.Language shaderLanguage, List<Shaderc.ShaderCompileResult> shaders) {
+        assert(shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_51);
+        Shaderc.ShaderCompileResult[] shaders_array = shaders.toArray(new Shaderc.ShaderCompileResult[0]);
+        Shaderc.HLSLRootSignature result = ShadercJni.HLSLMergeRootSignatures(shaders_array);
+        return result;
     }
 
     public SPIRVReflector getReflectionData(ShaderDesc.ShaderType shaderStage) {

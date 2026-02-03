@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -193,7 +193,7 @@
          (keyword? ui-handler)
          (map? user-data)]}
   @(fx/on-fx-thread
-     (let [command-contexts (ui/node-contexts ui-node true)]
+     (g/let-ec [command-contexts (ui/node-contexts ui-node true evaluation-context)]
        (ui/resolve-handler-ctx command-contexts ui-handler user-data))))
 
 (defn router [ui-node render-reload-progress!]
@@ -219,7 +219,8 @@
                                  (future/complete! result-future http-server/internal-server-error))))]
                        (assert (g/node-id? changes-view))
                        (assert (g/node-id? workspace))
-                       (log/info :msg "Processing request" :command command)
+                       (when-not (Boolean/getBoolean "defold.tests")
+                         (log/info :msg "Processing request" :command command))
                        (if-not resource-sync
                          (ui/run-later (execute-command!))
                          (disk/async-reload!

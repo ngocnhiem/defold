@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,6 +18,7 @@
             [editor.code.resource :as r]
             [editor.code.script :as script]
             [editor.editor-extensions.runtime :as rt]
+            [editor.localization :as localization]
             [editor.lua :as lua]
             [editor.resource :as resource]))
 
@@ -40,8 +41,9 @@
   (r/register-code-resource-type workspace
                                  :ext "editor_script"
                                  :language "lua"
-                                 :label "Editor Script"
+                                 :label (localization/message "resource.type.editor-script")
                                  :icon "icons/32/Icons_29-AT-Unknown.png"
+                                 :category (localization/message "resource.category.editor")
                                  :view-types [:code :default]
                                  :view-opts script/lua-code-opts
                                  :node-type EditorScript

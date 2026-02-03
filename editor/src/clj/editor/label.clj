@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -438,7 +438,7 @@
 
 (defn register-resource-types [workspace]
   (resource-node/register-ddf-resource-type workspace
-    :label "Label"
+    :label (localization/message "resource.type.label")
     :ext "label"
     :node-type LabelNode
     :ddf-type Label$LabelDesc
@@ -446,6 +446,7 @@
     :sanitize-fn sanitize-label
     :icon label-icon
     :icon-class :design
+    :category (localization/message "resource.category.components")
     :view-types [:scene :text]
     :tags #{:component}
     :tag-opts {:component {:transform-properties #{:position :rotation :scale}

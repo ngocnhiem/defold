@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -420,7 +420,7 @@
         (is (= nil (g/node-value sink :loud)))))))
 
 (defn- successors [node-id label]
-  (get-in @g/*the-system* [:graphs (g/node-id->graph-id node-id) :successors node-id label]))
+  (g/successors (g/now) node-id label))
 
 (defn- sarcs [node-id label]
   (get-in @g/*the-system* [:graphs (g/node-id->graph-id node-id) :sarcs node-id label]))

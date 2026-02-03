@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -33,17 +33,16 @@
             [editor.resource :as resource]
             [editor.resource-node :as resource-node]
             [editor.rig :as rig]
+            [editor.texture-util :as texture-util]
             [editor.validation :as validation]
             [editor.workspace :as workspace]
             [internal.util :as util]
             [schema.core :as s]
-            [util.coll :as coll])
+            [util.coll :as coll :refer [pair]])
   (:import [com.dynamo.gamesys.proto ModelProto$Material ModelProto$Model ModelProto$ModelDesc ModelProto$Texture]
            [editor.gl.shader ShaderLifecycle]))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private model-resource-type-label "Model")
 
 (def ^:private model-icon "icons/32/Icons_22-Model.png")
 
@@ -148,16 +147,19 @@
   (let [sampler-name->gpu-texture-generator (into {}
                                                   (keep (fn [{:keys [sampler gpu-texture-generator]}]
                                                           (when gpu-texture-generator
-                                                            [sampler gpu-texture-generator])))
+                                                            (pair sampler gpu-texture-generator))))
                                                   texture-binding-infos)
         explicit-textures (into {}
                                 (keep-indexed
                                   (fn [unit-index {:keys [name] :as sampler}]
-                                    (when-let [{tex-fn :f tex-args :args} (sampler-name->gpu-texture-generator name)]
-                                      (let [request-id [_node-id unit-index]
-                                            params (material/sampler->tex-params sampler)
-                                            texture (tex-fn tex-args request-id params unit-index)]
-                                        [name texture]))))
+                                    (when-let [gpu-texture-generator (sampler-name->gpu-texture-generator name)]
+                                      (let [gpu-texture (texture-util/generate-gpu-texture gpu-texture-generator)]
+                                        (pair name
+                                              (-> (if (g/error-value? gpu-texture)
+                                                    @texture/placeholder
+                                                    gpu-texture)
+                                                  (texture/set-params (material/sampler->tex-params sampler))
+                                                  (texture/set-base-unit unit-index)))))))
                                 samplers)
         fallback-texture (if (pos? (count explicit-textures))
                            (val (first explicit-textures))
@@ -170,7 +172,7 @@
 
 (g/defnk produce-scene [_node-id scene material-name->material-scene-info]
   (if scene
-    (model-scene/augment-scene scene _node-id model-resource-type-label material-name->material-scene-info)
+    (model-scene/augment-scene scene _node-id "model" material-name->material-scene-info)
     {:aabb geom/empty-bounding-box
      :renderable {:passes [pass/selection]}}))
 
@@ -304,6 +306,7 @@
     (source-type [_])
     (exists? [_] false)
     (read-only? [_] true)
+    (symlink? [_] false)
     (path [_] "")
     (abs-path [_] "")
     (proj-path [_] "")
@@ -344,7 +347,7 @@
                                                           :error (or
                                                                    (when should-be-deleted
                                                                      (g/->error material-binding-node-id :materials :warning material
-                                                                                (format "'%s' is not defined in the mesh. Clear the field to delete it."
+                                                                                (format "'%s' is not defined in the mesh. Use the \"Clear Override\" command from the label's context menu to remove the property."
                                                                                         name)))
                                                                    (prop-resource-error :fatal material-binding-node-id :materials material "Material"))
                                                           :prop-kw :material
@@ -370,7 +373,7 @@
                                                                                      :prop-kw :texture
                                                                                      :error (when texture-binding-should-be-deleted
                                                                                               (g/->error _node-id :texture :warning texture
-                                                                                                         (format "'%s' is not defined in the material. Clear the field to delete it."
+                                                                                                         (format "'%s' is not defined in the material. Use the \"Clear Override\" command from the label's context menu to remove the property."
                                                                                                                  sampler)))
                                                                                      :edit-type {:type resource/Resource
                                                                                                  :ext supported-image-exts
@@ -583,13 +586,14 @@
 (defn register-resource-types [workspace]
   (resource-node/register-ddf-resource-type workspace
     :ext "model"
-    :label model-resource-type-label
+    :label (localization/message "resource.type.model")
     :node-type ModelNode
     :ddf-type ModelProto$ModelDesc
     :load-fn load-model
     :sanitize-fn sanitize-model
     :icon model-icon
     :icon-class :design
+    :category (localization/message "resource.category.components")
     :view-types [:scene :text]
     :tags #{:component}
     :tag-opts {:component {:transform-properties #{:position :rotation}}}))

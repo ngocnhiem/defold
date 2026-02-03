@@ -12,13 +12,13 @@ def build(bld):
     copy_file_task(bld, proto_plugin_src, 'copy_plugin.proto')
     copy_file_task(bld, proto_plugin_pb2_src)
 
-    bld(rule   = 'protoc --python_out=. -I . -I %s ${SRC}' % (proto_include_path),
+    bld(rule   = '${PROTOC} --python_out=. -I . -I %s ${SRC}' % (proto_include_path),
         source = 'plugin.proto',
         after  = 'copy_plugin.proto',
         shell  = True)
 
     ddf_ext = bld(
-         rule   = 'protoc --python_out=${TGT[0].parent.bld_dir()} --cpp_out=${TGT[0].parent.bld_dir()} -I ${SRC[0].parent.bld_dir()} -I ${SRC[0].bld_dir()} -I %s ${SRC}' % (proto_include_path),
+         rule   = '${PROTOC} --python_out=${TGT[0].parent.bld_dir()} --cpp_out=${TGT[0].parent.bld_dir()} -I ${SRC[0].parent.bld_dir()} -I ${SRC[0].bld_dir()} -I %s ${SRC}' % (proto_include_path),
          source = 'ddf_extensions.proto',
          target = 'ddf_extensions_pb2.py',
          shell = True)
@@ -36,10 +36,10 @@ def build(bld):
                       ddf_ext.path.find_or_declare('plugin_pb2.py'))
 
     bld.add_group()
-  
+
     bld.stlib(features = 'cxx ddf',
         includes = '../.. ..',
-        source = 'ddf_extensions.proto ddf_math.proto ddf.cpp ddf_load.cpp ddf_save.cpp ddf_inputbuffer.cpp ddf_util.cpp ddf_message.cpp ddf_loadcontext.cpp ddf_outputstream.cpp',
+        source = 'ddf_extensions.proto ddf_math.proto ddf_struct.proto ddf.cpp ddf_load.cpp ddf_save.cpp ddf_inputbuffer.cpp ddf_util.cpp ddf_message.cpp ddf_loadcontext.cpp ddf_outputstream.cpp',
         proto_gen_cc = True,
         proto_compile_cc = True,
         proto_gen_py = True,
@@ -50,7 +50,7 @@ def build(bld):
 
     bld.stlib(features = 'cxx ddf skip_asan',
         includes = '../.. ..',
-        source = 'ddf_extensions.proto ddf_math.proto ddf.cpp ddf_load.cpp ddf_save.cpp ddf_inputbuffer.cpp ddf_util.cpp ddf_message.cpp ddf_loadcontext.cpp ddf_outputstream.cpp',
+        source = 'ddf_extensions.proto ddf_math.proto ddf_struct.proto ddf.cpp ddf_load.cpp ddf_save.cpp ddf_inputbuffer.cpp ddf_util.cpp ddf_message.cpp ddf_loadcontext.cpp ddf_outputstream.cpp',
         proto_compile_cc = True,
         protoc_includes = '..',
         target = 'ddf_noasan')

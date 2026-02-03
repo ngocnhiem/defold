@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -11,9 +11,6 @@
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
-
-
-#include <string>
 
 #include <dlib/log.h>
 
@@ -76,6 +73,23 @@ namespace dmPlatform
     uint32_t GetWindowHeight(HWindow window)
     {
         return window->m_WindowHeight;
+    }
+
+    bool GetSafeArea(HWindow window, SafeArea* out)
+    {
+        const uint32_t width = GetWindowWidth(window);
+        const uint32_t height = GetWindowHeight(window);
+
+        out->m_X = 0;
+        out->m_Y = 0;
+        out->m_Width = width;
+        out->m_Height = height;
+        out->m_InsetLeft = 0;
+        out->m_InsetTop = 0;
+        out->m_InsetRight = 0;
+        out->m_InsetBottom = 0;
+
+        return true;
     }
 
     uint32_t GetWindowStateParam(HWindow window, WindowState state)

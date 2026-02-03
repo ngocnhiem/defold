@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -163,6 +163,7 @@ namespace dmGameObject
         "init",
         "final",
         "update",
+        "late_update",
         "fixed_update",
         "on_message",
         "on_input",
@@ -631,15 +632,18 @@ namespace dmGameObject
         }
 
         dmGameObject::PropertyOptions property_options;
-        property_options.m_Index = 0;
-        property_options.m_HasKey = 0;
+        dmGameObject::PropertyOption option = {};
+
         bool index_requested = false;
 
         // Options table
         if (lua_gettop(L) > 2)
         {
-            dmGameObject::LuaToPropertyOptions(L, 3, &property_options, property_id, &index_requested);
+            dmGameObject::LuaToPropertyOption(L, 3, &option, &index_requested);
         }
+
+        AddPropertyOption(&property_options, option);
+
         dmGameObject::PropertyDesc property_desc;
         dmGameObject::PropertyResult result = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, property_options, property_desc);
 
@@ -659,7 +663,7 @@ namespace dmGameObject
             // Get the rest of the array elements and check each result individually
             for (int i = 1; i < property_desc.m_ArrayLength; ++i)
             {
-                property_options.m_Index = i;
+                SetPropertyOptionsByIndex(&property_options, 0, i);
                 result                   = dmGameObject::GetProperty(target_instance, target.m_Fragment, property_id, property_options, property_desc);
                 handle_go_get_result     = CheckGetPropertyResult(L, "go", result, property_desc, property_id, target, property_options, index_requested);
                 if (handle_go_get_result != 1)
@@ -763,15 +767,19 @@ namespace dmGameObject
             return luaL_error(L, "could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
         }
 
-        dmGameObject::PropertyOptions property_options = {};
+        dmGameObject::PropertyOptions property_options;
+        dmGameObject::PropertyOption option = {};
+
         if (lua_gettop(L) > 3)
         {
-            int options_result = LuaToPropertyOptions(L, 4, &property_options, property_id, 0);
+            int options_result = LuaToPropertyOption(L, 4, &option, 0);
             if (options_result != 0)
             {
                 return options_result;
             }
         }
+
+        AddPropertyOption(&property_options, option);
 
         if (lua_istable(L, 3))
         {
@@ -794,7 +802,7 @@ namespace dmGameObject
                 dmGameObject::PropertyVar property_var;
                 dmGameObject::PropertyResult result = dmGameObject::LuaToVar(L, -1, property_var);
 
-                property_options.m_Index = table_index_lua - 1;
+                SetPropertyOptionsByIndex(&property_options, 0, table_index_lua - 1);
 
                 if (result == PROPERTY_RESULT_OK)
                 {
@@ -1786,8 +1794,6 @@ namespace dmGameObject
             return luaL_error(L, "Could not find any instance with id '%s'.", dmHashReverseSafe64Alloc(&hash_ctx, target.m_Path));
 
         dmGameObject::PropertyOptions opt;
-        opt.m_Index = 0;
-
         dmGameObject::PropertyResult res = dmGameObject::CancelAnimations(collection, target_instance, target.m_Fragment, property_id);
 
         switch (res)
@@ -2788,6 +2794,17 @@ bail:
      * physics (enabled by ticking 'Use Fixed Timestep' in the Physics section of game.project).
      *
      * @name fixed_update
+     * @param self [type:userdata] reference to the script state to be used for storing data
+     * @param dt [type:number] the time-step of the frame update
+     * @examples
+     */
+
+    /*# called at the end of the frame for a final update of the script component
+     *
+     * This is a callback-function, which is called by the engine at the end of the frame to update the state of a script
+     * component. Use it to make final adjustments to the game object instance.
+     *
+     * @name late_update
      * @param self [type:userdata] reference to the script state to be used for storing data
      * @param dt [type:number] the time-step of the frame update
      * @examples

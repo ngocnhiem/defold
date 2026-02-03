@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -14,11 +14,11 @@
 
 (ns editor.scene-cache
   (:require [clojure.core.cache :as cache]
+            [editor.graphics.types :as graphics.types]
             [editor.volatile-cache :as volatile-cache]
             [internal.util :as util]
             [util.coll :as coll :refer [pair]]
-            [util.thread-util :as thread-util])
-  (:import [clojure.lang IHashEq]))
+            [util.thread-util :as thread-util]))
 
 (set! *warn-on-reflection* true)
 (set! *unchecked-math* :warn-on-boxed)
@@ -26,14 +26,6 @@
 ;; Map of cache-id->cache-meta maps, where (:cache cache-meta) is a nested map
 ;; of context -> request-id -> [cached-object request-data].
 (defonce ^:private object-caches-atom (atom {}))
-
-(defn valid-request-id? [value]
-  ;; TODO(instancing): A good request-id should implement efficient hashing.
-  ;; Enable stricter check and fix call sites in all extensions.
-  #_ (or (number? value)
-         (keyword? value)
-         (instance? IHashEq value))
-  (any? value))
 
 (defn- make-deletion [destroyed-object+request-data-pairs destroy-batch-fn]
   {:pre [(ifn? destroy-batch-fn)]}
@@ -68,7 +60,7 @@
 (defn- clear-caches-by-context [caches-by-context destroy-batch-fn]
   (if (coll/empty? caches-by-context)
     caches-by-context
-    (coll/transfer caches-by-context (empty caches-by-context)
+    (coll/into-> caches-by-context (empty caches-by-context)
       (map (fn [[context cached-object+request-data-by-request-id :as entry]]
              (if (coll/empty? cached-object+request-data-by-request-id)
                entry
@@ -79,7 +71,7 @@
   (update cache-meta :caches clear-caches-by-context (:destroy-batch-fn cache-meta)))
 
 (defn- clear-object-caches [object-caches]
-  (coll/transfer object-caches (empty object-caches)
+  (coll/into-> object-caches (empty object-caches)
     (map (fn [[cache-id cache-meta]]
            (pair cache-id
                  (clear-cache-meta cache-meta))))))
@@ -151,8 +143,7 @@
   nil)
 
 (defn request-object! [cache-id request-id context request-data]
-  {:pre [(valid-request-id? request-id)]}
-  ;; TODO(instancing): Should we change the argument order?
+  {:pre [(graphics.types/request-id? request-id)]}
   (let [cache-meta (get @object-caches-atom cache-id)]
     (if (nil? cache-meta)
       (throw (ex-info (str "Unknown scene cache id: " cache-id)
@@ -163,7 +154,6 @@
       (if-some [[old-object old-request-data]
                 (some-> (get-in cache-meta [:caches context])
                         (cache/lookup request-id))]
-        ; TODO(instancing): Potentially expensive comparison. Can we do better?
         (if (= old-request-data request-data)
           (do
             (swap!

@@ -16,6 +16,13 @@ def build(bld):
         sources = bld.path.ant_glob(platform_source)
 
         if not sources:
+            target_os = build_util.get_target_os()
+            if target_os in ['xbone']:
+                target_os = 'xbox'
+            platform_source = ['%s/platform_window_%s.cpp' % (target_os, target_os)]
+            sources = bld.path.ant_glob(platform_source)
+
+        if not sources:
             print("Source doesn't exist for private platform:", platform_source)
             print("Fallback to null implementation")
             sources = bld.path.ant_glob(['platform_window_null.cpp'])
@@ -34,7 +41,7 @@ def build(bld):
             glfw3_source_vulkan = ['platform_window_glfw3_vulkan.cpp']
 
             if bld.env.PLATFORM in ('x86_64-macos', 'arm64-macos'):
-                glfw_source += ['platform_window_glfw3_osx.cpp']
+                glfw_source += ['platform_window_glfw3_osx.mm']
             elif bld.env.PLATFORM in ('x86_64-win32', 'win32'):
                 glfw_source += ['platform_window_glfw3_win32.cpp']
             elif bld.env.PLATFORM in ['x86_64-linux', 'arm64-linux']:
@@ -43,7 +50,7 @@ def build(bld):
             if bld.env.PLATFORM in ('armv7-android', 'arm64-android'):
                 glfw_source += ['platform_window_glfw_android.cpp']
             elif bld.env.PLATFORM in ('x86_64-ios', 'arm64-ios'):
-                glfw_source += ['platform_window_glfw_ios.cpp']
+                glfw_source += ['platform_window_glfw_ios.mm']
 
         lib = bld.stlib(features = 'cxx c ddf',
                         includes = '.',

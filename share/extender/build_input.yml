@@ -277,15 +277,15 @@ platforms:
 
   osx:
     env:
-        PATH:                   "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_16_VERSION}}.xctoolchain/usr/bin:{{env.PATH}}"
+        PATH:                   "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/bin:{{env.PATH}}"
         PLATFORMSDK_DIR:        "{{env.PLATFORMSDK_DIR}}"
         MANIFEST_MERGE_TOOL:    "{{env.MANIFEST_MERGE_TOOL}}"
-        XCODE_VERSION:          "{{env.XCODE_16_VERSION}}"
-        XCODE_CLANG_VERSION:    "{{env.XCODE_16_CLANG_VERSION}}"
-        MACOS_VERSION:          "{{env.MACOS_15_VERSION}}"
+        XCODE_VERSION:          "{{env.XCODE_VERSION}}"
+        XCODE_CLANG_VERSION:    "{{env.XCODE_26_CLANG_VERSION}}"
+        MACOS_VERSION:          "{{env.MACOS_VERSION}}"
         MACOS_VERSION_MIN:      "{{env.MACOS_VERSION_MIN}}"
-        SWIFT_VERSION:          "{{env.SWIFT_5_5_VERSION}}"
-        SYSROOT:                "{{env.PLATFORMSDK_DIR}}/MacOSX{{env.MACOS_15_VERSION}}.sdk"
+        SWIFT_VERSION:          "{{env.SWIFT_6_2_VERSION}}"
+        SYSROOT:                "{{env.PLATFORMSDK_DIR}}/MacOSX{{env.MACOS_VERSION}}.sdk"
     context:
         frameworks:     ["Foundation", "AppKit", "Cocoa", "Metal", "IOSurface", "OpenAL", "IOKit", "Carbon", "CoreVideo", "QuartzCore", "AVFoundation"]
         engineLibs:     ["engine", "engine_service", "mbedtls", "zip", "profile", "profilerext", "profiler_remotery", "record", "gameobject", "ddf", "font", "resource", "gamesys", "gamesys_model", "gamesys_rig", "script_box2d_defold", "MoltenVK", "graphics_vulkan", "graphics_transcoder_basisu", "basis_transcoder", "physics", "BulletDynamics", "BulletCollision", "platform_vulkan", "LinearMath", "box2d_defold", "render", "render_font_default", "script", "luajit-5.1", "extension", "hid", "input", "particle", "rig", "dlib", "image", "glfw3", "gui", "crashext", "sound", "tremolo", "vpx", "liveupdate", "decoder_wav", "decoder_ogg"]
@@ -351,13 +351,13 @@ platforms:
 
   ios:
     env:
-        PATH:                   "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_16_VERSION}}.xctoolchain/usr/bin:{{env.PATH}}"
+        PATH:                   "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/bin:{{env.PATH}}"
         PLATFORMSDK_DIR:        "{{env.PLATFORMSDK_DIR}}"
         MANIFEST_MERGE_TOOL:    "{{env.MANIFEST_MERGE_TOOL}}"
-        XCODE_VERSION:          "{{env.XCODE_16_VERSION}}"
-        XCODE_CLANG_VERSION:    "{{env.XCODE_16_CLANG_VERSION}}"
-        SWIFT_VERSION:          "{{env.SWIFT_5_5_VERSION}}"
-        IOS_VERSION:            "{{env.IOS_18_VERSION}}"
+        XCODE_VERSION:          "{{env.XCODE_VERSION}}"
+        XCODE_CLANG_VERSION:    "{{env.XCODE_26_CLANG_VERSION}}"
+        SWIFT_VERSION:          "{{env.SWIFT_6_2_VERSION}}"
+        IOS_VERSION:            "{{env.IOS_VERSION}}"
         IOS_VERSION_MIN:        "{{env.IOS_VERSION_MIN}}"
 
     context:
@@ -393,7 +393,7 @@ platforms:
 
   arm64-ios:
     env:
-        SYSROOT:    "{{env.PLATFORMSDK_DIR}}/iPhoneOS{{env.IOS_18_VERSION}}.sdk"
+        SYSROOT:    "{{env.PLATFORMSDK_DIR}}/iPhoneOS{{env.IOS_VERSION}}.sdk"
     context:
         libPaths:   ["{{dynamo_home}}/lib/arm64-ios", "{{dynamo_home}}/ext/lib/arm64-ios", "{{env.SYSROOT}}/usr/lib", "{{env.SYSROOT}}/usr/lib/swift", "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/lib/swift-{{env.SWIFT_VERSION}}/iphoneos", "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/lib/swift/iphoneos", "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/lib/clang/{{env.XCODE_CLANG_VERSION}}/lib/darwin"]
         defines:    ["DM_PLATFORM_IOS"]
@@ -410,7 +410,7 @@ platforms:
 
   x86_64-ios:
     env:
-        SYSROOT:                "{{env.PLATFORMSDK_DIR}}/iPhoneSimulator{{env.IOS_18_VERSION}}.sdk"
+        SYSROOT:                "{{env.PLATFORMSDK_DIR}}/iPhoneSimulator{{env.IOS_VERSION}}.sdk"
     context:
         libPaths:   ["{{dynamo_home}}/lib/x86_64-ios", "{{dynamo_home}}/ext/lib/x86_64-ios", "{{env.SYSROOT}}/usr/lib", "{{env.SYSROOT}}/usr/lib/swift", "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/lib/swift-{{env.SWIFT_VERSION}}/iphonesimulator", "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/lib/swift/iphonesimulator", "{{env.PLATFORMSDK_DIR}}/XcodeDefault{{env.XCODE_VERSION}}.xctoolchain/usr/lib/clang/{{env.XCODE_CLANG_VERSION}}/lib/darwin"]
         defines:    ["IOS_SIMULATOR", "DM_PLATFORM_IOS", "LUA_BYTECODE_ENABLE_32"]
@@ -426,15 +426,15 @@ platforms:
   android:
     env:
         PROGUARD:                 "{{env.ANDROID_PROGUARD}}"
-        LIBRARYJAR:               "{{env.ANDROID_LIBRARYJAR_35}}"
-        NDK_PATH:                 "{{env.ANDROID_NDK25_PATH}}"
-        SYSROOT:                  "{{env.ANDROID_NDK25_SYSROOT}}"
+        LIBRARYJAR:               "{{env.ANDROID_LIBRARYJAR}}"
+        NDK_PATH:                 "{{env.ANDROID_NDK_PATH}}"
+        SYSROOT:                  "{{env.ANDROID_NDK_SYSROOT}}"
         MANIFEST_MERGE_TOOL:      "{{env.MANIFEST_MERGE_TOOL}}"
         PATH:                     "{{env.PATH}}"
-        NDK_LD:                   "{{env.ANDROID_NDK25_BIN_PATH}}/ld.lld"
-        NDK_AR:                   "{{env.ANDROID_NDK25_BIN_PATH}}/llvm-ar"
-        ANDROID_SDK_VERSION:      "{{env.ANDROID_SDK_VERSION_35}}"
-        ANDROID_BUILD_TOOLS_PATH: "{{env.ANDROID_SDK_BUILD_TOOLS_PATH_35}}"
+        NDK_LD:                   "{{env.ANDROID_NDK_BIN_PATH}}/ld.lld"
+        NDK_AR:                   "{{env.ANDROID_NDK_BIN_PATH}}/llvm-ar"
+        ANDROID_SDK_VERSION:      "{{env.ANDROID_SDK_VERSION}}"
+        ANDROID_BUILD_TOOLS_PATH: "{{env.ANDROID_SDK_BUILD_TOOLS_PATH}}"
     context:
         engineJars: ["{{dynamo_home}}/ext/share/java/android-support-multidex.jar", "{{dynamo_home}}/ext/share/java/androidx-multidex.jar", "{{dynamo_home}}/ext/share/java/glfw_android.jar", "{{dynamo_home}}/share/java/gamesys_android.jar", "{{dynamo_home}}/share/java/sound_android.jar"]
         engineLibs: ["engine", "engine_service", "mbedtls", "zip", "profile", "profilerext", "profiler_remotery", "record_null", "gameobject", "ddf", "font", "resource", "gamesys", "gamesys_model", "gamesys_rig", "script_box2d_defold", "graphics", "graphics_transcoder_basisu", "basis_transcoder", "physics", "BulletDynamics", "BulletCollision", "platform", "LinearMath", "box2d_defold", "render", "render_font_default", "script", "luajit-5.1", "extension", "hid", "input", "particle", "rig", "dlib", "image", "dmglfw", "gui", "crashext", "sound", "tremolo", "liveupdate", "unwind", "decoder_wav", "decoder_ogg"]
@@ -471,8 +471,8 @@ platforms:
 
   armv7-android:
     env:
-        NDK_VERSION:            "{{env.ANDROID_NDK25_API_VERSION}}"
-        NDK_CXX:                "{{env.ANDROID_NDK25_BIN_PATH}}/armv7a-linux-androideabi{{env.ANDROID_NDK25_API_VERSION}}-clang++"
+        NDK_VERSION:            "{{env.ANDROID_NDK_API_VERSION}}"
+        NDK_CXX:                "{{env.ANDROID_NDK_BIN_PATH}}/armv7a-linux-androideabi{{env.ANDROID_NDK_API_VERSION}}-clang++"
     context:
         libPaths:   ["{{dynamo_home}}/lib/armv7-android", "{{dynamo_home}}/ext/lib/armv7-android"]
         defines:    ["DM_PLATFORM_ANDROID", "LUA_BYTECODE_ENABLE_32", "__ARM_ARCH_5__", "__ARM_ARCH_5T__", "__ARM_ARCH_5E__", "__ARM_ARCH_5TE__"]
@@ -482,8 +482,8 @@ platforms:
 
   arm64-android:
     env:
-        NDK_VERSION:            "{{env.ANDROID_64_NDK25_API_VERSION}}"
-        NDK_CXX:                "{{env.ANDROID_NDK25_BIN_PATH}}/aarch64-linux-android{{env.ANDROID_64_NDK25_API_VERSION}}-clang++"
+        NDK_VERSION:            "{{env.ANDROID_64_NDK_API_VERSION}}"
+        NDK_CXX:                "{{env.ANDROID_NDK_BIN_PATH}}/aarch64-linux-android{{env.ANDROID_64_NDK_API_VERSION}}-clang++"
     context:
         libPaths:   ["{{dynamo_home}}/lib/arm64-android", "{{dynamo_home}}/ext/lib/arm64-android"]
         defines:    ["DM_PLATFORM_ANDROID", "__aarch64__"]
@@ -612,7 +612,7 @@ platforms:
 
   x86-win32:
     context:
-        libPaths:   ["{{dynamo_home}}/lib/win32","{{dynamo_home}}/ext/lib/win32","{{env.MSVC_DIR}}/lib/x86", "{{env.MSVC_DIR}}/atlmfc/lib/x86", "{{env.SDK10_DIR}}/Lib/{{env.SDK10_VERSION}}/ucrt/x86", "{{env.SDK10_DIR}}/Lib/{{env.SDK10_VERSION}}/um/x86"]
+        libPaths:   ["{{dynamo_home}}/lib/win32", "{{dynamo_home}}/lib/x86-win32","{{dynamo_home}}/ext/lib/win32","{{env.MSVC_DIR}}/lib/x86", "{{env.MSVC_DIR}}/atlmfc/lib/x86", "{{env.SDK10_DIR}}/Lib/{{env.SDK10_VERSION}}/ucrt/x86", "{{env.SDK10_DIR}}/Lib/{{env.SDK10_VERSION}}/um/x86"]
         defines:        ["DM_PLATFORM_WINDOWS", "LUA_BYTECODE_ENABLE_32", "_CRT_SECURE_NO_WARNINGS", "_CRT_USE_BUILTIN_OFFSETOF", "_WINSOCK_DEPRECATED_NO_WARNINGS", "__STDC_LIMIT_MACROS", "WINVER=0x0600", "WIN32", "NOMINMAX"]
         flags:          ["-target", "i386-pc-win32-msvc", "-m32", "-O2", "-g", "-gcodeview", "-Wall", "-Werror=format", "-fvisibility=hidden", "-nostdinc++", "-fno-exceptions"]
         linkFlags:      ["-target", "i386-pc-win32-msvc", "-m32", "-O2", "-g", "-fuse-ld=lld", "-Wl,/entry:mainCRTStartup", "-Wl,/safeseh:no"]
@@ -634,7 +634,7 @@ platforms:
 
     exePrefix:      ''
     exeExt:         ''
-    shlibRe:        'lib(.+)\.so'
+    shlibRe:        'lib(.+)\.so(\.[0-9]+)?'
     stlibRe:        'lib(.+)\.a'
     sourceRe:       '(?i).*(\.cpp|\.c|\.cc|\.cxx|\.c\+\+)'
     writeLibPattern: 'lib%s.a'

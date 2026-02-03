@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -157,7 +157,7 @@ public class Bob {
         TimeProfiler.stop();
     }
 
-    public static void initLua() {
+    public static void ensureBobInitialized() {
         init();
         PackedResources.unpackAllLibsAsync(Platform.getHostPlatform());
         PackedResources.waitForuUpackAllLibsAsync();
@@ -483,6 +483,7 @@ public class Bob {
                 opt(null, "debug-output-spirv", ONE, "Force build SPIR-V shaders"),
                 opt(null, "debug-output-wgsl", ONE, "Force build WGSL shaders"),
                 opt(null, "debug-output-hlsl", ONE, "Force build HLSL shaders"),
+                opt(null, "debug-output-msl", ONE, "Force build Metal shaders"),
                 opt(null, "debug-output-glsl", ONE, "Force build GLSL shaders")
         );
     }

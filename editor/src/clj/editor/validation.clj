@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,7 +18,8 @@
             [editor.protobuf :as protobuf]
             [editor.resource :as resource]
             [editor.util :as util]
-            [util.coll :as coll]))
+            [util.coll :as coll]
+            [util.path :as path]))
 
 (set! *warn-on-reflection* true)
 
@@ -75,7 +76,11 @@
     (format "'%s' must be specified" name)))
 
 (defn prop-resource-not-exists? [v name]
-  (and v (not (resource/exists? v)) (format "%s '%s' could not be found" name (resource/resource->proj-path v))))
+  (and v
+       (not (resource/exists? v))
+       (if-some [symlink-target-path (some-> (path/symlink-target v) path/absolute)]
+         (format "%s symlink '%s' refers to missing path '%s'" name (resource/resource->proj-path v) symlink-target-path)
+         (format "%s '%s' could not be found" name (resource/resource->proj-path v)))))
 
 (defn prop-resource-missing? [v name]
   (or (prop-nil? v name)

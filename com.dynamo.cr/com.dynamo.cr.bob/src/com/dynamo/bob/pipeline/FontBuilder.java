@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -36,6 +36,9 @@ public class FontBuilder extends ProtoBuilder<FontDesc.Builder> {
     private boolean useRuntimeGeneration(FontDesc fontDesc) {
         boolean enabled = this.project.option("font-runtime-generation", "false").equals("true");
         if (!enabled)
+            return false;
+
+        if (fontDesc.getOutputFormat() != FontTextureFormat.TYPE_DISTANCE_FIELD)
             return false;
 
         String path = fontDesc.getFont().toLowerCase();
@@ -129,8 +132,6 @@ public class FontBuilder extends ProtoBuilder<FontDesc.Builder> {
             fontMapBuilder.setSdfOutline(Fontc.GetFontMapSdfOutline(fontDesc));
             fontMapBuilder.setSdfShadow(Fontc.GetFontMapSdfShadow(fontDesc));
         }
-
-        fontMapBuilder.setPadding(Fontc.GetFontMapPadding(fontDesc));
 
         fontMapBuilder.setOutputFormat(fontDesc.getOutputFormat());
         fontMapBuilder.setRenderMode(fontDesc.getRenderMode());

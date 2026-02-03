@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -18,6 +18,7 @@
             [editor.code.lang.java-properties :as java-properties]
             [editor.code.resource :as r]
             [editor.defold-project :as project]
+            [editor.localization :as localization]
             [editor.resource :as resource]
             [util.coll :as coll]))
 
@@ -42,8 +43,9 @@
     workspace
     :ext "editor_localization"
     :node-type EditorLocalizationNode
-    :label "Editor Localization"
+    :label (localization/message "resource.type.editor-localization")
     :icon "icons/32/Icons_05-Project-info.png"
+    :category (localization/message "resource.category.editor")
     :language "properties"
     :additional-load-fn additional-load-fn
     :view-types [:code :default]

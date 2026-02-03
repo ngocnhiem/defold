@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -23,6 +23,10 @@
 
 #define JC_TEST_IMPLEMENTATION
 #include <jc_test/jc_test.h>
+#if defined(_WIN32)
+#include <d3d12.h>
+#include <d3d12shader.h>
+#endif
 
 static void* ReadFile(const char* path, uint32_t* file_size)
 {
@@ -65,6 +69,7 @@ TEST(Shaderc, TestSimpleShader)
 
     dmShaderc::HShaderContext shader_ctx = dmShaderc::NewShaderContext(dmShaderc::SHADER_STAGE_VERTEX, data, data_size);
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, TestShaderReflection)
@@ -88,6 +93,7 @@ TEST(Shaderc, TestShaderReflection)
     ASSERT_EQ(dmHashString64("inst_variable"),  reflection->m_UniformBuffers[2].m_InstanceNameHash);
 
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 static const dmShaderc::ShaderResource* GetShaderResourceByNameHash(const dmArray<dmShaderc::ShaderResource>& resource_list, dmhash_t name_hash)
@@ -155,8 +161,10 @@ TEST(Shaderc, ModifyBindings)
     ASSERT_NE((const char*) 0, FindFirstOccurance((const char*) dst->m_Data.Begin(), "layout(binding = 3, std140) uniform matrices"));
     ASSERT_NE((const char*) 0, FindFirstOccurance((const char*) dst->m_Data.Begin(), "layout(binding = 4, std140) uniform extra"));
 
+    dmShaderc::FreeShaderCompileResult(dst);
     dmShaderc::DeleteShaderCompiler(compiler);
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, TestCompilerSPIRV)
@@ -175,8 +183,10 @@ TEST(Shaderc, TestCompilerSPIRV)
     ASSERT_EQ(data_size, dst->m_Data.Size());
     ASSERT_EQ(0, memcmp(data, dst->m_Data.Begin(), data_size));
 
+    dmShaderc::FreeShaderCompileResult(dst);
     dmShaderc::DeleteShaderCompiler(compiler);
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, ModifyBindingsSPIRV)
@@ -215,8 +225,10 @@ TEST(Shaderc, ModifyBindingsSPIRV)
         dmShaderc::DeleteShaderContext(spirv_shader_ctx);
     }
 
+    dmShaderc::FreeShaderCompileResult(dst);
     dmShaderc::DeleteShaderCompiler(compiler);
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 static const dmShaderc::ResourceTypeInfo* GetType(const dmShaderc::ShaderReflection* reflection, dmhash_t name_hash)
@@ -306,6 +318,7 @@ TEST(Shaderc, Types)
     AssertTexture(reflection, "type_sampler", dmShaderc::BASE_TYPE_SAMPLER, (dmShaderc::DimensionType) 0, false);
 
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, SSBO)
@@ -348,6 +361,7 @@ TEST(Shaderc, SSBO)
     ASSERT_EQ(dmShaderc::BASE_TYPE_FP32, member->m_Type.m_BaseType);
 
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, LegacyPipeline)
@@ -400,6 +414,7 @@ TEST(Shaderc, LegacyPipeline)
     ASSERT_EQ(4, type_light->m_Members[2].m_Type.m_VectorSize);
 
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, Structs)
@@ -450,6 +465,7 @@ TEST(Shaderc, Structs)
     ASSERT_EQ(dmHashString64("nested_member"), nested_struct->m_Members[0].m_NameHash);
 
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 }
 
 TEST(Shaderc, TestHLSLSimple)
@@ -473,6 +489,94 @@ TEST(Shaderc, TestHLSLSimple)
 
     dmShaderc::DeleteShaderCompiler(compiler);
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
+}
+
+TEST(Shaderc, TestMetal)
+{
+    uint32_t data_size;
+    void* data = ReadFile("./build/src/test/data/reflection.spv", &data_size);
+    ASSERT_NE((void*) 0, data);
+
+    dmShaderc::HShaderContext shader_ctx = dmShaderc::NewShaderContext(dmShaderc::SHADER_STAGE_FRAGMENT, data, data_size);
+
+    dmShaderc::HShaderCompiler compiler = dmShaderc::NewShaderCompiler(shader_ctx, dmShaderc::SHADER_LANGUAGE_MSL);
+
+    dmShaderc::ShaderCompilerOptions options;
+    options.m_Version    = 22;
+    options.m_EntryPoint = "main";
+
+    dmShaderc::ShaderCompileResult* dst = dmShaderc::Compile(shader_ctx, compiler, options);
+    ASSERT_NE((void*) 0, dst->m_Data.Begin());
+
+    dmShaderc::FreeShaderCompileResult(dst);
+
+    dmShaderc::DeleteShaderCompiler(compiler);
+    dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
+}
+
+TEST(Shaderc, HLSLMergeRootSignatures)
+{
+#if !defined(DM_BINARY_HLSL_SUPPORTED)
+    // Skip on non-Windows platforms
+    ASSERT_TRUE(true);
+    return;
+#else
+    // Prepare two shaders with resources to produce root signatures
+    uint32_t vs_size = 0;
+    void* vs_spv = ReadFile("./build/src/test/data/bindings.spv", &vs_size);
+    ASSERT_NE((void*)0, vs_spv);
+
+    uint32_t fs_size = 0;
+    void* fs_spv = ReadFile("./build/src/test/data/reflection.spv", &fs_size);
+    ASSERT_NE((void*)0, fs_spv);
+
+    dmShaderc::HShaderContext vs_ctx = dmShaderc::NewShaderContext(dmShaderc::SHADER_STAGE_VERTEX, vs_spv, vs_size);
+    dmShaderc::HShaderContext fs_ctx = dmShaderc::NewShaderContext(dmShaderc::SHADER_STAGE_FRAGMENT, fs_spv, fs_size);
+
+    dmShaderc::HShaderCompiler vs_comp = dmShaderc::NewShaderCompiler(vs_ctx, dmShaderc::SHADER_LANGUAGE_HLSL);
+    dmShaderc::HShaderCompiler fs_comp = dmShaderc::NewShaderCompiler(fs_ctx, dmShaderc::SHADER_LANGUAGE_HLSL);
+
+    dmShaderc::ShaderCompilerOptions opts = {};
+    opts.m_Version = 51; // ensure RS path
+    opts.m_EntryPoint = "main";
+
+    dmShaderc::ShaderCompileResult* vs_res = dmShaderc::Compile(vs_ctx, vs_comp, opts);
+    dmShaderc::ShaderCompileResult* fs_res = dmShaderc::Compile(fs_ctx, fs_comp, opts);
+
+    ASSERT_NE((void*)0, vs_res);
+    ASSERT_NE((void*)0, fs_res);
+    ASSERT_GT(vs_res->m_HLSLRootSignature.Size(), 0u);
+    ASSERT_GT(fs_res->m_HLSLRootSignature.Size(), 0u);
+
+    dmShaderc::ShaderCompileResult arr[2];
+    arr[0] = *vs_res;
+    arr[1] = *fs_res;
+
+    dmShaderc::HLSLRootSignature* merged = dmShaderc::HLSLMergeRootSignatures(arr, 2);
+    ASSERT_NE((void*)0, merged);
+    ASSERT_GT(merged->m_HLSLRootSignature.Size(), 0u);
+
+    // Validate the merged blob deserializes
+    ID3D12RootSignatureDeserializer* deser = 0;
+    HRESULT hr = D3D12CreateRootSignatureDeserializer(
+        merged->m_HLSLRootSignature.Begin(),
+        merged->m_HLSLRootSignature.Size(),
+        IID_PPV_ARGS(&deser));
+    ASSERT_EQ(S_OK, hr);
+    const D3D12_ROOT_SIGNATURE_DESC* desc = deser->GetRootSignatureDesc();
+    ASSERT_NE((void*)0, desc);
+    ASSERT_GT(desc->NumParameters, 0u);
+    deser->Release();
+
+    dmShaderc::FreeShaderCompileResult(vs_res);
+    dmShaderc::FreeShaderCompileResult(fs_res);
+    dmShaderc::DeleteShaderCompiler(vs_comp);
+    dmShaderc::DeleteShaderCompiler(fs_comp);
+    dmShaderc::DeleteShaderContext(vs_ctx);
+    dmShaderc::DeleteShaderContext(fs_ctx);
+#endif
 }
 
 static int TestStandalone(const char* filename, const char* languageStr, const char* stageStr)
@@ -533,6 +637,7 @@ static int TestStandalone(const char* filename, const char* languageStr, const c
     }
 
     dmShaderc::DeleteShaderContext(shader_ctx);
+    free(data);
 
     return 0;
 }
@@ -555,4 +660,3 @@ int main(int argc, char **argv)
     jc_test_init(&argc, argv);
     return jc_test_run_all();
 }
-

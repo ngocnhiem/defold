@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -155,10 +155,10 @@ namespace dmShaderc
         type_info->m_Name = type_name;
         type_info->m_NameHash = type_name_hash;
 
-        ResourceMember* members = (ResourceMember*) malloc(sizeof(ResourceMember) * member_count);
+        type_info->m_Members.SetCapacity(member_count);
+        type_info->m_Members.SetSize(member_count);
+        ResourceMember* members = type_info->m_Members.Begin();
         memset(members, 0, sizeof(ResourceMember) * member_count);
-
-        type_info->m_Members.Set(members, member_count, member_count, false);
 
         for (int i = 0; i < member_count; ++i)
         {
@@ -333,8 +333,25 @@ namespace dmShaderc
         return (HShaderContext) context;
     }
 
+    static void DeleteReflection(ShaderReflection* reflection)
+    {
+        reflection->m_Inputs.SetCapacity(0);
+        reflection->m_Outputs.SetCapacity(0);
+        reflection->m_UniformBuffers.SetCapacity(0);
+        reflection->m_StorageBuffers.SetCapacity(0);
+        reflection->m_Textures.SetCapacity(0);
+
+        for (uint32_t i = 0; i < reflection->m_Types.Size(); ++i)
+        {
+            ResourceTypeInfo* type = &reflection->m_Types[i];
+            type->m_Members.SetCapacity(0);
+        }
+        reflection->m_Types.SetCapacity(0);
+    }
+
     void DeleteShaderContext(HShaderContext context)
     {
+        DeleteReflection(&context->m_Reflection);
         spvc_context_destroy(context->m_SPVCContext);
         free(context->m_ShaderCode);
         free(context);
@@ -358,6 +375,9 @@ namespace dmShaderc
                 break;
             case SHADER_LANGUAGE_HLSL:
                 backend = SPVC_BACKEND_HLSL;
+                break;
+            case SHADER_LANGUAGE_MSL:
+                backend = SPVC_BACKEND_MSL;
                 break;
             default:break;
         }
@@ -520,6 +540,12 @@ namespace dmShaderc
         {
             spvc_compiler_options_set_uint(spv_options, SPVC_COMPILER_OPTION_HLSL_SHADER_MODEL, options.m_Version);
 
+            // Force modern HLSL output
+            if (options.m_Version >= 60)
+            {
+                spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_GLSL_ENABLE_420PACK_EXTENSION, 1);
+            }
+
             if (context->m_Stage == SHADER_STAGE_COMPUTE)
             {
                 spvc_variable_id num_workgroups_id = spvc_compiler_hlsl_remap_num_workgroups_builtin(compiler->m_SPVCCompiler);
@@ -545,6 +571,30 @@ namespace dmShaderc
                     }
                 }
             }
+        }
+        else if (compiler->m_BaseCompiler.m_Language == SHADER_LANGUAGE_MSL)
+        {
+            uint32_t msl_version = SPVC_MAKE_MSL_VERSION(2, 2, 0);
+
+            switch(options.m_Version)
+            {
+                case 11: msl_version = SPVC_MAKE_MSL_VERSION(1, 1, 0); break;
+                case 12: msl_version = SPVC_MAKE_MSL_VERSION(1, 2, 0); break;
+                case 20: msl_version = SPVC_MAKE_MSL_VERSION(2, 0, 0); break;
+                case 21: msl_version = SPVC_MAKE_MSL_VERSION(2, 1, 0); break;
+                case 22: msl_version = SPVC_MAKE_MSL_VERSION(2, 2, 0); break;
+                case 23: msl_version = SPVC_MAKE_MSL_VERSION(2, 3, 0); break;
+                case 24: msl_version = SPVC_MAKE_MSL_VERSION(2, 4, 0); break;
+                case 30: msl_version = SPVC_MAKE_MSL_VERSION(3, 0, 0); break;
+                case 31: msl_version = SPVC_MAKE_MSL_VERSION(3, 1, 0); break;
+                case 32: msl_version = SPVC_MAKE_MSL_VERSION(3, 2, 0); break;
+                default: dmLogWarning("MSL version %d not supported for crosscompiling, defaulting to 2.2", options.m_Version);
+            }
+
+            spvc_compiler_options_set_uint(spv_options, SPVC_COMPILER_OPTION_MSL_VERSION, msl_version);
+            spvc_compiler_options_set_uint(spv_options, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_MACOS);
+            spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_MSL_ARGUMENT_BUFFERS, SPVC_TRUE);
+            spvc_compiler_options_set_bool(spv_options, SPVC_COMPILER_OPTION_MSL_EMULATE_CUBEMAP_ARRAY, SPVC_FALSE);
         }
         else
         {

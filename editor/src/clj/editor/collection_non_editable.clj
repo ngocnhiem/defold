@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -432,7 +432,7 @@
     (resource-node/register-ddf-resource-type workspace
       :editable false
       :ext "collection"
-      :label "Non-Editable Collection"
+      :label (localization/message "resource.type.collection.non-editable")
       :node-type NonEditableCollectionNode
       :ddf-type GameObject$CollectionDesc
       :dependencies-fn (collection-common/make-collection-dependencies-fn #(workspace/get-resource-type workspace :non-editable "go"))

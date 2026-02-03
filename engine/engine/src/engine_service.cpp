@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -528,6 +528,7 @@ namespace dmEngineService
         char                 m_InfoJson[sizeof(INFO_TEMPLATE) + 512]; // 512 is rather arbitrary :-)
         char                 m_StateJson[sizeof(STATE_TEMPLATE) + 512]; // 512 is rather arbitrary :-)
 
+        ResourceHandlerParams m_ResourceHandlerParams;
         HProfile             m_Profile;
     };
 
@@ -661,19 +662,8 @@ namespace dmEngineService
         return SendResourceData(request, name, extension, resource.m_Size, resource.m_SizeOnDisc, resource.m_RefCount);
     }
 
-    static bool DynamicTextureIteratorFunction(dmhash_t gui_res_id, dmhash_t name_hash, uint32_t size, void* user_ctx)
-    {
-        dmWebServer::Request* request = (dmWebServer::Request*)user_ctx;
-        const char* texture_name = dmHashReverseSafe64(name_hash);
-        const char* gui_name = dmHashReverseSafe64(gui_res_id);
-        char full_name[512];
-        dmSnPrintf(full_name, sizeof(full_name), "%s\n%s", gui_name, texture_name);
-        return SendResourceData(request, &full_name[0], "GuiDynamicTexture", size, 0, 1);
-    }
-
     static void OutputGuiDynamicTextures(dmGameObject::SceneNode* node, dmWebServer::Request* request)
     {
-        static const dmhash_t s_GuiResource = dmHashString64("guic");
         static const dmhash_t s_PropertyResource = dmHashString64("resource");
         static const dmhash_t s_PropertyType = dmHashString64("type");
 
@@ -689,11 +679,6 @@ namespace dmEngineService
                 resource_id = pit.m_Property.m_Value.m_Hash;
             else if (pit.m_Property.m_NameHash == s_PropertyType)
                 type = pit.m_Property.m_Value.m_Hash;
-        }
-
-        if (type == s_GuiResource)
-        {
-            dmGameSystem::IterateDynamicTextures(resource_id, node, DynamicTextureIteratorFunction, (void*)request);
         }
 
         dmGameObject::SceneNodeIterator it = dmGameObject::TraverseIterateChildren(node);
@@ -957,10 +942,9 @@ namespace dmEngineService
     {
         dmWebServer::HandlerParams resource_params;
         resource_params.m_Handler = HttpResourceRequestCallback;
-        ResourceHandlerParams* params = (ResourceHandlerParams*) malloc(sizeof(ResourceHandlerParams));
-        params->m_Factory = factory;
-        params->m_Regist = regist;
-        resource_params.m_Userdata = params;
+        engine_service->m_ResourceHandlerParams.m_Factory = factory;
+        engine_service->m_ResourceHandlerParams.m_Regist = regist;
+        resource_params.m_Userdata = &engine_service->m_ResourceHandlerParams;
         dmWebServer::AddHandler(engine_service->m_WebServer, "/resources_data", &resource_params);
 
         dmWebServer::HandlerParams gameobject_params;

@@ -1,5 +1,4 @@
-
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -32,7 +31,8 @@ namespace dmShaderc
         SHADER_LANGUAGE_NONE  = 0,
         SHADER_LANGUAGE_GLSL  = 1,
         SHADER_LANGUAGE_HLSL  = 2,
-        SHADER_LANGUAGE_SPIRV = 3,
+        SHADER_LANGUAGE_MSL   = 3,
+        SHADER_LANGUAGE_SPIRV = 4,
     };
 
     enum ShaderStage
@@ -225,10 +225,22 @@ namespace dmShaderc
         // that embeds a list of resources (called root signature) and their HLSL bind points (registers)
         // This must match resource bind points in the engine, so we need to output that information here.
         dmArray<HLSLResourceMapping> m_HLSLResourceMappings;
+
+        // In case of compiling HLSL > version 50, we want to have the root signature available for merging
+        dmArray<uint8_t> m_HLSLRootSignature;
+
         // When compiling compute shaders for HLSL, we need to store a reference to the
         // manufactured gl_NumWorkGroups constant buffer that was generated.
         // The value will be set to 0xFF otherwise.
-        uint8_t                    m_HLSLNumWorkGroupsId;
+        uint8_t m_HLSLNumWorkGroupsId;
+    };
+
+    struct HLSLRootSignature
+    {
+        const char*      m_LastError;
+
+        // In case of compiling HLSL > version 50, we want to have the root signature available for merging
+        dmArray<uint8_t> m_HLSLRootSignature;
     };
 
     // Shader context
@@ -246,6 +258,7 @@ namespace dmShaderc
     extern "C" DM_DLLEXPORT void                    SetResourceBinding(HShaderContext context, HShaderCompiler compiler, uint64_t name_hash, uint8_t binding);
     extern "C" DM_DLLEXPORT void                    SetResourceSet(HShaderContext context, HShaderCompiler compiler, uint64_t name_hash, uint8_t set);
     extern "C" DM_DLLEXPORT ShaderCompileResult*    Compile(HShaderContext context, HShaderCompiler compiler, const ShaderCompilerOptions& options);
+    extern "C" DM_DLLEXPORT HLSLRootSignature*      HLSLMergeRootSignatures(ShaderCompileResult* shaders, uint32_t shaders_size);
     extern "C" DM_DLLEXPORT void                    FreeShaderCompileResult(ShaderCompileResult* result);
 
     void DebugPrintReflection(const ShaderReflection* reflection);

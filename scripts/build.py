@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2020-2025 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -29,6 +29,7 @@ import release_to_steam
 import release_to_egs
 import BuildUtility
 import http_cache
+import sdk_merge
 from datetime import datetime
 from urllib.parse import urlparse
 from glob import glob
@@ -43,6 +44,20 @@ BASE_PLATFORMS = [  'x86_64-linux', 'arm64-linux',
                     'x86_64-ios', 'arm64-ios',
                     'armv7-android', 'arm64-android',
                     'js-web', 'wasm-web', 'wasm_pthread-web']
+
+_CMAKE_FEATURE_FLAG_MAP = {
+    '--with-asan': 'WITH_ASAN',
+    '--with-ubsan': 'WITH_UBSAN',
+    '--with-tsan': 'WITH_TSAN',
+    '--with-valgrind': 'WITH_VALGRIND',
+    '--with-openal': 'WITH_OPENAL',
+    '--with-opengl': 'WITH_OPENGL',
+    '--with-vulkan': 'WITH_VULKAN',
+    '--with-vulkan-validation': 'WITH_VULKAN_VALIDATION',
+    '--with-dx12': 'WITH_DX12',
+    '--with-opus': 'WITH_OPUS',
+    '--with-webgpu': 'WITH_WEBGPU'
+}
 
 sys.dont_write_bytecode = True
 try:
@@ -109,7 +124,7 @@ PACKAGES_ALL=[
     "maven-3.0.1",
     "vecmath",
     "vpx-1.7.0",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "defold-robot-0.7.0",
     "bullet-2.77",
@@ -118,41 +133,53 @@ PACKAGES_ALL=[
     "vulkan-v1.4.307",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_HOST=[
     "vpx-1.7.0",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1"]
 
 PACKAGES_IOS_X86_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "glfw-2.7.1",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_IOS_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "moltenvk-1474891",
     "glfw-2.7.1",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_MACOS_X86_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "vpx-1.7.0",
     "tremolo-b0cb4d1",
     "bullet-2.77",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-b21dda0e",
     "glslang-42d9adf5",
     "moltenvk-1474891",
@@ -160,65 +187,81 @@ PACKAGES_MACOS_X86_64=[
     "sassc-5472db213ec223a67482df2226622be372921847",
     "glfw-3.4",
     "tint-22b958",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_MACOS_ARM64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "vpx-1.7.0",
     "tremolo-b0cb4d1",
     "bullet-2.77",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-b21dda0e",
     "glslang-42d9adf5",
     "moltenvk-1474891",
     "lipo-4c7c275",
     "glfw-3.4",
     "tint-22b958",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_WIN32=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "glut-3.7.6",
     "bullet-2.77",
     "vulkan-v1.4.307",
     "glfw-3.4",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_WIN32_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "glut-3.7.6",
     "sassc-5472db213ec223a67482df2226622be372921847",
     "bullet-2.77",
     "glslang-42d9adf5",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-d24a39a7",
     "vulkan-v1.4.307",
     "lipo-4c7c275",
     "glfw-3.4",
     "tint-22b958",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "directx-headers-1.611.0",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_LINUX_X86_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "bullet-2.77",
     "glslang-ba5c010c",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-d24a39a7",
     "vpx-1.7.0",
     "vulkan-v1.4.307",
@@ -227,17 +270,21 @@ PACKAGES_LINUX_X86_64=[
     "glfw-3.4",
     "tint-7bd151a780",
     "sassc-5472db213ec223a67482df2226622be372921847",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_LINUX_ARM64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "bullet-2.77",
     "glslang-2fed4fc0",
-    "spirv-cross-9040e0d2",
+    "spirv-cross-97709575",
     "spirv-tools-4fab7435",
     "vpx-1.7.0",
     "vulkan-v1.4.307",
@@ -245,35 +292,47 @@ PACKAGES_LINUX_ARM64=[
     "lipo-4c7c275",
     "glfw-3.4",
     "tint-7bd151a780",
-    "astcenc-8b0aa01",
+    "astcenc-30aabb3",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_ANDROID=[
 "protobuf-3.20.1",
     "android-support-multidex",
     "androidx-multidex",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "glfw-2.7.1",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 PACKAGES_ANDROID.append(sdk.ANDROID_PACKAGE)
 
 PACKAGES_ANDROID_64=[
 "protobuf-3.20.1",
     "android-support-multidex",
     "androidx-multidex",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "glfw-2.7.1",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 PACKAGES_ANDROID_64.append(sdk.ANDROID_PACKAGE)
 
 PACKAGES_EMSCRIPTEN=[
@@ -283,7 +342,11 @@ PACKAGES_EMSCRIPTEN=[
     "wagyu-69",
     "box2d-3.1.0",
     "box2d_defold-2.2.1",
-    "opus-1.5.2"]
+    "opus-1.5.2",
+    "harfbuzz-11.3.2",
+    "SheenBidi-2.9.0",
+    "libunibreak-6.1",
+    "SkriBidi-1e8038"]
 
 PACKAGES_NODE_MODULES=["xhr2-0.1.0"]
 
@@ -336,7 +399,7 @@ def get_host_platform():
 def format_exes(name, platform):
     prefix = ''
     suffix = ['']
-    if 'win32' in platform:
+    if platform in ['win32', 'x86_64-win32', 'x86_64-xbone']:
         suffix = ['.exe']
     elif 'android' in platform:
         prefix = 'lib'
@@ -720,7 +783,7 @@ class Configuration(object):
         def make_package_path(root, platform, package):
             return join(root, 'packages', package) + '-%s.tar.gz' % platform
         print("Installing waf")
-        waf_package = "waf-2.0.3"
+        waf_package = "waf-2.1.9"
         waf_path = make_package_path(self.defold_root, 'common', waf_package)
         self._extract_tgz(waf_path, self.ext)
 
@@ -871,11 +934,15 @@ class Configuration(object):
         if not result:
             self.fatal("Failed sdk check")
 
-        paths = os.environ['PATH'].split(os.path.pathsep)
-        cmake = self._find_program(get_host_platform(), 'cmake', paths)
+        cmake = shutil.which('cmake')
         if not cmake:
             self.fatal("CMake not found in PATH")
         self._log(f"Found CMake: {cmake}")
+
+        ninja = shutil.which('ninja')
+        if not ninja:
+            self.fatal("Ninja not found in PATH")
+        self._log(f"Found Ninja: {ninja}")
 
         args = ["cmake", f"-DTARGET_PLATFORM={target_platform}", "-P", join(self.defold_root, "scripts/cmake/check_install.cmake")]
         if self.verbose:
@@ -1159,6 +1226,12 @@ class Configuration(object):
                 defold_ico = os.path.join(self.dynamo_home, 'lib/%s/engine.rc' % platform)
                 self._add_files_to_zip(zip, [engine_rc, defold_ico], self.dynamo_home, topfolder)
 
+            # new cmake support. it outputs to x86-win32 folder
+            if platform == 'win32':
+                libdir = os.path.join(self.dynamo_home, 'lib/x86-win32')
+                paths = _findlibs(libdir)
+                self._add_files_to_zip(zip, paths, self.dynamo_home, topfolder)
+
             # the port scripts contain the necessary files, only need to include them once
             if platform in ['wasm-web']:
                 wagyu_port_files = []
@@ -1256,9 +1329,10 @@ class Configuration(object):
 
                 self._add_files_to_zip(zip, protobuf_files, self.dynamo_home, topfolder)
 
-                # bob pipeline classes
-                bob_light = os.path.join(self.dynamo_home, 'share/java/bob-light.jar')
-                self._add_files_to_zip(zip, [bob_light], self.dynamo_home, topfolder)
+                # bob pipeline classes include only in one sdk
+                if platform in ('x86_64-linux'):
+                    bob_light = os.path.join(self.dynamo_home, 'share/java/bob-light.jar')
+                    self._add_files_to_zip(zip, [bob_light], self.dynamo_home, topfolder)
 
 
             # For logging, print all paths in zip:
@@ -1372,7 +1446,8 @@ class Configuration(object):
         if self.is_desktop_target():
             gdc_name = format_exes("gdc", self.target_platform)[0]
             gdc_bin = join(bin_dir, gdc_name)
-            self.upload_to_archive(gdc_bin, '%s/%s' % (full_archive_path, gdc_name))
+            gdc_target_name = format_exes("gdc_" + self.target_platform.replace('-', '_'), self.target_platform)[0]
+            self.upload_to_archive(gdc_bin, '%s/%s' % (full_archive_path, gdc_target_name))
 
         for n in ['dmengine', 'dmengine_release', 'dmengine_headless']:
             for engine_name in format_exes(n, self.target_platform):
@@ -1382,7 +1457,7 @@ class Configuration(object):
                 shutil.copy2(engine, engine_stripped)
                 if self._strip_engine(engine_stripped):
                     self.upload_to_archive(engine_stripped, '%s/stripped/%s' % (full_archive_path, engine_name))
-                if 'win32' in self.target_platform:
+                if self.target_platform in ['win32', 'x86_64-win32', 'x86_64-xbone']:
                     pdb = join(bin_dir, os.path.splitext(engine_name)[0] + '.pdb')
                     self.upload_to_archive(pdb, '%s/%s' % (full_archive_path, os.path.basename(pdb)))
 
@@ -1442,7 +1517,7 @@ class Configuration(object):
     def _can_run_tests(self):
         supported_tests = {}
         # E.g. on win64, we can test multiple platforms
-        supported_tests['x86_64-win32'] = ['win32', 'x86_64-win32', 'arm64-nx64', 'x86_64-ps4', 'x86_64-ps5']
+        supported_tests['x86_64-win32'] = ['win32', 'x86_64-win32', 'arm64-nx64', 'x86_64-ps4', 'x86_64-ps5', 'x86_64-xbone']
         supported_tests['arm64-macos'] = ['x86_64-macos', 'arm64-macos', 'wasm-web', 'wasm_pthread-web', 'js-web']
         supported_tests['x86_64-macos'] = ['x86_64-macos', 'wasm-web', 'wasm_pthread-web', 'js-web']
 
@@ -1520,6 +1595,22 @@ class Configuration(object):
             return 'Debug'
         return 'RelWithDebInfo'
 
+    def _cmake_feature_defines(self):
+        defines = []
+        handled = set()
+        for option in self.waf_options:
+            if not option.startswith('--with-'):
+                continue
+            if option in handled:
+                continue
+            handled.add(option)
+            feature = _CMAKE_FEATURE_FLAG_MAP.get(option)
+            if feature:
+                defines.append(f"-D{feature}=ON")
+            else:
+                self._log(f"Warning: CMake build currently ignores '{option}'")
+        return defines
+
     def _build_engine_lib_cmake(self, lib, platform, directory):
         libdir = join(directory, lib)
         builddir = join(libdir, 'build')
@@ -1540,14 +1631,18 @@ class Configuration(object):
         verbose = '-v' if is_verbose else ''
         test = '' if (self.skip_tests or not supports_tests) else 'run_tests'
         build_test = 'build_tests' if build_tests else ''
+        cmake_build_tests = 'ON' if build_tests else 'OFF'
         install = 'install'
+
+        trace = '' #'--trace-expand'
 
         # ***************************************************************************************
         # generate the build script
         log_cmd_config = f'CMake configure {lib}'
         self.build_tracker.start_command(log_cmd_config)
 
-        cmake_configure_args = f"cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS=ON".split()
+        cmake_configure_args = f"cmake -S . -B build -GNinja {trace} -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS={cmake_build_tests}".split()
+        cmake_configure_args += self._cmake_feature_defines()
         run.env_command(self._form_env(), cmake_configure_args, cwd = libdir)
 
         self.build_tracker.end_command(log_cmd_config)
@@ -1588,7 +1683,6 @@ class Configuration(object):
 # For now gradle right in
 # - 'com.dynamo.cr/com.dynamo.cr.bob'
 # - 'com.dynamo.cr/com.dynamo.cr.test'
-# - 'com.dynamo.cr/com.dynamo.cr.common'
 # Maybe in the future we consider to move it into install_ext
     def get_gradle_wrapper(self):
         if os.name == 'nt':  # Windows
@@ -1600,7 +1694,6 @@ class Configuration(object):
         self.build_tracker.start_component('bob_light', self.host)
 
         bob_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.bob')
-        # common_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.common')
 
         sha1 = self._git_sha1()
         if os.path.exists(os.path.join(self.dynamo_home, 'archive', sha1)):
@@ -1636,8 +1729,9 @@ class Configuration(object):
         host = self.host
 
         # Make sure we build these for the host platform for the toolchain (bob light)
+        host_lib_skip_tests = host != self.target_platform
         for lib in HOST_LIBS:
-            self._build_engine_lib(args, lib, host)
+            self._build_engine_lib(args, lib, host, skip_tests = host_lib_skip_tests)
         if not self.skip_bob_light:
             # We must build bob-light, which builds content during the engine build
             self.build_bob_light()
@@ -1780,7 +1874,6 @@ class Configuration(object):
 
     def build_bob(self):
         bob_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.bob')
-        # common_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.common')
         test_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.bob.test')
 
         sha1 = self._git_sha1()
@@ -1828,7 +1921,6 @@ class Configuration(object):
 
         sha1 = self._git_sha1()
         u = urlparse(self.get_archive_path())
-        bucket = s3.get_bucket(u.netloc)
 
         root = urlparse(self.get_archive_path()).path[1:]
         base_prefix = os.path.join(root, sha1)
@@ -1840,30 +1932,12 @@ class Configuration(object):
         else:
             platforms = get_target_platforms()
 
-        # For the linux build tools (protoc, dlib_shared etc)
-        if 'x86_64-linux' not in platforms:
-            platforms.append('x86_64-linux')
-
-        # Since we usually want to use the scripts in this package on a linux machine, we'll unpack
-        # it last, in order to preserve unix line endings in the files
-        if 'x86_64-linux' in platforms:
-            platforms.remove('x86_64-linux')
-            platforms.append('x86_64-linux')
-
-        for platform in platforms:
-            prefix = os.path.join(base_prefix, 'engine', platform, 'defoldsdk.zip')
-            entry = bucket.Object(prefix)
-
-            platform_sdk_zip = tempfile.NamedTemporaryFile(delete = False)
-            print ("Downloading", entry.key)
-            entry.download_file(platform_sdk_zip.name)
-            print ("Downloaded", entry.key, "to", platform_sdk_zip.name)
-
-            self._extract_zip(platform_sdk_zip.name, tempdir)
-            print ("Extracted", platform_sdk_zip.name, "to", tempdir)
-
-            os.unlink(platform_sdk_zip.name)
-            print ("")
+        sdk_merge.build_combined_sdk_tree(
+            netloc=u.netloc,
+            base_prefix=base_prefix,
+            platforms=platforms,
+            extract_dir=tempdir,
+            canonical_platform='x86_64-linux')
 
         # Due to an issue with how the attributes are preserved, let's go through the bin/ folders
         # and set the flags explicitly
@@ -1954,7 +2028,7 @@ class Configuration(object):
 
         if self.skip_tests:
             cmd.append("--skip-tests")
-            
+
         if self.skip_codesign:
             cmd.append('--skip-codesign')
         else:

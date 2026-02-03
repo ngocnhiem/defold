@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -16,14 +16,18 @@ package com.dynamo.bob.pipeline;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 import com.dynamo.bob.CompileExceptionError;
 import com.dynamo.bob.Platform;
 import com.dynamo.bob.pipeline.shader.ShaderCompilePipeline;
 import com.dynamo.graphics.proto.Graphics.ShaderDesc;
+import com.google.protobuf.ByteString;
 
 public class ShaderCompilers {
 
@@ -34,7 +38,7 @@ public class ShaderCompilers {
             this.platform = platform;
         }
 
-        private Set<ShaderDesc.Language> getPlatformShaderLanguages(boolean isComputeType, boolean outputSpirv, boolean outputWGLS, boolean outputHLSL, boolean outputGLSL, CompileOptions compileOptions) {
+        private Set<ShaderDesc.Language> getPlatformShaderLanguages(boolean isComputeType, boolean outputSpirv, boolean outputWGLS, boolean outputHLSL, boolean outputGLSL, boolean outputMsl, CompileOptions compileOptions) {
             Set<ShaderDesc.Language> shaderLanguages = new LinkedHashSet<>();
 
             boolean spirvSupported = true;
@@ -48,6 +52,8 @@ public class ShaderCompilers {
                 // Vulkan is default on OSX since 1.9.9, meaning OpenGL is optional.
                 if (!isComputeType && outputGLSL) {
                     shaderLanguages.add(ShaderDesc.Language.LANGUAGE_GLSL_SM330);
+                } else if (outputMsl) {
+                    shaderLanguages.add(ShaderDesc.Language.LANGUAGE_MSL_22);
                 }
             }
             else
@@ -72,9 +78,12 @@ public class ShaderCompilers {
             else
             if (platform == Platform.Arm64Ios ||
                 platform == Platform.X86_64Ios) {
-                    if (!isComputeType) {
-                        shaderLanguages.add(ShaderDesc.Language.LANGUAGE_GLES_SM300);
-                    }
+                if (!isComputeType) {
+                    shaderLanguages.add(ShaderDesc.Language.LANGUAGE_GLES_SM300);
+                }
+                if (outputMsl) {
+                    shaderLanguages.add(ShaderDesc.Language.LANGUAGE_MSL_22);
+                }
             }
             else
             if (platform == Platform.Armv7Android ||
@@ -103,6 +112,11 @@ public class ShaderCompilers {
             else
             if (platform == Platform.Arm64NX64) {
                 outputSpirv = true;
+            }
+            else
+            if (platform == Platform.X86_64XBone) {
+                hlslSupported = true;
+                outputHLSL = true;
             }
             else {
                 return null;
@@ -138,11 +152,15 @@ public class ShaderCompilers {
 
         public ShaderProgramBuilder.ShaderCompileResult compile(ArrayList<ShaderCompilePipeline.ShaderModuleDesc> shaderModules, String resourceOutputPath, CompileOptions compileOptions) throws IOException, CompileExceptionError {
 
+            // We need this for e.g. Win32 when creating the root signature bindings, to get a deterministic order.
+            shaderModules.sort(Comparator.comparingInt(m -> m.type.getNumber()));
+
             boolean isComputeType = shaderModules.get(0).type == ShaderDesc.ShaderType.SHADER_TYPE_COMPUTE;
             boolean outputSpirv = false;
             boolean outputHLSL = false;
             boolean outputWGSL = false;
             boolean outputGlsl = false;
+            boolean outputMsl = false;
 
             ShaderCompilePipeline.Options opts = new ShaderCompilePipeline.Options();
             opts.splitTextureSamplers = compileOptions.forceSplitSamplers;
@@ -160,6 +178,7 @@ public class ShaderCompilers {
                         shaderLanguage == ShaderDesc.Language.LANGUAGE_GLES_SM100 ||
                         shaderLanguage == ShaderDesc.Language.LANGUAGE_GLES_SM300 ||
                         shaderLanguage == ShaderDesc.Language.LANGUAGE_GLSL_SM430;
+                outputMsl |= shaderLanguage == ShaderDesc.Language.LANGUAGE_MSL_22;
             }
 
             ShaderCompilePipeline pipeline = ShaderProgramBuilder.newShaderPipeline(resourceOutputPath, shaderModules, opts);
@@ -167,17 +186,21 @@ public class ShaderCompilers {
 
             validateModules(shaderModules);
 
-            Set<ShaderDesc.Language> shaderLanguages = getPlatformShaderLanguages(isComputeType, outputSpirv, outputWGSL, outputHLSL, outputGlsl, compileOptions);
+            Set<ShaderDesc.Language> shaderLanguages = getPlatformShaderLanguages(isComputeType, outputSpirv, outputWGSL, outputHLSL, outputGlsl, outputMsl, compileOptions);
             assert shaderLanguages != null;
 
             // Used for tests, merge in potentially unsupported languages here.
             shaderLanguages.addAll(compileOptions.forceIncludeShaderLanguages);
 
             HashMap<ShaderDesc.ShaderType, Boolean> shaderTypeKeys = new HashMap<>();
+            Shaderc.HLSLRootSignature hlslRootSignature = null;
 
             for (ShaderDesc.Language shaderLanguage : shaderLanguages) {
 
                 boolean arrayTextureFallbackRequired = ShaderUtil.VariantTextureArrayFallback.isRequired(shaderLanguage);
+
+                boolean create_hlsl_root_signature = shaderLanguage == ShaderDesc.Language.LANGUAGE_HLSL_51;
+                List<Shaderc.ShaderCompileResult> compiled_shaders = new ArrayList<>();
 
                 for (ShaderCompilePipeline.ShaderModuleDesc shaderModule : shaderModules) {
 
@@ -202,6 +225,12 @@ public class ShaderCompilers {
                     if (variantTextureArray) {
                         builder.setVariantTextureArray(true);
                     }
+
+                    compiled_shaders.add(crossCompileResult);
+                }
+
+                if (create_hlsl_root_signature) {
+                    hlslRootSignature = pipeline.createRootSignature(shaderLanguage, compiled_shaders);
                 }
             }
 
@@ -211,6 +240,8 @@ public class ShaderCompilers {
             for(ShaderDesc.ShaderType type : shaderTypeKeys.keySet()) {
                 compileResult.reflectors.add(pipeline.getReflectionData(type));
             }
+
+            compileResult.hlslRootSignature = hlslRootSignature != null ? hlslRootSignature.hLSLRootSignature : null;
 
             ShaderCompilePipeline.destroyShaderPipeline(pipeline);
 

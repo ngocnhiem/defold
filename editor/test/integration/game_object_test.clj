@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -61,7 +61,7 @@
           go-resource (g/node-value go-id :resource)
           go-read-fn (:read-fn (resource/resource-type go-resource))]
       (doseq [resource-type resource-types]
-        (testing (:label resource-type)
+        (testing (:ext resource-type)
           (with-open [_ (test-util/make-graph-reverter (project/graph project))]
             (test-util/add-embedded-component! go-id resource-type)
             (let [save-data (g/node-value go-id :save-data)
@@ -75,7 +75,7 @@
               (is (nil? only-in-loaded))
               (when (or (some? only-in-saved)
                         (some? only-in-loaded))
-                (println "When comparing" (:label resource-type))
+                (println "When comparing" (:ext resource-type))
                 (prn 'disk only-in-loaded)
                 (prn 'save only-in-saved)))))))))
 

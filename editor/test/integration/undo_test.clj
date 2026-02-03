@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -71,9 +71,9 @@
   (property counter g/Any)
 
   (output outline g/Any :cached
-          (g/fnk [_node-id outline]
-                 (swap! (g/node-value _node-id :counter) inc)
-                 outline)))
+          (g/fnk [counter outline]
+            (swap! counter inc)
+            outline)))
 
 (defn remove-fns
   "Dynamic functions are never equal. Strip them out of the outline"

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -593,7 +593,7 @@ public class Project {
 
     // Loads the properties from a game project settings file
     // Also adds any properties specified with the "--settings" flag
-    public static BobProjectProperties loadProperties(Project project, IResource projectFile, List<String> settingsFiles, boolean scanExtensions) throws IOException {
+    public static BobProjectProperties loadProperties(Project project, IResource projectFile, List<String> settingsFiles, boolean scanProjectPropertyFiles) throws IOException {
         if (!projectFile.exists()) {
             throw new IOException(String.format("Project file not found: %s", projectFile.getAbsPath()));
         }
@@ -603,12 +603,15 @@ public class Project {
             // load meta.properties embeded in bob.jar
             properties.loadDefaultMetaFile();
             properties.cleanupEmptyProperties();
-            if (scanExtensions) {
-                // load property files from extensions
-                List<String> extensionFolders = ExtenderUtil.getExtensionFolders(project);
-                if (!extensionFolders.isEmpty()) {
-                    for (String extension : extensionFolders) {
-                        IResource resource = project.getResource(extension + "/" + BobProjectProperties.PROPERTIES_EXTENSION_FILE);
+            if (scanProjectPropertyFiles) {
+                // load property files from the project (including extensions)
+                List<String> resourcePaths = new ArrayList<>();
+                project.findResourcePaths("", resourcePaths);
+                String propertiesSuffix = "/" + BobProjectProperties.PROPERTIES_FILE;
+                for (String resourcePath : resourcePaths) {
+                    if (resourcePath.equals(BobProjectProperties.PROPERTIES_FILE) ||
+                            resourcePath.endsWith(propertiesSuffix)) {
+                        IResource resource = project.getResource(resourcePath);
                         if (resource.exists()) {
                             // resources from extensions in ZIP files can't be read as files, but getContent() works fine
                             loadPropertiesData(properties, resource.getContent(), true, resource.getPath());
@@ -634,10 +637,10 @@ public class Project {
         return properties;
     }
 
-    public void loadProjectFile(boolean scanExtensions) throws IOException {
+    public void loadProjectFile(boolean scanProjectPropertyFiles) throws IOException {
         IResource gameProject = getGameProjectResource();
         if (gameProject.exists()) {
-            projectProperties = Project.loadProperties(this, gameProject, this.getPropertyFiles(), scanExtensions);
+            projectProperties = Project.loadProperties(this, gameProject, this.getPropertyFiles(), scanProjectPropertyFiles);
         }
     }
 
@@ -690,6 +693,10 @@ public class Project {
      */
     public List<TaskResult> build(IProgress monitor, String... commands) throws IOException, CompileExceptionError, MultipleCompileException {
         try {
+            if (Arrays.asList(commands).contains("bundle")) {
+                File bundleDir = getBundleOutputDirectory();
+                validateBundleOutputDirectory(bundleDir);
+            }
             TimeProfiler.start("loadProjectFile");
             loadProjectFile(true);
             TimeProfiler.stop();
@@ -881,15 +888,28 @@ public class Project {
         m.done();
     }
 
-    private File getBundleOutputDirectory() {
+    private File getBundleOutputDirectory() throws CompileExceptionError {
         String bundleOutput = option("bundle-output", null);
         File bundleDir = null;
         if (bundleOutput != null) {
             bundleDir = new File(bundleOutput);
         } else {
-            bundleDir = new File(getRootDirectory(), getBuildDirectory());
+            bundleDir = new File(FilenameUtils.concat(getRootDirectory(), getBuildDirectory()));
         }
         return bundleDir;
+    }
+
+    private void validateBundleOutputDirectory(File bundleDir) throws IOException, CompileExceptionError {
+        File buildDir = new File(FilenameUtils.concat(getRootDirectory(), "build"));
+        File buildOutputDir = new File(FilenameUtils.concat(getRootDirectory(), getBuildDirectory()));
+        Path bundlePath = bundleDir.getCanonicalFile().toPath();
+        Path buildPath = buildDir.getCanonicalFile().toPath();
+        Path buildOutputPath = buildOutputDir.getCanonicalFile().toPath();
+        // We prohibit to bundle into `project/build` folder but allow to do it into `project/build/default*` folder
+        // as this folder used by default and for HTML5 bundle in the editor
+        if (bundlePath.startsWith(buildPath) && !bundlePath.startsWith(buildOutputPath)) {
+            throw new CompileExceptionError("Folder '" + buildDir + "' in the project folder can't be used for bundling as this folder is reserved for Defold build system.");
+        }
     }
 
     public void registerTextureCompressors() {
@@ -1373,6 +1393,7 @@ public class Project {
         options.add(new GameProjectBuildOption("debug-output-spirv", "output-spirv", "shader","output_spirv",List.of("GraphicsAdapterVulkan")));
         options.add(new GameProjectBuildOption("debug-output-hlsl", "output-hlsl", "shader","output_hlsl",List.of("GraphicsAdapterDX12")));
         options.add(new GameProjectBuildOption("debug-output-wgsl", "output-wgsl", "shader","output_wgsl",List.of("GraphicsAdapterWebGPU")));
+        options.add(new GameProjectBuildOption("debug-output-msl", "output-msl", "shader","output_msl",List.of("GraphicsAdapterMetal")));
         options.add(new GameProjectBuildOption("debug-output-glsl", "output-glsl", "shader","output_glsl",List.of("GraphicsAdapterOpenGL", "GraphicsAdapterOpenGLES")));
         options.add(new GameProjectBuildOption("output-glsles100", "output-glsles100", "shader","output_glsl_es100",null));
         options.add(new GameProjectBuildOption("output-glsles300", "output-glsles300", "shader","output_glsl_es300",null));
@@ -1614,7 +1635,9 @@ public class Project {
         }
 
         IProgress m = monitor.subProgress(99);
-
+        TimeProfiler.start("ensureBobInitialized");
+        Bob.ensureBobInitialized();
+        TimeProfiler.stop();
         IProgress mrep = m.subProgress(1);
         mrep.beginTask(IProgress.Task.READING_TASKS, 1);
         TimeProfiler.start("Create tasks");

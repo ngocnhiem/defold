@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -30,9 +30,9 @@
 #include "gameobject.h"
 #include "gameobject_script.h"
 #include "gameobject_private.h"
+#include "gameobject_props.h"
 #include "gameobject_props_lua.h"
 #include "gameobject_props_ddf.h"
-#include "gameobject_props.h"
 
 #include "gameobject/gameobject_ddf.h"
 
@@ -107,8 +107,9 @@ namespace dmGameObject
     }
 
     PropertyOptions::PropertyOptions()
-    : m_Index(0)
-    , m_HasKey(0) {}
+    {
+        memset(this, 0, sizeof(*this));
+    }
 
     PropertyVar::PropertyVar()
     {
@@ -322,6 +323,7 @@ namespace dmGameObject
 
     void DeleteCollections(HRegister regist)
     {
+        DM_MUTEX_SCOPED_LOCK(regist->m_Mutex);
         uint32_t collection_count = regist->m_Collections.Size();
         for (uint32_t i = 0; i < collection_count; ++i)
         {
@@ -336,6 +338,7 @@ namespace dmGameObject
 
     HCollection GetCollectionByHash(HRegister regist, dmhash_t socket_name)
     {
+        DM_MUTEX_SCOPED_LOCK(regist->m_Mutex);
         uint32_t collection_count = regist->m_Collections.Size();
         for (uint32_t i = 0; i < collection_count; ++i)
         {
@@ -659,8 +662,10 @@ namespace dmGameObject
         if (FindComponentType(regist, type.m_ResourceType, 0x0) != 0)
             return RESULT_ALREADY_REGISTERED;
 
-        if (type.m_UpdateFunction != 0x0 && type.m_AddToUpdateFunction == 0x0) {
-            dmLogWarning("Registering an Update function for '%s' requires the registration of an AddToUpdate function.", type.m_Name);
+        if ((type.m_UpdateFunction != 0x0 
+            || type.m_FixedUpdateFunction != 0x0
+            || type.m_LateUpdateFunction != 0x0) && type.m_AddToUpdateFunction == 0x0) {
+            dmLogWarning("Registering an Update/FixedUpdate/LateUpdate function for '%s' requires the registration of an AddToUpdate function.", type.m_Name);
             return RESULT_INVALID_OPERATION;
         }
 
@@ -2589,6 +2594,74 @@ namespace dmGameObject
         // Note: Do not modify collection->m_DirtyTransforms here; other branches remain stale.
     }
 
+    enum UpdateFunctionType
+    {
+        UPDATE_FUNCTION_TYPE_FIXED_UPDATE,
+        UPDATE_FUNCTION_TYPE_UPDATE,
+        UPDATE_FUNCTION_TYPE_LATE_UPDATE
+    };
+
+    static bool UpdateComponentFunction(Collection* collection, uint32_t component_type_count, UpdateFunctionType function_type, ComponentsUpdateParams& update_params)
+    {
+        bool ret = true;
+        for (uint32_t i = 0; i < component_type_count; ++i)
+        {
+            uint16_t update_index = collection->m_Register->m_ComponentTypesOrder[i];
+            ComponentType* component_type = &collection->m_Register->m_ComponentTypes[update_index];
+
+            // Avoid to call UpdateTransforms for each/all component types.
+            if (component_type->m_ReadsTransforms && collection->m_DirtyTransforms)
+            {
+                UpdateTransforms(collection);
+            }
+
+            // TODO: Could be stored in an array in component type, and just use the function type as index
+            ComponentsUpdate func = 0;
+            switch(function_type)
+            {
+                case UPDATE_FUNCTION_TYPE_UPDATE:
+                {
+                    func = component_type->m_UpdateFunction;
+                    break;
+                }
+                case UPDATE_FUNCTION_TYPE_FIXED_UPDATE:
+                {
+                    func = component_type->m_FixedUpdateFunction;
+                    break;
+                }
+                case UPDATE_FUNCTION_TYPE_LATE_UPDATE:
+                {
+                    func = component_type->m_LateUpdateFunction;
+                    break;
+                }
+            }
+
+            if (func)
+            {
+                DM_PROFILE_DYN(component_type->m_Name, 0);
+                update_params.m_World = collection->m_ComponentWorlds[update_index];
+                update_params.m_Context = component_type->m_Context;
+
+                ComponentsUpdateResult update_result;
+                update_result.m_TransformsUpdated = false;
+                UpdateResult res = func(update_params, update_result);
+                if (res != UPDATE_RESULT_OK)
+                    ret = false;
+
+                // Mark the collections transforms as dirty if this component has updated
+                // them in its update function.
+                collection->m_DirtyTransforms |= update_result.m_TransformsUpdated;
+            }
+
+            if (!DispatchMessages(collection, &collection->m_ComponentSocket, 1))
+            {
+                ret = false;
+            }
+        }
+
+        return ret;
+    }
+
     static bool Update(Collection* collection, const UpdateContext* update_context)
     {
         DM_PROFILE("Update");
@@ -2617,43 +2690,8 @@ namespace dmGameObject
             dynamic_update_context.m_AccumFrameTime = collection->m_FixedAccumTime;
         }
 
-        uint32_t component_types = collection->m_Register->m_ComponentTypeCount;
-        for (uint32_t i = 0; i < component_types; ++i)
-        {
-            uint16_t update_index = collection->m_Register->m_ComponentTypesOrder[i];
-            ComponentType* component_type = &collection->m_Register->m_ComponentTypes[update_index];
-
-            // Avoid to call UpdateTransforms for each/all component types.
-            if (component_type->m_ReadsTransforms && collection->m_DirtyTransforms) {
-                UpdateTransforms(collection);
-            }
-
-            if (component_type->m_UpdateFunction)
-            {
-                DM_PROFILE_DYN(component_type->m_Name, 0);
-                ComponentsUpdateParams params;
-                params.m_Collection = collection->m_HCollection;
-                params.m_UpdateContext = &dynamic_update_context;
-                params.m_World = collection->m_ComponentWorlds[update_index];
-                params.m_Context = component_type->m_Context;
-
-                ComponentsUpdateResult update_result;
-                update_result.m_TransformsUpdated = false;
-                UpdateResult res = component_type->m_UpdateFunction(params, update_result);
-                if (res != UPDATE_RESULT_OK)
-                    ret = false;
-
-                // Mark the collections transforms as dirty if this component has updated
-                // them in its update function.
-                collection->m_DirtyTransforms |= update_result.m_TransformsUpdated;
-            }
-
-            if (!DispatchMessages(collection, &collection->m_ComponentSocket, 1))
-            {
-                ret = false;
-            }
-        }
-
+        uint32_t num_fixed_steps = 0;
+        UpdateContext fixed_update_context;
         if (update_context->m_FixedUpdateFrequency != 0 && update_context->m_TimeScale > 0.001f)
         {
             if (collection->m_FirstUpdate)
@@ -2666,60 +2704,74 @@ namespace dmGameObject
             const float fixed_frequency = update_context->m_FixedUpdateFrequency;
             // If the proxy is slowed down, we want e.g. the physics to be slowed down as well
             const float fixed_dt = (1.0f / (float)fixed_frequency) * update_context->m_TimeScale;
-            uint32_t num_fixed_steps = (uint32_t)(time / fixed_dt);
+            num_fixed_steps = (uint32_t)(time / fixed_dt);
             // Store the remainder for the next frame
             collection->m_FixedAccumTime = time - (num_fixed_steps * fixed_dt);
 
             if (num_fixed_steps != 0)
             {
-                UpdateContext fixed_update_context;
                 fixed_update_context = dynamic_update_context;
                 fixed_update_context.m_DT = fixed_dt;
-
-                for (uint32_t step = 0; step < num_fixed_steps; ++step)
-                {
-                    for (uint32_t i = 0; i < component_types; ++i)
-                    {
-                        uint16_t update_index = collection->m_Register->m_ComponentTypesOrder[i];
-                        ComponentType* component_type = &collection->m_Register->m_ComponentTypes[update_index];
-
-                        // Avoid to call UpdateTransforms for each/all component types.
-                        if (component_type->m_ReadsTransforms && collection->m_DirtyTransforms) {
-                            UpdateTransforms(collection);
-                        }
-
-                        if (component_type->m_FixedUpdateFunction)
-                        {
-                            DM_PROFILE_DYN(component_type->m_Name, 0);
-                            ComponentsUpdateParams params;
-                            params.m_Collection = collection->m_HCollection;
-                            params.m_UpdateContext = &fixed_update_context;
-                            params.m_World = collection->m_ComponentWorlds[update_index];
-                            params.m_Context = component_type->m_Context;
-
-                            ComponentsUpdateResult update_result;
-                            update_result.m_TransformsUpdated = false;
-                            UpdateResult res = component_type->m_FixedUpdateFunction(params, update_result);
-                            if (res != UPDATE_RESULT_OK)
-                                ret = false;
-
-                            // Mark the collections transforms as dirty if this component has updated
-                            // them in its update function.
-                            collection->m_DirtyTransforms |= update_result.m_TransformsUpdated;
-                        }
-
-                        if (!DispatchMessages(collection, &collection->m_ComponentSocket, 1))
-                        {
-                            ret = false;
-                        }
-                    }
-                }
-
             }
         }
 
+        /* The overall function order is as follows:
+        *
+        * - For each function "UpdateFn" in ["Update", "LateUpdateFn]:
+        *   - For each component type:
+        *       - Call type->UpdateFn()
+        *       - Flush messages (if necessary)
+        *       - Update transforms (if necessary)
+        *
+        * Note that FixedUpdate is only called if the project has the setting enabled.
+        * In that case, the loop looks like above, but with one extra function in the list:
+        *
+        * - For each function "UpdateFn" in ["FixedUpdate", "Update", "LateUpdateFn]:
+        *   - same as above: for each component type...
+        *
+        * When using fixed physics update, we call into the fixed update functions for each component type.
+        * Currently, only the Script and CollisionObject components support this function.
+        *
+        * To summarize, the default update loop looks like:
+        *
+        *     script update(), animation, ..., physics update, ...
+        *
+        * With fixed update enabled, the update loop looks like:
+        *
+        *     [script fixed_update(), physics fixed update], animation, ...,
+        */
+
+        ComponentsUpdateParams update_params;
+        update_params.m_Collection = collection->m_HCollection;
+        update_params.m_UpdateContext = &dynamic_update_context;
+
+        ComponentsUpdateParams fixed_update_params;
+        fixed_update_params.m_Collection = collection->m_HCollection;
+        fixed_update_params.m_UpdateContext = &fixed_update_context;
+
+        uint32_t component_type_count = collection->m_Register->m_ComponentTypeCount;
+
+        // See gamesys.cpp for list of priorities for each component type.
+        // These priorities ensure the update order between components.
+        // I.e. collectionproxy, script, animation, collision ...
+
+        // 1. for each fixed step, call component's fixed update
+        //      - Lua fixed_update() (comp_script.cpp)
+        //      - CompCollisionObjectFixedUpdate() (comp_collision_object.cpp)
+        for (uint32_t step = 0; step < num_fixed_steps; ++step)
+        {
+            ret = ret && UpdateComponentFunction(collection, component_type_count, UPDATE_FUNCTION_TYPE_FIXED_UPDATE, fixed_update_params);
+        }
+
+        // 2. call component's regular update
+        ret = ret && UpdateComponentFunction(collection, component_type_count, UPDATE_FUNCTION_TYPE_UPDATE, update_params);
+
+        // 3. call component's late update
+        ret = ret && UpdateComponentFunction(collection, component_type_count, UPDATE_FUNCTION_TYPE_LATE_UPDATE, update_params);
+
         collection->m_InUpdate = 0;
-        if (collection->m_DirtyTransforms) {
+        if (collection->m_DirtyTransforms)
+        {
             UpdateTransforms(collection);
         }
 
@@ -2872,6 +2924,7 @@ namespace dmGameObject
 
         bool result = true;
 
+        DM_MUTEX_SCOPED_LOCK(reg->m_Mutex);
         uint32_t collection_count = reg->m_Collections.Size();
         uint32_t i = 0;
         while (i < collection_count)
@@ -3495,7 +3548,7 @@ namespace dmGameObject
                     p.m_World = instance->m_Collection->m_ComponentWorlds[component.m_TypeIndex];
                     p.m_Instance = instance;
                     p.m_PropertyId = property_id;
-                    p.m_Options = options;
+                    p.m_Options = &options;
                     p.m_UserData = user_data;
                     PropertyDesc prop_desc;
                     PropertyResult result = type->m_GetPropertyFunction(p, prop_desc);
@@ -3516,6 +3569,168 @@ namespace dmGameObject
             }
         }
     }
+
+    PropertyResult GetPropertyAsHash(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmhash_t* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_HASH == out_prop.m_Variant.m_Type)
+            {
+                *out_value = out_prop.m_Variant.m_Hash;
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsFloat(HInstance instance, dmhash_t component_id, dmhash_t property_id, float* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_NUMBER == out_prop.m_Variant.m_Type)
+            {
+                *out_value = out_prop.m_Variant.m_Number;
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsVector3(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Vector3* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_VECTOR3 == out_prop.m_Variant.m_Type)
+            {
+                out_value->setX(out_prop.m_Variant.m_V4[0]);
+                out_value->setY(out_prop.m_Variant.m_V4[1]);
+                out_value->setZ(out_prop.m_Variant.m_V4[2]);
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsVector4(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Vector4* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_VECTOR4 == out_prop.m_Variant.m_Type)
+            {
+                out_value->setX(out_prop.m_Variant.m_V4[0]);
+                out_value->setY(out_prop.m_Variant.m_V4[1]);
+                out_value->setZ(out_prop.m_Variant.m_V4[2]);
+                out_value->setW(out_prop.m_Variant.m_V4[3]);
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsQuat(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Quat* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_QUAT == out_prop.m_Variant.m_Type)
+            {
+                out_value->setX(out_prop.m_Variant.m_V4[0]);
+                out_value->setY(out_prop.m_Variant.m_V4[1]);
+                out_value->setZ(out_prop.m_Variant.m_V4[2]);
+                out_value->setW(out_prop.m_Variant.m_V4[3]);
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsBool(HInstance instance, dmhash_t component_id, dmhash_t property_id, bool* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_BOOLEAN == out_prop.m_Variant.m_Type)
+            {
+                *out_value = out_prop.m_Variant.m_Bool;
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsURL(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmMessage::URL* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_URL == out_prop.m_Variant.m_Type)
+            {
+                dmMessage::URL* url = (dmMessage::URL*) out_prop.m_Variant.m_URL;
+                out_value->m_Socket = url->m_Socket;
+                out_value->_reserved = url->_reserved;
+                out_value->m_Path = url->m_Path;
+                out_value->m_Fragment = url->m_Fragment;
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+    PropertyResult GetPropertyAsMatrix4(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Matrix4* out_value)
+    {
+        PropertyOptions options;
+        PropertyDesc out_prop;
+        PropertyResult result = GetProperty(instance, component_id, property_id, options, out_prop);
+        if (result == PROPERTY_RESULT_OK)
+        {
+            if (PROPERTY_TYPE_MATRIX4 == out_prop.m_Variant.m_Type)
+            {
+                out_value->setCol0(dmVMath::Vector4(out_prop.m_Variant.m_M4[0],  out_prop.m_Variant.m_M4[1],  out_prop.m_Variant.m_M4[2],  out_prop.m_Variant.m_M4[3]));
+                out_value->setCol1(dmVMath::Vector4(out_prop.m_Variant.m_M4[4],  out_prop.m_Variant.m_M4[5],  out_prop.m_Variant.m_M4[6],  out_prop.m_Variant.m_M4[7]));
+                out_value->setCol2(dmVMath::Vector4(out_prop.m_Variant.m_M4[8],  out_prop.m_Variant.m_M4[9],  out_prop.m_Variant.m_M4[10], out_prop.m_Variant.m_M4[11]));
+                out_value->setCol3(dmVMath::Vector4(out_prop.m_Variant.m_M4[12], out_prop.m_Variant.m_M4[13], out_prop.m_Variant.m_M4[14], out_prop.m_Variant.m_M4[15]));
+            }
+            else
+            {
+                result = PROPERTY_RESULT_TYPE_MISMATCH;
+            }
+        }
+        return result;
+    }
+
+
 
     PropertyResult SetProperty(HInstance instance, dmhash_t component_id, dmhash_t property_id, PropertyOptions options, const PropertyVar& value)
     {
@@ -3714,7 +3929,7 @@ namespace dmGameObject
                     p.m_PropertyId = property_id;
                     p.m_UserData = user_data;
                     p.m_Value = value;
-                    p.m_Options = options;
+                    p.m_Options = &options;
                     return type->m_SetPropertyFunction(p);
                 }
                 else
@@ -3728,6 +3943,143 @@ namespace dmGameObject
             }
         }
         return PROPERTY_RESULT_OK;
+    }
+
+    static inline PropertyOption* NextPropertyOption(PropertyOptions* options)
+    {
+        if (options->m_OptionsCount >= MAX_PROPERTY_OPTIONS_COUNT)
+            return 0;
+        return &options->m_Options[options->m_OptionsCount++];
+    }
+
+    bool AddPropertyOptionsKey(PropertyOptions* options, dmhash_t key)
+    {
+        PropertyOption* option = NextPropertyOption(options);
+        if (!option)
+            return false;
+        option->m_Key = key;
+        option->m_HasKey = 1;
+        return true;
+    }
+
+    bool AddPropertyOptionsIndex(PropertyOptions* options, int32_t index)
+    {
+        PropertyOption* option = NextPropertyOption(options);
+        if (!option)
+            return false;
+        option->m_Index = index;
+        option->m_HasKey = 0;
+        return true;
+    }
+
+    bool AddPropertyOption(PropertyOptions* options, PropertyOption option)
+    {
+        PropertyOption* opt = NextPropertyOption(options);
+        if (!opt)
+            return false;
+        *opt = option;
+        return true;
+    }
+
+    bool SetPropertyOptionsByIndex(PropertyOptions* options, uint32_t index, int32_t value)
+    {
+        if (index >= options->m_OptionsCount)
+            return false;
+        PropertyOption* option = &options->m_Options[index];
+        option->m_Index = value;
+        option->m_HasKey = 0;
+        return true;
+    }
+
+    uint32_t GetPropertyOptionsCount(HPropertyOptions options)
+    {
+        if (!options)
+            return 0;
+        return options->m_OptionsCount;
+    }
+
+    PropertyResult GetPropertyOptionsIndex(HPropertyOptions options, uint32_t index, int32_t* result)
+    {
+        if (!options || index >= options->m_OptionsCount)
+            return PROPERTY_RESULT_INVALID_INDEX;
+        if (options->m_Options[index].m_HasKey)
+            return PROPERTY_RESULT_TYPE_MISMATCH;
+        *result = options->m_Options[index].m_Index;
+        return PROPERTY_RESULT_OK;
+    }
+
+    PropertyResult GetPropertyOptionsKey(HPropertyOptions options, uint32_t index, dmhash_t* result)
+    {
+        if (!options || index >= options->m_OptionsCount)
+            return PROPERTY_RESULT_INVALID_INDEX;
+        if (!options->m_Options[index].m_HasKey)
+            return PROPERTY_RESULT_TYPE_MISMATCH;
+        *result = options->m_Options[index].m_Key;
+        return PROPERTY_RESULT_OK;
+    }
+
+    PropertyResult SetPropertyFromHash(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmhash_t value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromFloat(HInstance instance, dmhash_t component_id, dmhash_t property_id, float value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromVector3(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Vector3 value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromVector4(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Vector4 value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromQuat(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmVMath::Quat value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromBool(HInstance instance, dmhash_t component_id, dmhash_t property_id, bool value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromURL(HInstance instance, dmhash_t component_id, dmhash_t property_id, dmMessage::URL value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
+    }
+
+    PropertyResult SetPropertyFromMatrix4(HInstance instance, dmhash_t component_id, dmhash_t property_id, const dmVMath::Matrix4& value)
+    {
+        PropertyOptions options;
+        PropertyVar prop_value(value);
+        PropertyResult r = SetProperty(instance, component_id, property_id, options, prop_value);
+        return r;
     }
 
     // Recreate the instance at the given index with a new prototype.

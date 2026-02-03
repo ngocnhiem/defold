@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -317,6 +317,8 @@ static void DoLogPlatform(LogSeverity severity, const char* output, int output_l
                 Module.print(UTF8ToString($0));
             }, output);
         }
+#elif defined(_GAMING_XBOX)
+    OutputDebugStringA(output);
 #elif !defined(ANDROID)
         fwrite(output, 1, output_len, stderr);
 #endif
@@ -572,6 +574,30 @@ bool SetLogFile(const char* path)
     return true;
 }
 
+#if defined(_WIN32)
+
+bool HResultToString(HRESULT hr, char* buffer, size_t buffer_size)
+{
+    buffer[0] = 0;
+    return 0 != FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM,
+                    NULL, hr,
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
+                    (LPSTR) buffer, buffer_size,
+                    NULL);
+}
+
+void LogHResult(LogSeverity severity, HRESULT result, const char* str_buf)
+{
+    char msg[256];
+    char buffer[1024];
+    dmLog::HResultToString(result, msg, sizeof(msg));
+    dmSnPrintf(buffer, sizeof(buffer), "%s (hr: 0x%08x code: %d : '%s')\n", str_buf, result, HRESULT_CODE(result), msg);
+    dmLogError(buffer);
+    OutputDebugStringA(buffer);
+}
+#endif
+
+
 } //namespace dmLog
 
 void dmLogRegisterListener(FLogListener listener)
@@ -665,7 +691,8 @@ void LogInternal(LogSeverity severity, const char* domain, const char* format, .
 
     if (n < dmLog::MAX_STRING_SIZE)
     {
-        n += dmSnPrintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, "\n");
+        dmSnPrintf(str_buf + n, dmLog::MAX_STRING_SIZE - n, "\n");
+        ++n; // Since dmSnPrintf returns -1 on truncation, don't add the return value to n, and instead increment n separately
     }
 
     if (n >= dmLog::MAX_STRING_SIZE)

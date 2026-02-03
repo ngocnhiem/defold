@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -29,7 +29,7 @@
 #include "render_private.h"
 #include "render_script.h"
 #include "debug_renderer.h"
-#include "font_renderer.h"
+#include "font/font_renderer.h"
 
 DM_PROPERTY_GROUP(rmtp_Render, "Renderer", 0);
 
@@ -981,12 +981,13 @@ namespace dmRender
             {
                 uint32_t *idx = context->m_RenderListSortBuffer.Begin() + i;
                 const RenderListEntry *last_entry = &base[*last];
-                const RenderListEntry *current_entry = &base[*idx];
-
                 // continue batch on match, or dispatch
-                if (i < count && (last_entry->m_Dispatch == current_entry->m_Dispatch && last_entry->m_BatchKey == current_entry->m_BatchKey && last_entry->m_MinorOrder == current_entry->m_MinorOrder))
-                    continue;
-
+                if (i < count)
+                {
+                    const RenderListEntry *current_entry = &base[*idx];                
+                    if (last_entry->m_Dispatch == current_entry->m_Dispatch && last_entry->m_BatchKey == current_entry->m_BatchKey && last_entry->m_MinorOrder == current_entry->m_MinorOrder)
+                        continue;
+                }
                 if (last_entry->m_Dispatch != RENDERLIST_INVALID_DISPATCH)
                 {
                     assert(last_entry->m_Dispatch < context->m_RenderListDispatch.Size());

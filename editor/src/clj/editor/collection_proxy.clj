@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -38,9 +38,9 @@
               :set protobuf-forms-util/set-form-op
               :clear protobuf-forms-util/clear-form-op}
    :navigation false
-   :sections [{:title "Collection Proxy"
+   :sections [{:localization-key "collectionproxy"
                :fields [{:path [:collection]
-                         :label "Collection"
+                         :localization-key "collectionproxy.collection"
                          :type :resource
                          :filter "collection"}]}]
    :values {[:collection] collection-resource}})
@@ -128,8 +128,9 @@
     :load-fn load-collection-proxy
     :icon collection-proxy-icon
     :icon-class :property
+    :category (localization/message "resource.category.components")
     :view-types [:cljfx-form-view :text]
     :view-opts {}
     :tags #{:component}
     :tag-opts {:component {:transform-properties #{}}}
-    :label "Collection Proxy"))
+    :label (localization/message "resource.type.collectionproxy")))

@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -26,6 +26,17 @@ namespace dmEngine
 {
     dmEngine::HEngine g_Engine = 0;
 
+/*# System API documentation
+ *
+ * Functions and messages for using system resources, controlling the engine,
+ * error handling and debugging.
+ *
+ * @document
+ * @name System
+ * @namespace sys
+ * @language Lua
+ */
+
 /*#
  * Enables engine throttling.
  *
@@ -35,7 +46,7 @@ namespace dmEngine
  * @note On threaded systems, Sound will continue to play any started non-streaming sounds. (e.g. looping background music)
  *
  * @name sys.set_engine_throttle
- * @param enable [type:bool] true if throttling should be enabled
+ * @param enable [type:boolean] true if throttling should be enabled
  * @param cooldown [type:number] the time period to do update + render for (seconds)
  *
  * @examples
@@ -78,9 +89,46 @@ static int EngineSys_SetEngineThrottle(lua_State* L)
 }
 
 
+/*#
+ * Disables rendering
+ *
+ * @note It will will leave the back buffer as-is
+ *
+ * @name sys.set_render_enable
+ * @param enable [type:boolean] true if throttling should be enabled
+ *
+ * @examples
+ *
+ * Disable rendering
+ *
+ * ```lua
+ * sys.set_render_enable(false)
+ * ```
+ *
+ */
+static int EngineSys_SetRenderEnabled(lua_State* L)
+{
+    DM_LUA_STACK_CHECK(L, 0);
+
+    bool enable = true;
+    if (lua_isboolean(L, 1))
+    {
+        enable = lua_toboolean(L, 1);
+    }
+    else
+    {
+        return DM_LUA_ERROR("Expected boolean as first argument");
+    }
+
+    dmEngine::SetRenderEnabled(enable);
+    return 0;
+}
+
+
 static const luaL_reg EngineSys_methods[] =
 {
     {"set_engine_throttle", EngineSys_SetEngineThrottle},
+    {"set_render_enabled", EngineSys_SetRenderEnabled},
     {0, 0}
 };
 

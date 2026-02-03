@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -25,6 +25,7 @@
             [util.digest :as digest]
             [util.fn :as fn]
             [util.http-server :as http-server]
+            [util.path :as path]
             [util.text-util :as text-util])
   (:import [clojure.lang PersistentHashMap]
            [com.defold.editor Editor]
@@ -47,6 +48,7 @@
   (source-type [this])
   (exists? [this])
   (read-only? [this])
+  (symlink? [this])
   (path [this])
   (abs-path ^String [this])
   (proj-path ^String [this])
@@ -171,7 +173,7 @@
   contents of something like a `.defignore` file."
   [lines]
   (let [patterns (when lines
-                   (coll/transfer lines []
+                   (coll/into-> lines []
                      (filter #(string/starts-with? % "/"))
                      (map #(string/replace % #"/*$" ""))
                      (distinct)))]
@@ -263,7 +265,7 @@
   Resource
   (children [this] children)
   (ext [this] ext)
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] source-type)
   (exists? [this]
     (try
@@ -277,7 +279,7 @@
       (let [file (io/file this)]
         (and (.exists file)
              (not (ignored-project-path? (io/file root) project-path))
-             (string/ends-with? (->unix-seps (.getCanonicalPath file)) project-path)))
+             (string/ends-with? (->unix-seps (str (path/actual-cased file))) project-path)))
       (catch IOException _
         false)
       (catch SecurityException _
@@ -287,6 +289,7 @@
       (not (.canWrite (io/file this)))
       (catch SecurityException _
         true)))
+  (symlink? [this] (path/symlink? this))
   (path [this] (if (= "" project-path) "" (subs project-path 1)))
   (abs-path [this] abs-path)
   (proj-path [this] project-path)
@@ -310,11 +313,14 @@
   io/Coercions
   (as-file [this] (File. abs-path))
 
+  path/Coercions
+  (as-path [_this] (path/as-path abs-path))
+
   http-server/ContentType
   (content-type [resource] (content-type resource))
 
   http-server/->Data
-  (->data [_] (fs/path abs-path)))
+  (->data [_] (path/as-path abs-path)))
 
 (defn make-file-resource [workspace ^String root-path ^File file children editable-proj-path? unloaded-proj-path?]
   {:pre [(g/node-id? workspace)
@@ -362,10 +368,11 @@
   Resource
   (children [this] nil)
   (ext [this] ext)
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] :file)
   (exists? [this] true)
   (read-only? [this] false)
+  (symlink? [this] false)
   (path [this] nil)
   (abs-path [this] nil)
   (proj-path [this] nil)
@@ -416,10 +423,11 @@
   Resource
   (children [this] children)
   (ext [this] (FilenameUtils/getExtension name))
-  (resource-type [this] (lookup-resource-type (g/now) workspace this))
+  (resource-type [this] (lookup-resource-type (g/unsafe-basis) workspace this))
   (source-type [this] (if (zero? (count children)) :file :folder))
   (exists? [this] (not (nil? zip-entry)))
   (read-only? [this] true)
+  (symlink? [this] false) ; Note: Zip archives can contain symlinks. The ZipFile class doesn't support them, but the zip FileSystem implementation does.
   (path [this] path)
   (abs-path [this] nil)
   (proj-path [this] (.concat "/" path))
@@ -442,6 +450,9 @@
 
   io/Coercions
   (as-file [this] (io/as-file zip-uri))
+
+  path/Coercions
+  (as-path [_this] (path/as-path zip-uri))
 
   http-server/ContentType
   (content-type [resource] (content-type resource))
@@ -581,6 +592,11 @@
   (with-open [rs (io/input-stream resource)]
     (digest/stream->sha256-hex rs)))
 
+(defn resource->bytes
+  ^bytes [resource]
+  (with-open [rs (io/input-stream resource)]
+    (IOUtils/toByteArray rs)))
+
 (defn resource->path-inclusive-sha1-hex
   "For certain files, we want to include the proj-path in the sha1 identifier
   along with the file contents. For example, it used to be that two atlases
@@ -600,6 +616,17 @@
       (.write digest-output-stream (.getBytes proj-path "UTF-8")))
     (.flush digest-output-stream)
     (digest/completed-stream->hex digest-output-stream)))
+
+(defn resource->path-inclusive-sha1
+  "Returns SHA-1 digest as bytes."
+  ^bytes [resource]
+  (with-open [input-stream (io/input-stream resource)
+              digest-output-stream (digest/make-digest-output-stream "SHA-1")]
+    (io/copy input-stream digest-output-stream)
+    (when-some [^String proj-path (proj-path resource)]
+      (.write digest-output-stream (.getBytes proj-path "UTF-8")))
+    (.flush digest-output-stream)
+    (.digest (.getMessageDigest digest-output-stream))))
 
 (defn read-source-value+sha256-hex
   "Returns a pair of [read-fn-result, disk-sha256-or-nil]. If the resource is a
