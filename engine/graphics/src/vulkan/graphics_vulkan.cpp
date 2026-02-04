@@ -4458,7 +4458,7 @@ bail:
     }
 
     // Called on thread where we update (which should be the main thread)
-    static void AsyncCompleteCallback(HJobContext, HJob job, JobStatus status, void* _context, void* data, int result)
+    static void AsyncCompleteCallback(HJobContext, HJob job, JobSystemStatus status, void* _context, void* data, int result)
     {
         VulkanContext* context     = (VulkanContext*) _context;
         uint16_t param_array_index = (uint16_t) (size_t) data;

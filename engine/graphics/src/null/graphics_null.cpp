@@ -1509,7 +1509,7 @@ namespace dmGraphics
         return 0;
     }
 
-    static void DoDeleteTextureComplete(HJobContext, HJob hjob, JobStatus status, void* _context, void* _h_texture, int result)
+    static void DoDeleteTextureComplete(HJobContext, HJob hjob, JobSystemStatus status, void* _context, void* _h_texture, int result)
     {
         NullContext* context = (NullContext*) _context;
         HTexture texture = (HTexture) _h_texture;
@@ -1538,7 +1538,7 @@ namespace dmGraphics
             {
                 void* texture = (void*) (size_t) context->m_SetTextureAsyncState.m_PostDeleteTextures[i];
                 DoDeleteTexture(context->m_JobThread, 0, context, texture);
-                DoDeleteTextureComplete(context->m_JobThread, 0, JOB_STATUS_FINISHED, context, texture, 0);
+                DoDeleteTextureComplete(context->m_JobThread, 0, JOBSYSTEM_STATUS_FINISHED, context, texture, 0);
             }
             context->m_SetTextureAsyncState.m_PostDeleteTextures.SetSize(0);
             return;
@@ -1579,7 +1579,7 @@ namespace dmGraphics
         {
             void* htexture = (void*) texture;
             DoDeleteTexture(context->m_JobThread, 0, g_NullContext, htexture);
-            DoDeleteTextureComplete(context->m_JobThread, 0, JOB_STATUS_FINISHED, g_NullContext, htexture, 0);
+            DoDeleteTextureComplete(context->m_JobThread, 0, JOBSYSTEM_STATUS_FINISHED, g_NullContext, htexture, 0);
         }
     }
 
@@ -1872,7 +1872,7 @@ namespace dmGraphics
     }
 
     // Called on thread where we update (which should be the main thread)
-    static void AsyncCompleteCallback(HJobContext, HJob hjob, JobStatus status, void* _context, void* data, int result)
+    static void AsyncCompleteCallback(HJobContext, HJob hjob, JobSystemStatus status, void* _context, void* data, int result)
     {
         NullContext* context       = (NullContext*) _context;
         uint16_t param_array_index = (uint16_t) (size_t) data;

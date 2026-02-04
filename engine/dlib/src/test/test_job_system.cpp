@@ -30,7 +30,7 @@ static int32_t ProcessSimple(HJobContext ctx, HJob job, void* user_context, void
     return 1;
 }
 
-static void CallbackSimple(HJobContext ctx, HJob job, JobStatus status, void* user_context, void* user_data, int32_t user_result)
+static void CallbackSimple(HJobContext ctx, HJob job, JobSystemStatus status, void* user_context, void* user_data, int32_t user_result)
 {
     uint8_t* d = (uint8_t*) user_data;
     if (d)
@@ -158,11 +158,11 @@ static int32_t ProcessCancel(HJobContext ctx, HJob job, void* user_context, void
     return 1;
 }
 
-static void CallbackCancel(HJobContext ctx, HJob job, JobStatus status, void* user_context, void* user_data, int32_t user_result)
+static void CallbackCancel(HJobContext ctx, HJob job, JobSystemStatus status, void* user_context, void* user_data, int32_t user_result)
 {
     ContextCancel* context = (ContextCancel*)user_context;
     dmAtomicIncrement32(&context->m_NumFinished);
-    dmAtomicAdd32(&context->m_NumFinishedOk, status == JOB_STATUS_FINISHED ? 1 : 0);
+    dmAtomicAdd32(&context->m_NumFinishedOk, status == JOBSYSTEM_STATUS_FINISHED ? 1 : 0);
 }
 
 TEST_P(dmJobSystemTest, CancelJobs)
@@ -192,7 +192,7 @@ TEST_P(dmJobSystemTest, CancelJobs)
 
     // specifically test trying to push a cancelled job
     JobSystemCancelJob(m_JobSystem, job4);
-    ASSERT_EQ(JOB_RESULT_CANCELED, JobSystemPushJob(m_JobSystem, job4));
+    ASSERT_EQ(JOBSYSTEM_RESULT_CANCELED, JobSystemPushJob(m_JobSystem, job4));
 
     JobSystemPushJob(m_JobSystem, job1);
     JobSystemPushJob(m_JobSystem, job2);
@@ -235,7 +235,7 @@ static int32_t ProcessSortedDependencyJobs(HJobContext ctx, HJob hjob, void* use
     return 1;
 }
 
-static void CallbackSortedDependencyJobs(HJobContext ctx, HJob hjob, JobStatus status, void* user_context, void* user_data, int32_t user_result)
+static void CallbackSortedDependencyJobs(HJobContext ctx, HJob hjob, JobSystemStatus status, void* user_context, void* user_data, int32_t user_result)
 {
     uint32_t* count_finished = (uint32_t*)user_context;
     JobWithDependency* data = (JobWithDependency*)user_data;
@@ -283,12 +283,12 @@ TEST_P(dmJobSystemTest, SortedDependencyJobs)
     JobSystemSetParent(m_JobSystem, hjobs[5], hjobs[3]);
     JobSystemSetParent(m_JobSystem, hjobs[1], hjobs[3]);
 
-    JobResult result;
+    JobSystemResult result;
 
     for (uint32_t i = 0; i < job_count; ++i)
     {
         result = JobSystemPushJob(m_JobSystem, hjobs[i]);
-        ASSERT_EQ(JOB_RESULT_OK, result);
+        ASSERT_EQ(JOBSYSTEM_RESULT_OK, result);
     }
 
     bool tests_done = false;
@@ -348,7 +348,7 @@ struct CancelChildTrack
     bool                            m_Delay;
     int32_atomic_t                  m_ProcessCalled;
     int32_atomic_t                  m_CallbackCalled;
-    JobStatus                       m_CallbackStatus;
+    JobSystemStatus                 m_CallbackStatus;
     HJob                            m_Job;
 };
 
@@ -356,7 +356,7 @@ struct CancelParentTrack
 {
     int32_atomic_t                  m_ProcessCalled;
     int32_atomic_t                  m_CallbackCalled;
-    JobStatus                       m_CallbackStatus;
+    JobSystemStatus                 m_CallbackStatus;
 };
 
 int32_atomic_t g_CancelParentGlobalLock = 0;
@@ -376,7 +376,7 @@ static int32_t ProcessCancelChild(HJobContext ctx, HJob job, void* user_context,
     return 1;
 }
 
-static void CallbackCancelChild(HJobContext ctx, HJob job, JobStatus status, void* user_context, void* user_data, int32_t user_result)
+static void CallbackCancelChild(HJobContext ctx, HJob job, JobSystemStatus status, void* user_context, void* user_data, int32_t user_result)
 {
     CancelChildTrack* child = (CancelChildTrack*)user_context;
     child->m_CallbackStatus = status;
@@ -391,7 +391,7 @@ static int32_t ProcessCancelParent(HJobContext ctx, HJob job, void* user_context
     return 1;
 }
 
-static void CallbackCancelParent(HJobContext ctx, HJob job, JobStatus status, void* user_context, void* user_data, int32_t user_result)
+static void CallbackCancelParent(HJobContext ctx, HJob job, JobSystemStatus status, void* user_context, void* user_data, int32_t user_result)
 {
     CancelParentTrack* parent = (CancelParentTrack*)user_context;
     parent->m_CallbackStatus = status;
@@ -420,7 +420,7 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
     for (uint32_t i = 0; i < CHILD_COUNT; ++i)
     {
         children[i].m_Index = i;
-        children[i].m_CallbackStatus = JOB_STATUS_FREE;
+        children[i].m_CallbackStatus = JOBSYSTEM_STATUS_FREE;
 
         // Making sure some doesn't finish, to test the cancelling of the parent
         if (m_NumThreads == 1)
@@ -430,7 +430,7 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
     }
 
     CancelParentTrack parent = {0};
-    parent.m_CallbackStatus = JOB_STATUS_FREE;
+    parent.m_CallbackStatus = JOBSYSTEM_STATUS_FREE;
 
     Job parent_job = {0};
     parent_job.m_Process = ProcessCancelParent;
@@ -452,11 +452,11 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
 
         child_hjobs[i] = JobSystemCreateJob(m_JobSystem, &child_job);
         ASSERT_NE((HJob)0, child_hjobs[i]);
-        ASSERT_EQ(JOB_RESULT_OK, JobSystemSetParent(m_JobSystem, child_hjobs[i], parent_hjob));
-        ASSERT_EQ(JOB_RESULT_OK, JobSystemPushJob(m_JobSystem, child_hjobs[i]));
+        ASSERT_EQ(JOBSYSTEM_RESULT_OK, JobSystemSetParent(m_JobSystem, child_hjobs[i], parent_hjob));
+        ASSERT_EQ(JOBSYSTEM_RESULT_OK, JobSystemPushJob(m_JobSystem, child_hjobs[i]));
     }
 
-    ASSERT_EQ(JOB_RESULT_OK, JobSystemPushJob(m_JobSystem, parent_hjob));
+    ASSERT_EQ(JOBSYSTEM_RESULT_OK, JobSystemPushJob(m_JobSystem, parent_hjob));
 
     bool mid_finished = false;
     uint64_t finish_limit = dmTime::GetMonotonicTime() + 500000;
@@ -479,7 +479,7 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
 
     ASSERT_EQ(1, dmAtomicGet32(&children[MID_INDEX].m_ProcessCalled));
     ASSERT_EQ(1, dmAtomicGet32(&children[MID_INDEX].m_CallbackCalled));
-    ASSERT_EQ(JOB_STATUS_FINISHED, children[MID_INDEX].m_CallbackStatus);
+    ASSERT_EQ(JOBSYSTEM_STATUS_FINISHED, children[MID_INDEX].m_CallbackStatus);
 
     for (uint32_t i = 0; i < CHILD_COUNT; ++i)
     {
@@ -518,14 +518,14 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
 
     uint64_t stop_time = dmTime::GetMonotonicTime() + 500000;
 
-    JobResult result;
+    JobSystemResult result;
     do
     {
         result = JobSystemCancelJob(m_JobSystem, parent_hjob);
 
         JobSystemUpdate(m_JobSystem, 1000);
         dmTime::Sleep(1);
-    } while (JOB_RESULT_PENDING == result);
+    } while (JOBSYSTEM_RESULT_PENDING == result);
 
     bool all_callbacks_received = false;
     stop_time = dmTime::GetMonotonicTime() + 500000;
@@ -543,7 +543,7 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
 
     ASSERT_TRUE(all_callbacks_received);
     ASSERT_EQ(0, dmAtomicGet32(&parent.m_ProcessCalled));
-    ASSERT_EQ(JOB_STATUS_CANCELED, parent.m_CallbackStatus);
+    ASSERT_EQ(JOBSYSTEM_STATUS_CANCELED, parent.m_CallbackStatus);
 
     for (uint32_t i = 0; i < CHILD_COUNT; ++i)
     {
@@ -551,11 +551,11 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
         {
             if (i <= MID_INDEX)
             {
-                ASSERT_EQ(JOB_STATUS_FINISHED, children[i].m_CallbackStatus);
+                ASSERT_EQ(JOBSYSTEM_STATUS_FINISHED, children[i].m_CallbackStatus);
             }
             else
             {
-                ASSERT_EQ(JOB_STATUS_CANCELED, children[i].m_CallbackStatus);
+                ASSERT_EQ(JOBSYSTEM_STATUS_CANCELED, children[i].m_CallbackStatus);
                 ASSERT_EQ(0, dmAtomicGet32(&children[i].m_ProcessCalled));
             }
         }
@@ -563,7 +563,7 @@ TEST_P(dmJobSystemTest, CancelParentAfterChild)
         {
             if (i == MID_INDEX)
             {
-                ASSERT_EQ(JOB_STATUS_FINISHED, children[i].m_CallbackStatus);
+                ASSERT_EQ(JOBSYSTEM_STATUS_FINISHED, children[i].m_CallbackStatus);
             }
             else if (children[i].m_Job)
             {

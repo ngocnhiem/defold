@@ -171,7 +171,7 @@ namespace dmGameSystem
     }
 
     // Called from the main thread
-    static void LoadBufferCompleteCallback(HJobContext, HJob hjob, JobStatus status, void* context, void* data, int result)
+    static void LoadBufferCompleteCallback(HJobContext, HJob hjob, JobSystemStatus status, void* context, void* data, int result)
     {
         if (((dmResource::Result) result) == dmResource::RESULT_OK)
         {

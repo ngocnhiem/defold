@@ -52,40 +52,40 @@ typedef struct JobContext* HJobContext;
 
 /*# job status enumeration
  * @enum
- * @name JobStatus
- * @member JOB_STATUS_FREE 0
- * @member JOB_STATUS_CREATED 1
- * @member JOB_STATUS_QUEUED 2
- * @member JOB_STATUS_PROCESSING 3
- * @member JOB_STATUS_FINISHED 4
- * @member JOB_STATUS_CANCELED 5
+ * @name JobSystemStatus
+ * @member JOBSYSTEM_STATUS_FREE 0
+ * @member JOBSYSTEM_STATUS_CREATED 1
+ * @member JOBSYSTEM_STATUS_QUEUED 2
+ * @member JOBSYSTEM_STATUS_PROCESSING 3
+ * @member JOBSYSTEM_STATUS_FINISHED 4
+ * @member JOBSYSTEM_STATUS_CANCELED 5
  */
-enum JobStatus
+enum JobSystemStatus
 {
-    JOB_STATUS_FREE             = 0,
-    JOB_STATUS_CREATED          = 1,
-    JOB_STATUS_QUEUED           = 2,
-    JOB_STATUS_PROCESSING       = 3,
-    JOB_STATUS_FINISHED         = 4,
-    JOB_STATUS_CANCELED         = 5,
+    JOBSYSTEM_STATUS_FREE             = 0,
+    JOBSYSTEM_STATUS_CREATED          = 1,
+    JOBSYSTEM_STATUS_QUEUED           = 2,
+    JOBSYSTEM_STATUS_PROCESSING       = 3,
+    JOBSYSTEM_STATUS_FINISHED         = 4,
+    JOBSYSTEM_STATUS_CANCELED         = 5,
 };
 
 /*# job result enumeration
  * @enum
- * @name JobResult
- * @member JOB_RESULT_OK 0
- * @member JOB_RESULT_ERROR 1
- * @member JOB_RESULT_INVALID_HANDLE 2
- * @member JOB_RESULT_CANCELED 3
- * @member JOB_RESULT_PENDING 4
+ * @name JobSystemResult
+ * @member JOBSYSTEM_RESULT_OK 0
+ * @member JOBSYSTEM_RESULT_ERROR 1
+ * @member JOBSYSTEM_RESULT_INVALID_HANDLE 2
+ * @member JOBSYSTEM_RESULT_CANCELED 3
+ * @member JOBSYSTEM_RESULT_PENDING 4
  */
-enum JobResult
+enum JobSystemResult
 {
-    JOB_RESULT_OK               = 0,
-    JOB_RESULT_ERROR            = 1,
-    JOB_RESULT_INVALID_HANDLE   = 2,
-    JOB_RESULT_CANCELED         = 3,
-    JOB_RESULT_PENDING          = 4, // the job is still processing
+    JOBSYSTEM_RESULT_OK               = 0,
+    JOBSYSTEM_RESULT_ERROR            = 1,
+    JOBSYSTEM_RESULT_INVALID_HANDLE   = 2,
+    JOBSYSTEM_RESULT_CANCELED         = 3,
+    JOBSYSTEM_RESULT_PENDING          = 4, // the job is still processing
 };
 
 /*# creation parameters
@@ -120,12 +120,12 @@ typedef int32_t (*FJobProcess)(HJobContext context, HJob job, void* user_context
  * @name FJobCallback
  * @param context [type: HJobContext] the job system context
  * @param job [type: HJob] the job
- * @param status [type: JobStatus] the job status. JOB_STATUS_FINISHED if ok, or JOB_STATUS_CANCELED if it was canceled
+ * @param status [type: JobSystemStatus] the job status. JOBSYSTEM_STATUS_FINISHED if ok, or JOBSYSTEM_STATUS_CANCELED if it was canceled
  * @param user_context [type: void*] the user context
  * @param user_data [type: void*] the user data
- * @param user_result [type: int32_t] if status == JOB_STATUS_FINISHED, the user result returned from the process function. otherwise 0
+ * @param user_result [type: int32_t] if status == JOBSYSTEM_STATUS_FINISHED, the user result returned from the process function. otherwise 0
  */
-typedef void (*FJobCallback)(HJobContext context, HJob job, enum JobStatus status, void* user_context, void* user_data, int32_t user_result);
+typedef void (*FJobCallback)(HJobContext context, HJob job, enum JobSystemStatus status, void* user_context, void* user_data, int32_t user_result);
 
 /*#
  * Job parameters
@@ -191,37 +191,37 @@ HJob JobSystemCreateJob(HJobContext context, struct Job* job);
  * @param context [type:HJobContext] the job system context
  * @param child [type:HJob] the child job
  * @param parent [type:HJob] the parent job
- * @return result [type:JobResult] return JOB_RESULT_OK if job was pushed
+ * @return result [type:JobSystemResult] return JOBSYSTEM_RESULT_OK if job was pushed
  */
-enum JobResult JobSystemSetParent(HJobContext context, HJob child, HJob parent);
+enum JobSystemResult JobSystemSetParent(HJobContext context, HJob child, HJob parent);
 
 /*# push a job onto the work queue
  * @note A parent job needs to be pushed after its children
  * @name JobSystemPushJob
  * @param context [type:HJobContext] the job system context
  * @param job [type:HJob] the job to add to the work queue
- * @return result [type:JobResult] return JOB_RESULT_OK if job was pushed
+ * @return result [type:JobSystemResult] return JOBSYSTEM_RESULT_OK if job was pushed
  */
-enum JobResult JobSystemPushJob(HJobContext context, HJob job);
+enum JobSystemResult JobSystemPushJob(HJobContext context, HJob job);
 
 /*# cancel a job (and its children)
  * @note Cancelled jobs will be flushed at the next JobSystemUpdate()
  * @name JobSystemCancelJob
  * @param context [type:HJobContext] the job system context
  * @param job [type:HJob] the job to cancel
- * @return result [type:JobResult] Returns JOB_RESULT_OK if finished, JOB_RESULT_CANCELED if canceled, or JOB_RESULT_PENDING if the job (or any child) is still in flight
+ * @return result [type:JobSystemResult] Returns JOBSYSTEM_RESULT_OK if finished, JOBSYSTEM_RESULT_CANCELED if canceled, or JOBSYSTEM_RESULT_PENDING if the job (or any child) is still in flight
  * @examples
  * How to wait until a job has been cancelled or finished
  * ```c
- * enum JobResult jr = JobSystemCancelJob(job_context, hjob);
- * while (JOB_RESULT_PENDING == jr)
+ * enum JobSystemResult jr = JobSystemCancelJob(job_context, hjob);
+ * while (JOBSYSTEM_RESULT_PENDING == jr)
  * {
  *     dmTime::Sleep(1000);
  *     jr = JobSystemCancelJob(job_context, hjob);
  * }
  * ```
  */
-enum JobResult JobSystemCancelJob(HJobContext context, HJob job);
+enum JobSystemResult JobSystemCancelJob(HJobContext context, HJob job);
 
 /*# get the data from a job
  * @name JobSystemGetData

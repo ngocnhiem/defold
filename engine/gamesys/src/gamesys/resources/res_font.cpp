@@ -113,8 +113,8 @@ namespace dmGameSystem
             FontJobResourceInfo* job_info = font->m_PendingJobs[i];
             HJob hjob = job_info->m_Job;
 
-            JobResult jr = JobSystemCancelJob(font->m_Jobs, hjob);
-            while (JOB_RESULT_PENDING == jr)
+            JobSystemResult jr = JobSystemCancelJob(font->m_Jobs, hjob);
+            while (JOBSYSTEM_RESULT_PENDING == jr)
             {
                 dmTime::Sleep(1000);
                 jr = JobSystemCancelJob(font->m_Jobs, hjob);

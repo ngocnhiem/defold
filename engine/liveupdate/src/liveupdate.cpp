@@ -481,7 +481,7 @@ namespace dmLiveUpdate
         return dmResourceProvider::RESULT_OK == result;
     }
     // Called on the main thread (see JobSystemUpdate below)
-    static void StoreResourceFinished(HJobContext context, HJob hjob, JobStatus status, LiveUpdateCtx* jobctx, ResourceInfo* job, int result)
+    static void StoreResourceFinished(HJobContext context, HJob hjob, JobSystemStatus status, LiveUpdateCtx* jobctx, ResourceInfo* job, int result)
     {
         if (job->m_Callback)
             job->m_Callback(result == 1, job->m_CallbackData);
@@ -585,7 +585,7 @@ namespace dmLiveUpdate
     }
 
     // Called on the main thread (see JobSystemUpdate below)
-    static void StoreManifestFinished(HJobContext context, HJob hjob, JobStatus status, LiveUpdateCtx* jobctx, StoreManifestInfo* job, int result)
+    static void StoreManifestFinished(HJobContext context, HJob hjob, JobSystemStatus status, LiveUpdateCtx* jobctx, StoreManifestInfo* job, int result)
     {
         dmLogInfo("Finishing manifest job");
         if (job->m_Callback)
@@ -694,7 +694,7 @@ namespace dmLiveUpdate
     }
 
     // Called on the main thread (see JobSystemUpdate below)
-    static void StoreArchiveFinished(HJobContext context, HJob hjob, JobStatus status, LiveUpdateCtx* jobctx, StoreArchiveInfo* job, int result)
+    static void StoreArchiveFinished(HJobContext context, HJob hjob, JobSystemStatus status, LiveUpdateCtx* jobctx, StoreArchiveInfo* job, int result)
     {
         dmLogInfo("Finishing archive job: %d", result);
         if (job->m_Callback)
@@ -788,7 +788,7 @@ namespace dmLiveUpdate
     }
 
     // Called on the main thread (see JobSystemUpdate below)
-    static void AddMountFinished(HJobContext context, HJob hjob, JobStatus status, LiveUpdateCtx* jobctx, AddMountInfo* job, int result)
+    static void AddMountFinished(HJobContext context, HJob hjob, JobSystemStatus status, LiveUpdateCtx* jobctx, AddMountInfo* job, int result)
     {
         dmLogInfo("Finishing add mount job: %d", result);
         if (job->m_Callback)

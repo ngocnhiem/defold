@@ -55,7 +55,7 @@ struct JobItem
     int32_atomic_t  m_NumChildren;
     int32_atomic_t  m_NumChildrenCompleted;
 
-    JobStatus       m_Status;
+    JobSystemStatus m_Status;
 };
 
 struct JobThreadContext
@@ -87,8 +87,8 @@ static const uint32_t   INVALID_INDEX   = 0xFFFFFFFF;
 static const HJob       INVALID_JOB     = 0;    // we always start at generation=1, so we can never have a 0 handle
 
 // ***********************************************************************************
-static JobStatus PutWork(JobThreadContext* ctx, HJob job);
-static void PutDone(JobThreadContext* ctx, HJob job, JobStatus status, int32_t result);
+static JobSystemStatus PutWork(JobThreadContext* ctx, HJob job);
+static void PutDone(JobThreadContext* ctx, HJob job, JobSystemStatus status, int32_t result);
 
 // ***********************************************************************************
 // MISC
@@ -209,12 +209,12 @@ static void FreeJob(JobThreadContext* ctx, HJob hjob)
     RemoveChildFromParent(ctx, hjob);
 
     item.m_Generation = INVALID_INDEX;
-    item.m_Status = JOB_STATUS_FREE;
+    item.m_Status = JOBSYSTEM_STATUS_FREE;
 
     ctx->m_Items.Free(index, false);
 }
 
-JobResult JobSystemSetParent(HJobContext context, HJob hchild, HJob hparent)
+JobSystemResult JobSystemSetParent(HJobContext context, HJob hchild, HJob hparent)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -222,8 +222,8 @@ JobResult JobSystemSetParent(HJobContext context, HJob hchild, HJob hparent)
     JobItem* item = CheckItem(ctx, hchild);
     JobItem* parent = CheckItem(ctx, hparent);
 
-    assert(item->m_Status == JOB_STATUS_CREATED);
-    assert(parent->m_Status <= JOB_STATUS_QUEUED); // If it has started to process, it's too late
+    assert(item->m_Status == JOBSYSTEM_STATUS_CREATED);
+    assert(parent->m_Status <= JOBSYSTEM_STATUS_QUEUED); // If it has started to process, it's too late
 
     // You should only call setparent once per task
     assert(item->m_Parent == INVALID_JOB);
@@ -246,7 +246,7 @@ JobResult JobSystemSetParent(HJobContext context, HJob hchild, HJob hparent)
 
     // TODO: Make sure all the children inherit the priority of the parent
 
-    return JOB_RESULT_OK;
+    return JOBSYSTEM_RESULT_OK;
 }
 
 HJob JobSystemCreateJob(HJobContext context, Job* job)
@@ -272,7 +272,7 @@ HJob JobSystemCreateJob(HJobContext context, Job* job)
     item->m_TimeCreated  = dmTime::GetMonotonicTime();
     item->m_Job          = *job;
     item->m_Generation   = generation;
-    item->m_Status       = JOB_STATUS_CREATED;
+    item->m_Status       = JOBSYSTEM_STATUS_CREATED;
     item->m_Parent       = INVALID_JOB;
     item->m_Sibling      = INVALID_JOB;
     item->m_FirstChild   = INVALID_JOB;
@@ -282,18 +282,18 @@ HJob JobSystemCreateJob(HJobContext context, Job* job)
     return hjob;
 }
 
-JobResult JobSystemPushJob(HJobContext context, HJob hjob)
+JobSystemResult JobSystemPushJob(HJobContext context, HJob hjob)
 {
     if (dmAtomicGet32(&context->m_Initialized) == 0)
     {
-        return JOB_RESULT_ERROR;
+        return JOBSYSTEM_RESULT_ERROR;
     }
 
     JobThreadContext* ctx = &context->m_ThreadContext;
 
-    JobStatus status = PutWork(ctx, hjob);
-    if (status == JOB_STATUS_CANCELED)
-        return JOB_RESULT_CANCELED;
+    JobSystemStatus status = PutWork(ctx, hjob);
+    if (status == JOBSYSTEM_STATUS_CANCELED)
+        return JOBSYSTEM_RESULT_CANCELED;
 
 #if defined(DM_HAS_THREADS)
     if (ctx->m_WakeupCond)
@@ -302,7 +302,7 @@ JobResult JobSystemPushJob(HJobContext context, HJob hjob)
     }
 #endif
 
-    return JOB_RESULT_OK;
+    return JOBSYSTEM_RESULT_OK;
 }
 
 void* JobSystemGetContext(HJobContext context, HJob hjob)
@@ -325,31 +325,31 @@ void* JobSystemGetData(HJobContext context, HJob hjob)
     return item->m_Job.m_Data;
 }
 
-static JobResult CancelJobInternal(JobThreadContext* ctx, HJob hjob)
+static JobSystemResult CancelJobInternal(JobThreadContext* ctx, HJob hjob)
 {
     JobItem* item = GetJobItem(ctx, hjob);
     if (!item)
-        return JOB_RESULT_INVALID_HANDLE;
+        return JOBSYSTEM_RESULT_INVALID_HANDLE;
 
-    if (item->m_Status == JOB_STATUS_PROCESSING)
+    if (item->m_Status == JOBSYSTEM_STATUS_PROCESSING)
     {
-        return JOB_RESULT_PENDING;
+        return JOBSYSTEM_RESULT_PENDING;
     }
-    if (item->m_Status == JOB_STATUS_FINISHED)
+    if (item->m_Status == JOBSYSTEM_STATUS_FINISHED)
     {
-        return JOB_RESULT_OK;
+        return JOBSYSTEM_RESULT_OK;
     }
 
     // Can only cancel queued/created items directly, but still wait on children when already canceled
-    assert(item->m_Status == JOB_STATUS_CREATED || item->m_Status == JOB_STATUS_QUEUED || item->m_Status == JOB_STATUS_CANCELED);
+    assert(item->m_Status == JOBSYSTEM_STATUS_CREATED || item->m_Status == JOBSYSTEM_STATUS_QUEUED || item->m_Status == JOBSYSTEM_STATUS_CANCELED);
 
-    JobResult result = JOB_RESULT_CANCELED;
+    JobSystemResult result = JOBSYSTEM_RESULT_CANCELED;
 
     HJob hchild = item->m_FirstChild;
     while (hchild != INVALID_JOB)
     {
-        JobResult childresult = CancelJobInternal(ctx, hchild);
-        if (childresult == JOB_RESULT_INVALID_HANDLE)
+        JobSystemResult childresult = CancelJobInternal(ctx, hchild);
+        if (childresult == JOBSYSTEM_RESULT_INVALID_HANDLE)
         {
             break; // We cannot get the item pointer
         }
@@ -360,17 +360,17 @@ static JobResult CancelJobInternal(JobThreadContext* ctx, HJob hjob)
             break; // We cannot iterate further
         }
 
-        if (childresult == JOB_RESULT_PENDING)
-            result = JOB_RESULT_PENDING;
+        if (childresult == JOBSYSTEM_RESULT_PENDING)
+            result = JOBSYSTEM_RESULT_PENDING;
 
         hchild = child->m_Sibling;
     }
 
-    item->m_Status = JOB_STATUS_CANCELED;
+    item->m_Status = JOBSYSTEM_STATUS_CANCELED;
     return result;
 }
 
-JobResult JobSystemCancelJob(HJobContext context, HJob hjob)
+JobSystemResult JobSystemCancelJob(HJobContext context, HJob hjob)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -381,7 +381,7 @@ JobResult JobSystemCancelJob(HJobContext context, HJob hjob)
 // Job Thread
 
 
-static JobStatus PutWork(JobThreadContext* ctx, HJob job)
+static JobSystemStatus PutWork(JobThreadContext* ctx, HJob job)
 {
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
 
@@ -390,10 +390,10 @@ static JobStatus PutWork(JobThreadContext* ctx, HJob job)
     JobItem& item = ctx->m_Items.Get(index);
     assert(item.m_Generation == generation);
 
-    if (item.m_Status != JOB_STATUS_CREATED)
+    if (item.m_Status != JOBSYSTEM_STATUS_CREATED)
         return item.m_Status;
 
-    item.m_Status = JOB_STATUS_QUEUED;
+    item.m_Status = JOBSYSTEM_STATUS_QUEUED;
 
     if (ctx->m_Work.Full())
         ctx->m_Work.OffsetCapacity(16);
@@ -402,7 +402,7 @@ static JobStatus PutWork(JobThreadContext* ctx, HJob job)
     return item.m_Status;
 }
 
-static void PutDone(JobThreadContext* ctx, HJob hjob, JobStatus status, int32_t result)
+static void PutDone(JobThreadContext* ctx, HJob hjob, JobSystemStatus status, int32_t result)
 {
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
 
@@ -434,7 +434,7 @@ static void CancelAllJobs(HJobContext context)
     for (uint32_t i = 0; i < size; ++i)
     {
         HJob hjob = ctx->m_Work[i];
-        PutDone(ctx, hjob, JOB_STATUS_CANCELED, 0);
+        PutDone(ctx, hjob, JOBSYSTEM_STATUS_CANCELED, 0);
     }
 
     ctx->m_Work.Clear();
@@ -453,7 +453,7 @@ static void ProcessOneJob(JobThreadContext* ctx, HJob hjob)
         assert(item.m_Generation == generation);
 
         // The item may have been cancelled just before
-        bool finished = item.m_Status > JOB_STATUS_QUEUED;
+        bool finished = item.m_Status > JOBSYSTEM_STATUS_QUEUED;
         if (finished)
         {
             PutDone(ctx, hjob, item.m_Status, 0);
@@ -463,14 +463,14 @@ static void ProcessOneJob(JobThreadContext* ctx, HJob hjob)
         job = item.m_Job;
 
         // Make sure it cannot be canceled now
-        item.m_Status = JOB_STATUS_PROCESSING;
+        item.m_Status = JOBSYSTEM_STATUS_PROCESSING;
     }
 
     // Don't keep the lock here, as the jobs may use their own locks, and it may easily lead to a dead lock
     HJobContext context = ctx->m_Context;
     int32_t result = job.m_Process(context, hjob, job.m_Context, job.m_Data);
 
-    PutDone(ctx, hjob, JOB_STATUS_FINISHED, result);
+    PutDone(ctx, hjob, JOBSYSTEM_STATUS_FINISHED, result);
 }
 
 static HJob SelectAndPopJob(JobThreadContext* ctx, uint64_t time, JobItem** out_item)
@@ -484,11 +484,11 @@ static HJob SelectAndPopJob(JobThreadContext* ctx, uint64_t time, JobItem** out_
         bool children_finished = item->m_NumChildren == item->m_NumChildrenCompleted;
 
         // Check if the item meets our criteria
-        if (item->m_Status == JOB_STATUS_CANCELED && children_finished)
+        if (item->m_Status == JOBSYSTEM_STATUS_CANCELED && children_finished)
         {
             size--;
             ctx->m_Work.Erase(i);
-            PutDone(ctx, hjob, JOB_STATUS_CANCELED, 0);
+            PutDone(ctx, hjob, JOBSYSTEM_STATUS_CANCELED, 0);
             continue;
         }
 
@@ -691,11 +691,6 @@ uint32_t JobSystemGetWorkerCount(HJobContext context)
 #else
     return 0;
 #endif
-}
-
-bool JobSystemPlatformHasThreadSupport()
-{
-    return dmThread::PlatformHasThreadSupport();
 }
 
 void JobSystemUpdate(HJobContext context, uint64_t time_limit)

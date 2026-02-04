@@ -55,7 +55,7 @@ static int JobProcess(HJobContext, HJob hjob, void* context, void* data)
     return 1;
 }
 
-static void JobCallback(HJobContext, HJob hjob, JobStatus status, void* context, void* data, int result)
+static void JobCallback(HJobContext, HJob hjob, JobSystemStatus status, void* context, void* data, int result)
 {
     HFactory factory = (HFactory)context;
     ResourceStreamJob* job = (ResourceStreamJob*)data;

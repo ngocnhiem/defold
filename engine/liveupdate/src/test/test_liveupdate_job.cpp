@@ -67,7 +67,7 @@ static int ProcessData(HJobContext, HJob, void* context, void* _data)
     return data->m_Char;
 }
 
-static void FinishData(HJobContext, HJob, JobStatus status, void* context, void* _data, int result)
+static void FinishData(HJobContext, HJob, JobSystemStatus status, void* context, void* _data, int result)
 {
     JobData* data = (JobData*)_data;
     data->m_Result = result;

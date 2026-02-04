@@ -274,7 +274,7 @@ static int JobProcessSentinelGlyph(HJobContext job_thread, HJob hjob, void* cont
     return 1;
 }
 
-static void JobPostProcessSentinelGlyph(HJobContext job_thread, HJob hjob, JobStatus job_status, void* context, void* data, int result)
+static void JobPostProcessSentinelGlyph(HJobContext job_thread, HJob hjob, JobSystemStatus job_status, void* context, void* data, int result)
 {
     FontGenJobData* jobdata = (FontGenJobData*)context;
     (void)data;
@@ -294,7 +294,7 @@ static void JobPostProcessSentinelGlyph(HJobContext job_thread, HJob hjob, JobSt
 }
 
 // Called on the main thread
-static void JobPostProcessGlyph(HJobContext job_thread, HJob job, JobStatus job_status, void* context, void* data, int result)
+static void JobPostProcessGlyph(HJobContext job_thread, HJob job, JobSystemStatus job_status, void* context, void* data, int result)
 {
     FontGenJobData* jobdata = (FontGenJobData*)context;
     JobItem* item = (JobItem*)data;
