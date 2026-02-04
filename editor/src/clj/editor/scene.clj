@@ -1182,6 +1182,7 @@
                                 screen-x (:screen-x action)
                                 screen-y (:screen-y action)]
                             (swap! current-input assoc :cursor-pos [screen-x screen-y])
+                            (ui/user-data! parent ::last-mouse-action action)
                             (when (= :mouse-pressed (:type action))
                               (when (= :secondary (:button action))
                                 (ui/set-cursor parent (cursor :none))
@@ -1240,7 +1241,8 @@
           (update-image-view! image-view drawable async-copy-state-atom dt)
           (when-let [cursor-type (g/maybe-node-value node-id :cursor-type)]
             (ui/set-cursor current-input-state image-view (cursor cursor-type)))
-          (update-camera-view! image-view @current-input-state node-id dt)
+          (when (contains? (:mouse-buttons @@current-input-state) :secondary)
+           (update-camera-view! image-view @current-input-state node-id dt))
           #_(when-let [keys (g/maybe-node-value node-id :pressed-keys)]
             (when (and (not (coll/empty? keys))
                        (not (g/node-value (view->camera node-id) :animating))

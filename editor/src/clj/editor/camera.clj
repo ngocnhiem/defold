@@ -819,6 +819,12 @@
         grid-id (g/node-value scene-view-id :grid)]
     (g/transact [(g/invalidate-output grid-id :grids)])))
 
+(defn- ensure-focus-traversable!
+  [^Control control]
+  (ui/observe (.focusTraversableProperty control)
+    (fn [_ _ _]
+      (.setFocusTraversable control true))))
+
 (defmulti settings-row (fn [_app-view _prefs _popup option] option))
 
 (defmethod settings-row :opacity
@@ -922,12 +928,6 @@
           axes)))
 
 (declare settings)
-
-(defn- ensure-focus-traversable!
-  [^Control control]
-  (ui/observe (.focusTraversableProperty control)
-    (fn [_ _ _]
-      (.setFocusTraversable control true))))
 
 (defn- reset-button
   [app-view prefs ^PopupControl popup]

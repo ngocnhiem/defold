@@ -34,7 +34,7 @@
            [javafx.event ActionEvent]
            [javafx.geometry HPos Point2D Pos VPos]
            [javafx.scene Node Parent]
-           [javafx.scene.control Button Control Label TextField ToggleButton ToggleGroup PopupControl]
+           [javafx.scene.control Button Control Label Slider TextField ToggleButton ToggleGroup PopupControl]
            [javafx.scene.layout HBox Region StackPane VBox]
            [javafx.scene.paint Color]
            [javafx.stage PopupWindow$AnchorLocation]
