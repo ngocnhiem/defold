@@ -25,6 +25,7 @@
             [dynamo.graph :as g]
             [editor.build :as build]
             [editor.build-errors-view :as build-errors-view]
+            [editor.camera :as camera]
             [editor.code.data :as data :refer [CursorRange->line-number]]
             [editor.console :as console]
             [editor.debug-view :as debug-view]
@@ -481,11 +482,27 @@
           .getContent
           (.lookup "#show-grid-settings")))
 
+(defn- get-perspective-camera-settings-button
+  [^Tab tab]
+  (some-> tab
+          .getContent
+          (.lookup "#show-perspective-camera-settings")))
+
 (handler/defhandler :scene.grid.show-settings :workbench
   (run [app-view scene-visibility prefs]
     (when-some [btn (some-> (g/node-value app-view :active-tab)
-                            (get-grid-settings-button))]
+                            (get-perspective-camera-settings-button))]
       (grid/show-settings! app-view btn prefs)))
+  (state [app-view scene-visibility evaluation-context]
+    (some-> (g/node-value app-view :active-tab evaluation-context)
+            (get-perspective-camera-settings-button)
+            (scene-visibility/settings-visible?))))
+
+(handler/defhandler :scene.perspective-camera.show-settings :workbench
+  (run [app-view scene-visibility prefs]
+    (when-some [btn (some-> (g/node-value app-view :active-tab)
+                            (get-perspective-camera-settings-button))]
+      (camera/show-settings! app-view btn prefs)))
   (state [app-view scene-visibility evaluation-context]
     (some-> (g/node-value app-view :active-tab evaluation-context)
             (get-grid-settings-button)
@@ -542,7 +559,9 @@
    {:id :perspective-camera
     :tooltip "Perspective camera"
     :graphic-fn (partial icons/make-svg-icon-graphic perspective-icon-svg-path)
-    :command :scene.toggle-camera-type}
+    :command :scene.toggle-camera-type
+    :more {:id :show-perspective-camera-settings
+           :command :scene.perspective-camera.show-settings}}
    {:id :visibility-settings
     :tooltip "Visibility settings"
     :graphic-fn make-visibility-settings-graphic
