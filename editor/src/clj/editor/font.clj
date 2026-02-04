@@ -106,7 +106,7 @@
 (def ^:private ^:const sdf-min-screen-scale 0.5)
 
 (defn- local-scale-from-transform
-  ^double [^Matrix4d transform]
+  [^Matrix4d transform]
   (let [row0 (Vector4d.)]
     (.getRow transform 0 row0)
     (Math/sqrt (+ (* (.x row0) (.x row0))
@@ -114,7 +114,7 @@
 
 (defn- calc-sdf-screen-scale
   "Return pixels per local unit for the given transform, or 0.0 if invalid."
-  ^double [^Matrix4d view-proj ^Region viewport ^Matrix4d world-transform]
+  [^Matrix4d view-proj ^Region viewport ^Matrix4d world-transform]
   (if (or (nil? view-proj) (nil? viewport) (nil? world-transform))
     0.0
     (let [m (doto (Matrix4d. view-proj) (.mul world-transform))
@@ -177,7 +177,7 @@
     text-entries))
 
 (defn- wrap-with-sdf-params
-  [put-pos-uv-fn font-map ^double sdf-screen-scale ^Matrix4d world-transform]
+  [put-pos-uv-fn font-map sdf-screen-scale ^Matrix4d world-transform]
   (let [{:keys [sdf-spread sdf-outline sdf-shadow]} font-map
         sdf-scale (if (> sdf-screen-scale 0.0)
                     (max sdf-screen-scale sdf-min-screen-scale)
