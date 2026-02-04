@@ -1076,16 +1076,16 @@
 (def ^:private camera-speed-boost 3.0)
 (def ^:private camera-speed-precision 0.35)
 (def ^:private camera-velocity (atom (Vector3d. 0.0 0.0 0.0)))
-(def ^:private acceleration 15.0)
+(def ^:private acceleration 12.0)
 (def ^:private damping 8.0)
 (def ^:private camera-angular-velocity (atom (Quat4d. 0.0 0.0 0.0 1.0)))
 (def ^:private look-sensitivity 0.2)
 (def ^:private smoothed-look-delta (atom [0.0 0.0]))
 (def ^:private look-smoothing 0.25)
 
-(defn- update-camera-view! [image-view node-id dt])
-(defn- update-camera-view! [current-input node-id dt]
-  (let [{:keys [mouse-buttons modifiers pressed-keys cursor-lock-pos]} @current-input
+(defn- update-camera-view! [image-view current-input node-id dt])
+(defn- update-camera-view! [_image-view current-input node-id dt]
+  (let [{:keys [robot mouse-buttons modifiers pressed-keys cursor-pos cursor-lock-pos]} @current-input
         is-secondary-button (contains? mouse-buttons :secondary)
         shift (contains? modifiers :shift)
         alt (contains? modifiers :alt)
@@ -1097,10 +1097,12 @@
         up (c/camera-up-vector current-camera)
         target-dir (Vector3d. 0.0 0.0 0.0)
         {:keys [last-cursor cursor-pos]} @current-input
-        raw-dx (- (first last-cursor) (first cursor-pos))
-        raw-dy (- (second last-cursor) (second cursor-pos))
-        ;; raw-dx (- (first cursor-lock-pos) (first cursor-pos))
-        ;; raw-dy (- (second cursor-lock-pos) (second cursor-pos))
+        raw-dx (if cursor-lock-pos
+                 (- (first cursor-lock-pos) (first cursor-pos))
+                 (first cursor-pos))
+        raw-dy (if cursor-lock-pos
+                 (- (second cursor-lock-pos) (second cursor-pos))
+                 (second cursor-pos))
 
         [smooth-dx smooth-dy] (if is-secondary-button
                                 (let [[prev-dx prev-dy] @smoothed-look-delta
@@ -1146,8 +1148,11 @@
                              (c/camera-move new-camera (.x offset) (.y offset) (.z offset)))
                            new-camera)]
         (when (not= final-camera current-camera)
-          (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
-          (set-camera! camera-node current-camera final-camera false))))))
+          (set-camera! camera-node current-camera final-camera false)))
+      (when (and is-secondary-button cursor-lock-pos)
+        (let [robot (:robot @current-input)
+              [x y] cursor-lock-pos]
+          (.mouseMove robot x y))))))
 
 (defn augment-action [view action]
   (let [x          (:x action)
@@ -1167,21 +1172,20 @@
 (def current-input-state (atom {}))
 (defn register-event-handler-new! [^Parent parent view-id]
   (let [process-events? (atom true)
-        current-input (atom {:pressed-keys #{} :mouse-buttons #{} :modifiers #{} :last-cursor [0.0 0.0] :cursor-pos [0.0 0.0]
+        current-input (atom {:pressed-keys #{} :mouse-buttons #{} :modifiers #{} :cursor-pos [0.0 0.0]
                              :cursor-lock-pos nil
                              :robot (Robot.)})
         _ (reset! current-input-state current-input)
         event-handler (ui/event-handler e
                         (when @process-events?
                           (let [action (augment-action view-id (i/action-from-jfx e))
-                                x (:x action)
-                                y (:y action)
-                                pos [x y 0.0]]
-                            (swap! current-input assoc :last-cursor (:cursor-pos @current-input))
-                            (swap! current-input assoc :cursor-pos [(:x action) (:y action)])
+                                screen-x (:screen-x action)
+                                screen-y (:screen-y action)]
+                            (swap! current-input assoc :cursor-pos [screen-x screen-y])
                             (when (= :mouse-pressed (:type action))
                               (when (= :secondary (:button action))
-                                (ui/set-cursor parent (cursor :none)))
+                                (ui/set-cursor parent (cursor :none))
+                                (swap! current-input assoc :cursor-lock-pos [screen-x screen-y]))
                               (swap! current-input update :mouse-buttons conj (:button action))
                               (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
                                                                          (filter action)
@@ -1191,7 +1195,8 @@
                               (.consume e))
                             (when (= :mouse-released (:type action))
                               (when (= :secondary (:button action))
-                                (ui/set-cursor parent (cursor nil)))
+                                (ui/set-cursor parent (cursor nil))
+                                (swap! current-input assoc :cursor-lock-pos nil))
                               (swap! current-input update :mouse-buttons disj (:button action))
                               (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
                                                                          (filter action)
@@ -1235,7 +1240,7 @@
           (update-image-view! image-view drawable async-copy-state-atom dt)
           (when-let [cursor-type (g/maybe-node-value node-id :cursor-type)]
             (ui/set-cursor current-input-state image-view (cursor cursor-type)))
-          (update-camera-view! @current-input-state node-id dt)
+          (update-camera-view! image-view @current-input-state node-id dt)
           #_(when-let [keys (g/maybe-node-value node-id :pressed-keys)]
             (when (and (not (coll/empty? keys))
                        (not (g/node-value (view->camera node-id) :animating))
