@@ -133,7 +133,7 @@ namespace dmGraphics
     {
         NullContext(const ContextParams& params);
 
-        dmJobThread::HContext              m_JobThread;
+        HJobContext                        m_JobThread;
         dmMutex::HMutex                    m_AssetContainerMutex;
 
         dmPlatform::HWindow                m_Window;

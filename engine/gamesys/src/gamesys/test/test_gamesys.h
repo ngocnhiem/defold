@@ -123,7 +123,7 @@ protected:
     dmPlatform::HWindow m_Window;
     dmScript::HContext m_ScriptContext;
     dmGraphics::HContext m_GraphicsContext;
-    dmJobThread::HContext m_JobThread;
+    HJobContext m_JobThread;
     dmRender::HRenderContext m_RenderContext;
     dmGameSystem::PhysicsContextBox2D m_PhysicsContextBox2D;
     dmGameSystem::PhysicsContextBullet3D m_PhysicsContextBullet3D;
@@ -498,9 +498,9 @@ void GamesysTest<T>::SetUp()
 
     m_UpdateContext.m_DT = 1.0f / 60.0f;
 
-    dmJobThread::JobThreadCreationParams job_thread_create_param = {0};
+    JobSystemCreateParams job_thread_create_param = {0};
     job_thread_create_param.m_ThreadCount = 1;
-    m_JobThread = dmJobThread::Create(job_thread_create_param);
+    m_JobThread = JobSystemCreate(&job_thread_create_param);
 
     dmResource::NewFactoryParams params;
     params.m_MaxResources = 64;
@@ -715,7 +715,7 @@ void GamesysTest<T>::TearDown()
 
     dmGui::DeleteContext(m_GuiContext, m_ScriptContext);
     dmRender::DeleteRenderContext(m_RenderContext, m_ScriptContext);
-    dmJobThread::Destroy(m_JobThread);
+    JobSystemDestroy(m_JobThread);
     dmGraphics::CloseWindow(m_GraphicsContext);
     dmGraphics::DeleteContext(m_GraphicsContext);
     dmPlatform::CloseWindow(m_Window);

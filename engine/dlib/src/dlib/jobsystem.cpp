@@ -36,13 +36,9 @@
 #include <dmsdk/dlib/mutex.h>
 
 #include "jc/ringbuffer.h"
-#include "job_thread.h"
+#include "jobsystem.h"
 
-namespace dmJobThread
-{
-
-static const uint32_t   INVALID_INDEX   = 0xFFFFFFFF;
-static const HJob       INVALID_JOB     = 0;    // we always start at generation=1, so we can never have a 0 handle
+struct JobContext;
 
 struct JobItem
 {
@@ -86,6 +82,9 @@ struct JobContext
     int32_atomic_t      m_Initialized;
     bool                m_UseThreads;
 };
+
+static const uint32_t   INVALID_INDEX   = 0xFFFFFFFF;
+static const HJob       INVALID_JOB     = 0;    // we always start at generation=1, so we can never have a 0 handle
 
 // ***********************************************************************************
 static JobStatus PutWork(JobThreadContext* ctx, HJob job);
@@ -215,7 +214,7 @@ static void FreeJob(JobThreadContext* ctx, HJob hjob)
     ctx->m_Items.Free(index, false);
 }
 
-JobResult SetParent(HContext context, HJob hchild, HJob hparent)
+JobResult JobSystemSetParent(HJobContext context, HJob hchild, HJob hparent)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -250,7 +249,7 @@ JobResult SetParent(HContext context, HJob hchild, HJob hparent)
     return JOB_RESULT_OK;
 }
 
-HJob CreateJob(HContext context, Job* job)
+HJob JobSystemCreateJob(HJobContext context, Job* job)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
 
@@ -283,7 +282,7 @@ HJob CreateJob(HContext context, Job* job)
     return hjob;
 }
 
-JobResult PushJob(HContext context, HJob hjob)
+JobResult JobSystemPushJob(HJobContext context, HJob hjob)
 {
     if (dmAtomicGet32(&context->m_Initialized) == 0)
     {
@@ -306,7 +305,7 @@ JobResult PushJob(HContext context, HJob hjob)
     return JOB_RESULT_OK;
 }
 
-void* GetContext(HContext context, HJob hjob)
+void* JobSystemGetContext(HJobContext context, HJob hjob)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -316,7 +315,7 @@ void* GetContext(HContext context, HJob hjob)
     return item->m_Job.m_Context;
 }
 
-void* GetData(HContext context, HJob hjob)
+void* JobSystemGetData(HJobContext context, HJob hjob)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -371,7 +370,7 @@ static JobResult CancelJobInternal(JobThreadContext* ctx, HJob hjob)
     return result;
 }
 
-JobResult CancelJob(HContext context, HJob hjob)
+JobResult JobSystemCancelJob(HJobContext context, HJob hjob)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -426,7 +425,7 @@ static void PutDone(JobThreadContext* ctx, HJob hjob, JobStatus status, int32_t 
     }
 }
 
-static void CancelAllJobs(HContext context)
+static void CancelAllJobs(HJobContext context)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(ctx->m_Mutex);
@@ -468,7 +467,7 @@ static void ProcessOneJob(JobThreadContext* ctx, HJob hjob)
     }
 
     // Don't keep the lock here, as the jobs may use their own locks, and it may easily lead to a dead lock
-    HContext context = ctx->m_Context;
+    HJobContext context = ctx->m_Context;
     int32_t result = job.m_Process(context, hjob, job.m_Context, job.m_Data);
 
     PutDone(ctx, hjob, JOB_STATUS_FINISHED, result);
@@ -566,7 +565,7 @@ static void JobThread(void* _ctx)
 }
 #endif
 
-static void ProcessFinishedJobs(HContext context, jc::RingBuffer<HJob>& items)
+static void ProcessFinishedJobs(HJobContext context, jc::RingBuffer<HJob>& items)
 {
     JobThreadContext* ctx = &context->m_ThreadContext;
 
@@ -601,8 +600,11 @@ static void ProcessFinishedJobs(HContext context, jc::RingBuffer<HJob>& items)
     }
 }
 
-HContext Create(const JobThreadCreationParams& create_params)
+HJobContext JobSystemCreate(const JobSystemCreateParams* create_params)
 {
+    if (create_params == 0)
+        return 0;
+
     JobContext* context = 0;
     dmMemory::Result mem_result = dmMemory::AlignedMalloc((void**)&context, 16, sizeof(JobContext));
     assert(mem_result == dmMemory::RESULT_OK);
@@ -613,7 +615,7 @@ HContext Create(const JobThreadCreationParams& create_params)
     context->m_ThreadContext.m_Generation = 1;
 
 #if defined(DM_HAS_THREADS)
-    uint32_t thread_count = dmMath::Min(create_params.m_ThreadCount, DM_MAX_JOB_THREAD_COUNT);
+    uint32_t thread_count = create_params->m_ThreadCount;
     context->m_UseThreads = thread_count > 0;
     if (context->m_UseThreads)
     {
@@ -627,7 +629,7 @@ HContext Create(const JobThreadCreationParams& create_params)
         for (int i = 0; i < thread_count; ++i)
         {
             char name_buf[32];
-            const char* thread_name_prefix = create_params.m_ThreadNamePrefix ? create_params.m_ThreadNamePrefix : "defoldjob";
+            const char* thread_name_prefix = create_params->m_ThreadNamePrefix ? create_params->m_ThreadNamePrefix : "defoldjob";
             // According to doc for pthread_set_name: https://man7.org/linux/man-pages/man3/pthread_setname_np.3.html
             assert(strlen(thread_name_prefix) < 16-3); // account for "_00"
 
@@ -647,7 +649,7 @@ HContext Create(const JobThreadCreationParams& create_params)
     return context;
 }
 
-void Destroy(HContext context)
+void JobSystemDestroy(HJobContext context)
 {
     if (!context)
         return;
@@ -682,7 +684,7 @@ void Destroy(HContext context)
 }
 
 
-uint32_t GetWorkerCount(HContext context)
+uint32_t JobSystemGetWorkerCount(HJobContext context)
 {
 #if defined(DM_HAS_THREADS)
     return context->m_Threads.Size();
@@ -691,7 +693,12 @@ uint32_t GetWorkerCount(HContext context)
 #endif
 }
 
-void Update(HContext context, uint64_t time_limit)
+bool JobSystemPlatformHasThreadSupport()
+{
+    return dmThread::PlatformHasThreadSupport();
+}
+
+void JobSystemUpdate(HJobContext context, uint64_t time_limit)
 {
     DM_PROFILE("JobThreadUpdate");
 
@@ -719,13 +726,13 @@ static void DebugPrintJob(JobThreadContext* ctx, HJob hjob)
     printf("    job: %p  (gen: %u, idx: %u)\n", (void*)(uintptr_t)hjob, index, generation);
 }
 
-void DebugPrintJobs(HContext context)
+void JobSystemDebugPrintJobs(HJobContext context)
 {
     DM_MUTEX_OPTIONAL_SCOPED_LOCK(context->m_ThreadContext.m_Mutex);
 
     JobThreadContext* ctx = &context->m_ThreadContext;
 
-    printf("JOBTHREAD: %p\n", context);
+    printf("JOBSYSTEM: %p\n", context);
     printf("  DONE: sz: %u\n", ctx->m_Done.Size());
     for (uint32_t i = 0; i < ctx->m_Done.Size(); ++i)
     {
@@ -739,6 +746,3 @@ void DebugPrintJobs(HContext context)
         DebugPrintJob(ctx, hjob);
     }
 }
-
-
-} // namespace dmJobThread

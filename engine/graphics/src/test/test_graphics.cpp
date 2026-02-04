@@ -62,7 +62,7 @@ public:
         bool m_ShouldClose;
     };
 
-    dmJobThread::HContext m_JobThread;
+    HJobContext m_JobThread;
     dmPlatform::HWindow m_Window;
     dmGraphics::HContext m_Context;
     dmGraphics::NullContext* m_NullContext;
@@ -101,11 +101,11 @@ public:
         m_Window = dmPlatform::NewWindow();
         dmPlatform::OpenWindow(m_Window, params);
 
-        dmJobThread::JobThreadCreationParams job_thread_create_param = {0};
+        JobSystemCreateParams job_thread_create_param = {0};
         job_thread_create_param.m_ThreadCount = 1;
 
         if (dmGraphicsTestT::s_Asynchronous)
-            m_JobThread = dmJobThread::Create(job_thread_create_param);
+            m_JobThread = JobSystemCreate(&job_thread_create_param);
         else
             m_JobThread = 0;
 
@@ -124,7 +124,7 @@ public:
     void TearDown() override
     {
         if (m_JobThread)
-            dmJobThread::Destroy(m_JobThread);
+            JobSystemDestroy(m_JobThread);
         dmGraphics::CloseWindow(m_Context);
         dmGraphics::DeleteContext(m_Context);
         dmPlatform::DeleteWindow(m_Window);
@@ -1492,7 +1492,7 @@ TEST_F(dmGraphicsTest, TestTextureAsync)
     uint64_t stop_time = dmTime::GetMonotonicTime() + 1*1e6; // 1 second
     while(!all_complete && dmTime::GetMonotonicTime() < stop_time)
     {
-        dmJobThread::Update(m_JobThread, 0);
+        JobSystemUpdate(m_JobThread, 0);
         all_complete = true;
         for (int i = 0; i < TEXTURE_COUNT; ++i)
         {
@@ -1522,7 +1522,7 @@ TEST_F(dmGraphicsTest, TestTextureAsync)
     stop_time = dmTime::GetMonotonicTime() + 1*1e6; // 1 second
     while(!all_complete && dmTime::GetMonotonicTime() < stop_time)
     {
-        dmJobThread::Update(m_JobThread, 0);
+        JobSystemUpdate(m_JobThread, 0);
         all_complete = true;
         for (int i = 0; i < TEXTURE_COUNT; ++i)
         {
@@ -1547,13 +1547,13 @@ enum SyncronizedWaitCondition
     WAIT_CONDITION_DELETE,
 };
 
-static bool WaitUntilSyncronizedTextures(dmGraphics::HContext graphics_context, dmJobThread::HContext job_thread, dmGraphics::HTexture* textures, uint32_t texture_count, SyncronizedWaitCondition cond)
+static bool WaitUntilSyncronizedTextures(dmGraphics::HContext graphics_context, HJobContext job_thread, dmGraphics::HTexture* textures, uint32_t texture_count, SyncronizedWaitCondition cond)
 {
     bool all_complete = false;
     uint64_t stop_time = dmTime::GetMonotonicTime() + 1*1e6; // 1 second
     while(!all_complete && dmTime::GetMonotonicTime() < stop_time)
     {
-        dmJobThread::Update(job_thread);
+        JobSystemUpdate(job_thread, 0);
         all_complete = true;
         for (int i = 0; i < texture_count; ++i)
         {
@@ -1613,7 +1613,7 @@ TEST_F(dmGraphicsTest, TestTextureAsyncDelete)
         ASSERT_EQ(0, m_NullContext->m_SetTextureAsyncState.m_PostDeleteTextures.Size());
 
         // Flush any lingering work
-        dmJobThread::Update(m_JobThread, 0);
+        JobSystemUpdate(m_JobThread, 0);
 
         // Make sure all are deleted
         ASSERT_TRUE(WaitUntilSyncronizedTextures(m_Context, m_JobThread, textures.Begin(), TEXTURE_COUNT, WAIT_CONDITION_DELETE));

@@ -82,9 +82,9 @@ class ResourceTest : public jc_test_base_class
 protected:
     void SetUp() override
     {
-        dmJobThread::JobThreadCreationParams job_thread_create_param = {0};
+        JobSystemCreateParams job_thread_create_param = {0};
         job_thread_create_param.m_ThreadCount    = 1;
-        m_JobThread = dmJobThread::Create(job_thread_create_param);
+        m_JobThread = JobSystemCreate(&job_thread_create_param);
 
         dmResource::NewFactoryParams params;
         params.m_MaxResources = 16;
@@ -101,11 +101,11 @@ protected:
         {
             dmResource::DeleteFactory(factory);
         }
-        dmJobThread::Destroy(m_JobThread);
+        JobSystemDestroy(m_JobThread);
     }
 
     dmResource::HFactory factory;
-    dmJobThread::HContext m_JobThread;
+    HJobContext m_JobThread;
 };
 
 class DynamicResourceTest : public jc_test_base_class
@@ -113,9 +113,9 @@ class DynamicResourceTest : public jc_test_base_class
 protected:
     void SetUp() override
     {
-        dmJobThread::JobThreadCreationParams job_thread_create_param = {0};
+        JobSystemCreateParams job_thread_create_param = {0};
         job_thread_create_param.m_ThreadCount    = 1;
-        m_JobThread = dmJobThread::Create(job_thread_create_param);
+        m_JobThread = JobSystemCreate(&job_thread_create_param);
 
         const char* test_dir = "build/src/test";
         dmResource::NewFactoryParams params;
@@ -133,11 +133,11 @@ protected:
         {
             dmResource::DeleteFactory(factory);
         }
-        dmJobThread::Destroy(m_JobThread);
+        JobSystemDestroy(m_JobThread);
     }
 
     dmResource::HFactory factory;
-    dmJobThread::HContext m_JobThread;
+    HJobContext m_JobThread;
 };
 
 
@@ -1753,7 +1753,7 @@ TEST_F(ResourceTest, PartialReadTest)
                 ASSERT_TRUE(false);
             }
 
-            dmJobThread::Update(m_JobThread, 2000); // pump the results from the job thread to the main thread
+            JobSystemUpdate(m_JobThread, 2000); // pump the results from the job thread to the main thread
 
             ASSERT_ARRAY_EQ_LEN(expected_data, resource->m_Data, resource->m_Offset);
 

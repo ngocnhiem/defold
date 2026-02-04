@@ -484,7 +484,7 @@ namespace dmEngine
         // // Stop processing graphics requests before deleting the graphics context
         // if (engine->m_JobThreadContext)
         // {
-        //     dmJobThread::Destroy(engine->m_JobThreadContext);
+        //     JobSystemDestroy(engine->m_JobThreadContext);
         // }
 
         if (engine->m_GraphicsContext)
@@ -1092,10 +1092,10 @@ namespace dmEngine
             swap_interval = 0;
         }
 
-        dmJobThread::JobThreadCreationParams job_thread_create_param;
+        JobSystemCreateParams job_thread_create_param;
         job_thread_create_param.m_ThreadNamePrefix  = "DefoldJob";
         job_thread_create_param.m_ThreadCount       = 1;
-        engine->m_JobThreadContext                  = dmJobThread::Create(job_thread_create_param);
+        engine->m_JobThreadContext                  = JobSystemCreate(&job_thread_create_param);
 
         dmGraphics::ContextParams graphics_context_params;
         graphics_context_params.m_DefaultTextureMinFilter = ConvertMinTextureFilter(dmConfigFile::GetString(engine->m_Config, "graphics.default_texture_min_filter", "linear"));
@@ -1947,7 +1947,7 @@ bail:
                 // Note that it will always process at least one item if available
                 uint64_t jobthread_max_time_us = 3 * 1000;
 #endif
-                dmJobThread::Update(engine->m_JobThreadContext, jobthread_max_time_us);
+                JobSystemUpdate(engine->m_JobThreadContext, jobthread_max_time_us);
 
                 {
                     DM_PROFILE("Resource");

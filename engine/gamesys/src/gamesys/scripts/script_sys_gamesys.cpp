@@ -13,7 +13,7 @@
 // specific language governing permissions and limitations under the License.
 
 #include <dlib/opaque_handle_container.h>
-#include <dlib/job_thread.h>
+#include <dlib/jobsystem.h>
 
 #include <resource/resource.h>
 
@@ -63,7 +63,7 @@ namespace dmGameSystem
     struct SysModule
     {
         dmResource::HFactory                m_Factory;
-        dmJobThread::HContext               m_JobThread;
+        HJobContext                         m_JobThread;
         dmOpaqueHandleContainer<LuaRequest> m_LoadRequests;
         dmMutex::HMutex                     m_LoadRequestsMutex;
         uint8_t                             m_LastUpdateResult : 1; // For tests
@@ -161,7 +161,7 @@ namespace dmGameSystem
     }
 
     // Called from job thread
-    static int LoadBufferFunctionCallback(dmJobThread::HContext, dmJobThread::HJob hjob, void* context, void* data)
+    static int LoadBufferFunctionCallback(HJobContext, HJob hjob, void* context, void* data)
     {
         DM_MUTEX_SCOPED_LOCK(g_SysModule.m_LoadRequestsMutex);
         HOpaqueHandle request_handle = (HOpaqueHandle) (uintptr_t) context;
@@ -171,7 +171,7 @@ namespace dmGameSystem
     }
 
     // Called from the main thread
-    static void LoadBufferCompleteCallback(dmJobThread::HContext, dmJobThread::HJob hjob, dmJobThread::JobStatus status, void* context, void* data, int result)
+    static void LoadBufferCompleteCallback(HJobContext, HJob hjob, JobStatus status, void* context, void* data, int result)
     {
         if (((dmResource::Result) result) == dmResource::RESULT_OK)
         {
@@ -192,14 +192,14 @@ namespace dmGameSystem
     // Assumes the g_SysModule.m_LoadRequestsMutex is held
     static void DispatchRequest(LuaRequest* request)
     {
-        dmJobThread::Job job = {0};
+        Job job = {0};
         job.m_Process = LoadBufferFunctionCallback;
         job.m_Callback = LoadBufferCompleteCallback;
         job.m_Context = (void*) (uintptr_t) request->m_Handle;
         job.m_Data = 0;
 
-        dmJobThread::HJob hjob = dmJobThread::CreateJob(g_SysModule.m_JobThread, &job);
-        dmJobThread::PushJob(g_SysModule.m_JobThread, hjob);
+        HJob hjob = JobSystemCreateJob(g_SysModule.m_JobThread, &job);
+        JobSystemPushJob(g_SysModule.m_JobThread, hjob);
     }
 
     /*# loads a buffer from a resource or disk path
