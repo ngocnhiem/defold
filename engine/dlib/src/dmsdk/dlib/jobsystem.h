@@ -85,7 +85,7 @@ enum JobSystemResult
     JOBSYSTEM_RESULT_ERROR            = 1,
     JOBSYSTEM_RESULT_INVALID_HANDLE   = 2,
     JOBSYSTEM_RESULT_CANCELED         = 3,
-    JOBSYSTEM_RESULT_PENDING          = 4, // the job is still processing
+    JOBSYSTEM_RESULT_PENDING          = 4,
 };
 
 /*# creation parameters
@@ -109,7 +109,7 @@ struct JobSystemCreateParams
  * @param job [type: HJob] the job
  * @param user_context [type: void*] the user context
  * @param user_data [type: void*] the user data
- * @return user_result [type: int32_t] user defined result
+ * @return user_result [type: int32_t] user defined result. This is passed to the FJobCallback function.
  */
 typedef int32_t (*FJobProcess)(HJobContext context, HJob job, void* user_context, void* user_data);
 
@@ -140,9 +140,9 @@ typedef void (*FJobCallback)(HJobContext context, HJob job, enum JobSystemStatus
 struct Job
 {
     FJobProcess  m_Process;
-    FJobCallback m_Callback;    // result: >0 if successful, 0 if failure or canceled
-    void*        m_Context;     // User job context
-    void*        m_Data;        // User payload data
+    FJobCallback m_Callback;
+    void*        m_Context;
+    void*        m_Data;
 };
 
 /*# create job system context

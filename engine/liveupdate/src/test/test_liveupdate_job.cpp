@@ -41,14 +41,14 @@ public:
     {
         JobSystemCreateParams job_thread_create_param = {0};
         job_thread_create_param.m_ThreadCount = DM_TEST_THREAD_COUNT;
-        m_JobThread = JobSystemCreate(&job_thread_create_param);
+        m_JobContext = JobSystemCreate(&job_thread_create_param);
     }
     void TearDown() override
     {
-        JobSystemDestroy(m_JobThread);
+        JobSystemDestroy(m_JobContext);
     }
 
-    HJobContext m_JobThread;
+    HJobContext m_JobContext;
 };
 
 struct JobData
@@ -102,7 +102,7 @@ TEST_F(AsyncTestThread, TestJobs)
         contexts[i].m_Char = test_data[i] + 1;
         contexts[i].m_Result = 0;
 
-        PushJob(m_JobThread, &hash_state, &contexts[i]);
+        PushJob(m_JobContext, &hash_state, &contexts[i]);
     }
 
     uint64_t time_start = dmTime::GetMonotonicTime();
@@ -114,7 +114,7 @@ TEST_F(AsyncTestThread, TestJobs)
             break;
         }
 
-        JobSystemUpdate(m_JobThread, 0); // Flushes finished async jobs', and calls any Lua callbacks
+        JobSystemUpdate(m_JobContext, 0); // Flushes finished async jobs', and calls any Lua callbacks
 
         int num_finished = 0;
         for (uint32_t i = 0; i < num_jobs; ++i)

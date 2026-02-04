@@ -124,7 +124,7 @@ namespace dmGraphics
         ContextParams();
 
         dmPlatform::HWindow   m_Window;
-        HJobContext           m_JobThread;
+        HJobContext           m_JobContext;
         TextureFilter         m_DefaultTextureMinFilter;
         TextureFilter         m_DefaultTextureMagFilter;
         uint32_t              m_Width;

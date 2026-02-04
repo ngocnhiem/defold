@@ -535,7 +535,7 @@ static void LogFrameBufferError(GLenum status)
         m_Width                   = params.m_Width;
         m_Height                  = params.m_Height;
         m_Window                  = params.m_Window;
-        m_JobThread               = params.m_JobThread;
+        m_JobContext              = params.m_JobContext;
 
         // We need to have some sort of valid default filtering
         if (m_DefaultTextureMinFilter == TEXTURE_FILTER_DEFAULT)
@@ -683,13 +683,13 @@ static void LogFrameBufferError(GLenum status)
     {
         if (!context->m_AsyncProcessingSupport)
             return;
-        if (!context->m_JobThread)
+        if (!context->m_JobContext)
             return;
 
         // TODO: If we have multiple workers, we need to either tag one of them as a graphics-only worker,
         //       or create multiple aux contexts and do an acquire for each of them.
         //       But since we only have one worker thread right now, we can leave that for when we have more.
-        assert(JobSystemGetWorkerCount(context->m_JobThread) == 1);
+        assert(JobSystemGetWorkerCount(context->m_JobContext) == 1);
 
         dmAtomicStore32(&context->m_AuxContextJobPending, 1);
 
@@ -699,8 +699,8 @@ static void LogFrameBufferError(GLenum status)
         job.m_Context = (void*) context;
         job.m_Data = (void*) (uintptr_t) acquire_flag;
 
-        HJob hjob = JobSystemCreateJob(context->m_JobThread, &job);
-        JobSystemPushJob(context->m_JobThread, hjob);
+        HJob hjob = JobSystemCreateJob(context->m_JobContext, &job);
+        JobSystemPushJob(context->m_JobContext, hjob);
 
         // Block until the job is done
         while(dmAtomicGet32(&context->m_AuxContextJobPending))
@@ -1523,7 +1523,7 @@ static void LogFrameBufferError(GLenum status)
             context->m_GLHandlesData.m_Mutex = dmMutex::New();
             context->m_AssetHandleContainerMutex = dmMutex::New();
 
-            if (context->m_JobThread == 0x0)
+            if (context->m_JobContext == 0x0)
             {
                 dmLogError("AsyncInitialize: Platform has async support but no job thread. Fallback to single thread processing.");
                 context->m_AsyncProcessingSupport = 0;
@@ -3929,8 +3929,8 @@ static void LogFrameBufferError(GLenum status)
             job.m_Context = (void*) context;
             job.m_Data = (void*) (uintptr_t) texture;
 
-            HJob hjob = JobSystemCreateJob(context->m_JobThread, &job);
-            JobSystemPushJob(context->m_JobThread, hjob);
+            HJob hjob = JobSystemCreateJob(context->m_JobContext, &job);
+            JobSystemPushJob(context->m_JobContext, hjob);
         }
         else
         {
@@ -4168,8 +4168,8 @@ static void LogFrameBufferError(GLenum status)
             job.m_Context = (void*) context;
             job.m_Data = (void*) (uintptr_t) param_array_index;
 
-            HJob hjob = JobSystemCreateJob(context->m_JobThread, &job);
-            JobSystemPushJob(g_Context->m_JobThread, hjob);
+            HJob hjob = JobSystemCreateJob(context->m_JobContext, &job);
+            JobSystemPushJob(g_Context->m_JobContext, hjob);
         }
         else
         {

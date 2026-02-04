@@ -107,7 +107,7 @@ namespace dmLiveUpdate
         dmResourceMounts::HContext      m_ResourceMounts;       // The resource mounts
         dmResourceProvider::HArchive    m_ResourceBaseArchive;  // The "game.arcd" archive
 
-        HJobContext           m_JobThread;
+        HJobContext                     m_JobContext;
 
         // Legacy functionality
         dmResource::HFactory            m_ResourceFactory;      // Resource system factory
@@ -375,7 +375,7 @@ namespace dmLiveUpdate
 
     static bool IsLiveupdateThreadDisabled()
     {
-        if (!g_LiveUpdate.m_JobThread)
+        if (!g_LiveUpdate.m_JobContext)
         {
             dmLogError("Liveupdate function can't be called. Liveupdate disabled");
             return true;
@@ -421,8 +421,8 @@ namespace dmLiveUpdate
         job.m_Callback = callback;
         job.m_Context = jobctx;
         job.m_Data = jobdata;
-        HJob hjob = JobSystemCreateJob(g_LiveUpdate.m_JobThread, &job);
-        JobSystemPushJob(g_LiveUpdate.m_JobThread, hjob);
+        HJob hjob = JobSystemCreateJob(g_LiveUpdate.m_JobContext, &job);
+        JobSystemPushJob(g_LiveUpdate.m_JobContext, hjob);
         return true;
     }
 
@@ -940,11 +940,11 @@ namespace dmLiveUpdate
         job_thread_create_param.m_ThreadNamePrefix  = "liveupdate";
         job_thread_create_param.m_ThreadCount       = 1;
 
-        g_LiveUpdate.m_JobThread = JobSystemCreate(&job_thread_create_param);
+        g_LiveUpdate.m_JobContext = JobSystemCreate(&job_thread_create_param);
 
         dmResource::HFactory factory = (dmResource::HFactory)params->m_ResourceFactory;
 
-        if (g_LiveUpdate.m_JobThread) // Make the liveupdate module `nil` if it isn't available
+        if (g_LiveUpdate.m_JobContext) // Make the liveupdate module `nil` if it isn't available
         {
             if (params->m_L) // TODO: until unit tests have been updated with a Lua context
                 ScriptInit(params->m_L, factory);
@@ -991,9 +991,9 @@ namespace dmLiveUpdate
         if (!IsLiveupdateEnabled())
             return dmExtension::RESULT_OK;
 
-        if (g_LiveUpdate.m_JobThread)
-            JobSystemDestroy(g_LiveUpdate.m_JobThread);
-        g_LiveUpdate.m_JobThread = 0;
+        if (g_LiveUpdate.m_JobContext)
+            JobSystemDestroy(g_LiveUpdate.m_JobContext);
+        g_LiveUpdate.m_JobContext = 0;
         g_LiveUpdate.m_ResourceFactory = 0;
         return dmExtension::RESULT_OK;
     }
@@ -1004,8 +1004,8 @@ namespace dmLiveUpdate
             return dmExtension::RESULT_OK;
 
         DM_PROFILE("LiveUpdate");
-        if (g_LiveUpdate.m_JobThread)
-            JobSystemUpdate(g_LiveUpdate.m_JobThread, 0); // Flushes finished async jobs', and calls any Lua callbacks
+        if (g_LiveUpdate.m_JobContext)
+            JobSystemUpdate(g_LiveUpdate.m_JobContext, 0); // Flushes finished async jobs', and calls any Lua callbacks
         return dmExtension::RESULT_OK;
     }
 };

@@ -259,7 +259,7 @@ namespace dmGameSystem
         dmGameObject::HRegister m_Register;
         dmHID::HContext         m_HidContext;
         dmGraphics::HContext    m_GraphicsContext;
-        HJobContext             m_JobThread;
+        HJobContext             m_JobContext;
         dmScript::HContext      m_ScriptContext;
         dmConfigFile::HConfig   m_ConfigFile;
         dmPlatform::HWindow     m_Window;

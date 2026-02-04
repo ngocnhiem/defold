@@ -155,7 +155,7 @@ namespace dmGraphics
 
         SetTextureAsyncState    m_SetTextureAsyncState;
         dmPlatform::HWindow     m_Window;
-        HJobContext             m_JobThread;
+        HJobContext             m_JobContext;
         dmArray<const char*>    m_Extensions; // pointers into m_ExtensionsString
         char*                   m_ExtensionsString;
         void*                   m_AuxContext;

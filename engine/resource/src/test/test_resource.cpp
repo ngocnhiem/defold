@@ -84,12 +84,12 @@ protected:
     {
         JobSystemCreateParams job_thread_create_param = {0};
         job_thread_create_param.m_ThreadCount    = 1;
-        m_JobThread = JobSystemCreate(&job_thread_create_param);
+        m_JobContext = JobSystemCreate(&job_thread_create_param);
 
         dmResource::NewFactoryParams params;
         params.m_MaxResources = 16;
         params.m_Flags = RESOURCE_FACTORY_FLAGS_RELOAD_SUPPORT;
-        params.m_JobThreadContext = m_JobThread;
+        params.m_JobThreadContext = m_JobContext;
 
         factory = dmResource::NewFactory(&params, MOUNT_DIR);
         ASSERT_NE((void*) 0, factory);
@@ -101,11 +101,11 @@ protected:
         {
             dmResource::DeleteFactory(factory);
         }
-        JobSystemDestroy(m_JobThread);
+        JobSystemDestroy(m_JobContext);
     }
 
     dmResource::HFactory factory;
-    HJobContext m_JobThread;
+    HJobContext m_JobContext;
 };
 
 class DynamicResourceTest : public jc_test_base_class
@@ -115,13 +115,13 @@ protected:
     {
         JobSystemCreateParams job_thread_create_param = {0};
         job_thread_create_param.m_ThreadCount    = 1;
-        m_JobThread = JobSystemCreate(&job_thread_create_param);
+        m_JobContext = JobSystemCreate(&job_thread_create_param);
 
         const char* test_dir = "build/src/test";
         dmResource::NewFactoryParams params;
         params.m_MaxResources = 16;
         params.m_Flags = RESOURCE_FACTORY_FLAGS_RELOAD_SUPPORT;
-        params.m_JobThreadContext = m_JobThread;
+        params.m_JobThreadContext = m_JobContext;
 
         factory = dmResource::NewFactory(&params, test_dir);
         ASSERT_NE((void*) 0, factory);
@@ -133,11 +133,11 @@ protected:
         {
             dmResource::DeleteFactory(factory);
         }
-        JobSystemDestroy(m_JobThread);
+        JobSystemDestroy(m_JobContext);
     }
 
     dmResource::HFactory factory;
-    HJobContext m_JobThread;
+    HJobContext m_JobContext;
 };
 
 
@@ -1753,7 +1753,7 @@ TEST_F(ResourceTest, PartialReadTest)
                 ASSERT_TRUE(false);
             }
 
-            JobSystemUpdate(m_JobThread, 2000); // pump the results from the job thread to the main thread
+            JobSystemUpdate(m_JobContext, 2000); // pump the results from the job thread to the main thread
 
             ASSERT_ARRAY_EQ_LEN(expected_data, resource->m_Data, resource->m_Offset);
 

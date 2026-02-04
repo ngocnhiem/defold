@@ -63,7 +63,7 @@ namespace dmGameSystem
     struct SysModule
     {
         dmResource::HFactory                m_Factory;
-        HJobContext                         m_JobThread;
+        HJobContext                         m_JobContext;
         dmOpaqueHandleContainer<LuaRequest> m_LoadRequests;
         dmMutex::HMutex                     m_LoadRequestsMutex;
         uint8_t                             m_LastUpdateResult : 1; // For tests
@@ -198,8 +198,8 @@ namespace dmGameSystem
         job.m_Context = (void*) (uintptr_t) request->m_Handle;
         job.m_Data = 0;
 
-        HJob hjob = JobSystemCreateJob(g_SysModule.m_JobThread, &job);
-        JobSystemPushJob(g_SysModule.m_JobThread, hjob);
+        HJob hjob = JobSystemCreateJob(g_SysModule.m_JobContext, &job);
+        JobSystemPushJob(g_SysModule.m_JobContext, hjob);
     }
 
     /*# loads a buffer from a resource or disk path
@@ -425,7 +425,7 @@ namespace dmGameSystem
         assert(top == lua_gettop(L));
 
         g_SysModule.m_Factory           = context.m_Factory;
-        g_SysModule.m_JobThread         = context.m_JobThread;
+        g_SysModule.m_JobContext        = context.m_JobContext;
 
         if (g_SysModule.m_LoadRequestsMutex == 0)
             g_SysModule.m_LoadRequestsMutex = dmMutex::New();

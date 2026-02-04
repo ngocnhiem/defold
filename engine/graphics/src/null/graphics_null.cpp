@@ -78,7 +78,7 @@ namespace dmGraphics
         m_Height                  = params.m_Height;
         m_Window                  = params.m_Window;
         m_PrintDeviceInfo         = params.m_PrintDeviceInfo;
-        m_JobThread               = params.m_JobThread;
+        m_JobContext              = params.m_JobContext;
 
         // We need to have some sort of valid default filtering
         if (m_DefaultTextureMinFilter == TEXTURE_FILTER_DEFAULT)
@@ -163,7 +163,7 @@ namespace dmGraphics
         context->m_CurrentFrameBuffer                   = &context->m_MainFrameBuffer;
         context->m_Program                              = 0x0;
         context->m_PipelineState                        = GetDefaultPipelineState();
-        context->m_AsyncProcessingSupport               = context->m_JobThread && dmThread::PlatformHasThreadSupport();
+        context->m_AsyncProcessingSupport               = context->m_JobContext && dmThread::PlatformHasThreadSupport();
 
         context->m_ContextFeatures |= 1 << CONTEXT_FEATURE_MULTI_TARGET_RENDERING;
         context->m_ContextFeatures |= 1 << CONTEXT_FEATURE_TEXTURE_ARRAY;
@@ -1525,8 +1525,8 @@ namespace dmGraphics
         job.m_Context = context;
         job.m_Data = (void*)(uintptr_t)texture;
 
-        HJob hjob = JobSystemCreateJob(context->m_JobThread, &job);
-        JobSystemPushJob(context->m_JobThread, hjob);
+        HJob hjob = JobSystemCreateJob(context->m_JobContext, &job);
+        JobSystemPushJob(context->m_JobContext, hjob);
     }
 
     static void PostDeleteTextures(NullContext* context, bool force_delete)
@@ -1537,8 +1537,8 @@ namespace dmGraphics
             for (uint32_t i = 0; i < size; ++i)
             {
                 void* texture = (void*) (size_t) context->m_SetTextureAsyncState.m_PostDeleteTextures[i];
-                DoDeleteTexture(context->m_JobThread, 0, context, texture);
-                DoDeleteTextureComplete(context->m_JobThread, 0, JOBSYSTEM_STATUS_FINISHED, context, texture, 0);
+                DoDeleteTexture(context->m_JobContext, 0, context, texture);
+                DoDeleteTextureComplete(context->m_JobContext, 0, JOBSYSTEM_STATUS_FINISHED, context, texture, 0);
             }
             context->m_SetTextureAsyncState.m_PostDeleteTextures.SetSize(0);
             return;
@@ -1578,8 +1578,8 @@ namespace dmGraphics
         else
         {
             void* htexture = (void*) texture;
-            DoDeleteTexture(context->m_JobThread, 0, g_NullContext, htexture);
-            DoDeleteTextureComplete(context->m_JobThread, 0, JOBSYSTEM_STATUS_FINISHED, g_NullContext, htexture, 0);
+            DoDeleteTexture(context->m_JobContext, 0, g_NullContext, htexture);
+            DoDeleteTextureComplete(context->m_JobContext, 0, JOBSYSTEM_STATUS_FINISHED, g_NullContext, htexture, 0);
         }
     }
 
@@ -1903,8 +1903,8 @@ namespace dmGraphics
             job.m_Context = (void*) g_NullContext;
             job.m_Data = (void*) (uintptr_t) param_array_index;
 
-            HJob hjob = JobSystemCreateJob(g_NullContext->m_JobThread, &job);
-            JobSystemPushJob(g_NullContext->m_JobThread, hjob);
+            HJob hjob = JobSystemCreateJob(g_NullContext->m_JobContext, &job);
+            JobSystemPushJob(g_NullContext->m_JobContext, hjob);
         }
         else
         {

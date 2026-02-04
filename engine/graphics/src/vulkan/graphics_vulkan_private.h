@@ -407,7 +407,7 @@ namespace dmGraphics
         VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT m_FragmentShaderInterlockFeatures;
 
         // Async process resources
-        HJobContext                        m_JobThread;
+        HJobContext                        m_JobContext;
         SetTextureAsyncState               m_SetTextureAsyncState;
         dmMutex::HMutex                    m_AssetHandleContainerMutex;
 

@@ -181,7 +181,7 @@ namespace dmEngine
                 ExtensionParamsSetContext(&m_Params, "http_cache", engine->m_HttpCache);
 
             if (engine->m_JobThreadContext)
-                ExtensionParamsSetContext(&m_Params, "job_thread", engine->m_JobThreadContext);
+                ExtensionParamsSetContext(&m_Params, "jobs", engine->m_JobThreadContext);
         }
         ~ScopedExtensionParams()
         {
@@ -1108,7 +1108,7 @@ namespace dmEngine
         graphics_context_params.m_Width                   = engine->m_Width;
         graphics_context_params.m_Height                  = engine->m_Height;
         graphics_context_params.m_PrintDeviceInfo         = dmConfigFile::GetInt(engine->m_Config, "display.display_device_info", 0);
-        graphics_context_params.m_JobThread               = engine->m_JobThreadContext;
+        graphics_context_params.m_JobContext              = engine->m_JobThreadContext;
         graphics_context_params.m_SwapInterval            = swap_interval;
 
         engine->m_GraphicsContext = dmGraphics::NewContext(graphics_context_params);
@@ -1583,7 +1583,7 @@ namespace dmEngine
         script_lib_context.m_Register        = engine->m_Register;
         script_lib_context.m_HidContext      = engine->m_HidContext;
         script_lib_context.m_GraphicsContext = engine->m_GraphicsContext;
-        script_lib_context.m_JobThread       = engine->m_JobThreadContext;
+        script_lib_context.m_JobContext      = engine->m_JobThreadContext;
         script_lib_context.m_ConfigFile      = engine->m_Config;
         script_lib_context.m_Window          = engine->m_Window;
 
