@@ -34,6 +34,7 @@
             [editor.localization :as localization]
             [editor.math :as math]
             [editor.os :as os]
+            [editor.prefs :as prefs]
             [editor.pose :as pose]
             [editor.properties :as properties]
             [editor.protobuf :as protobuf]
@@ -1072,7 +1073,7 @@
        (g/set-property camera-node :local-camera end-camera)))
    nil))
 
-(def ^:private camera-speed 3.0)
+(def ^:private camera-speed 633.0)
 (def ^:private camera-speed-boost 3.0)
 (def ^:private camera-speed-precision 0.35)
 (def ^:private camera-velocity (atom (Vector3d. 0.0 0.0 0.0)))
@@ -1081,18 +1082,20 @@
 (def ^:private camera-angular-velocity (atom (Quat4d. 0.0 0.0 0.0 1.0)))
 (def ^:private look-sensitivity 0.2)
 (def ^:private smoothed-look-delta (atom [0.0 0.0]))
-(def ^:private look-smoothing 0.25)
+(def ^:private look-smoothing 0.35)
 
 (defn- update-camera-view! [image-view current-input node-id dt])
 (defn- update-camera-view! [_image-view current-input node-id dt]
-  (let [{:keys [robot mouse-buttons modifiers pressed-keys cursor-pos cursor-lock-pos]} @current-input
+  (let [camera-node (view->camera node-id)
+        current-camera (g/node-value camera-node :local-camera)
+        prefs (g/node-value camera-node :prefs)
+        forward (c/camera-forward-vector current-camera)
+        {:keys [robot mouse-buttons modifiers pressed-keys cursor-pos cursor-lock-pos]} @current-input
         is-secondary-button (contains? mouse-buttons :secondary)
         shift (contains? modifiers :shift)
         alt (contains? modifiers :alt)
         speed (* camera-speed (cond shift camera-speed-boost alt camera-speed-precision :else 1.0))
-        camera-node (view->camera node-id)
-        current-camera (g/node-value camera-node :local-camera)
-        forward (c/camera-forward-vector current-camera)
+        speed (* speed (prefs/get prefs [:scene :perspective-camera :speed]))
         right (c/camera-right-vector current-camera)
         up (c/camera-up-vector current-camera)
         target-dir (Vector3d. 0.0 0.0 0.0)
@@ -1957,7 +1960,8 @@
                                                                                    (g/operation-sequence op-seq)
                                                                                    (g/operation-label (localization/message "operation.select"))
                                                                                    (select-fn selection))))]
-                   camera          [c/CameraController :local-camera (or (:camera opts) (c/make-camera :orthographic identity {:fov-x 1000 :fov-y 1000}))]
+                   camera          [c/CameraController :local-camera (or (:camera opts) (c/make-camera :orthographic identity {:fov-x 1000 :fov-y 1000}))
+                                                       :prefs prefs]
                    grid            (grid-type :prefs prefs)
                    tool-controller [tool-controller-type :prefs prefs]
                    rulers          [rulers/Rulers]]

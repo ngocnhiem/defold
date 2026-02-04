@@ -32,8 +32,8 @@
            [javafx.event ActionEvent]
            [javafx.geometry HPos Point2D Pos VPos]
            [javafx.scene Cursor Node Parent]
-           [javafx.scene.control Button Control Label PopupControl Slider TextField ToggleButton ToggleGroup]
-           [javafx.scene.layout HBox StackPane VBox]
+           [javafx.scene.control Button Control CheckBox Label PopupControl Slider TextField ToggleButton ToggleGroup]
+           [javafx.scene.layout HBox Priority StackPane VBox]
            [javafx.scene.paint Color]
            [javafx.stage PopupWindow$AnchorLocation]
            [javax.vecmath AxisAngle4d Matrix3d Matrix4d Point2d Point3d Quat4d Tuple2d Tuple3d Tuple4d Vector3d Vector4d]))
@@ -745,6 +745,7 @@
       action)))
 
 (g/defnode CameraController
+  (property prefs g/Any)
   (property name g/Keyword (default :local-camera))
   (property local-camera Camera)
   (property cached-3d-camera Camera)
@@ -812,7 +813,7 @@
         cpy      (camera-project camera viewport (Point3d. (.x y-axis) (.y y-axis) (.z y-axis)))]
     [(/ 1.0 (Math/abs (- (.x cp0) (.x cpx)))) (/ 1.0 (Math/abs (- (.y cp0) (.y cpy)))) 1.0]))
 
-(defonce grid-prefs-path [:scene :grid])
+(defonce camera-perspective-prefs-path [:scene :perspective-camera])
 
 (defn- invalidate-grids! [app-view]
   (let [scene-view-id (g/node-value app-view :active-view)
@@ -827,12 +828,12 @@
 
 (defmulti settings-row (fn [_app-view _prefs _popup option] option))
 
-(defmethod settings-row :opacity
+(defmethod settings-row :speed
   [app-view prefs ^PopupControl popup option]
-  (let [prefs-path (conj grid-prefs-path option)
+  (let [prefs-path (conj camera-perspective-prefs-path option)
         value (prefs/get prefs prefs-path)
-        slider (Slider. 0.0 1.0 value)
-        label (Label. "Opacity")]
+        slider (Slider. 1.0 3.0 value)
+        label (Label. "Speed")]
     (doto slider
       (ensure-focus-traversable!)
       (.setBlockIncrement 0.1)
@@ -849,83 +850,23 @@
           (invalidate-grids! app-view))))
     [label slider]))
 
-(defn plane-toggle-button
-  [prefs plane-group prefs-path plane]
-  (let [active-plane (prefs/get prefs prefs-path)]
-    (doto (ToggleButton. (string/upper-case (name plane)))
+(defmethod settings-row :flip-y
+  [app-view prefs _popup option]
+  (let [prefs-path (conj camera-perspective-prefs-path option)
+        value (prefs/get prefs prefs-path)
+        check-box (CheckBox.)
+        label (Label. "Flip Y")]
+    (doto check-box
+      (ui/value! value)
+      (ui/remove-style! "check-box")
+      (ui/add-style! "slide-switch")
       (ensure-focus-traversable!)
-      (.setToggleGroup plane-group)
-      (.setSelected (= plane active-plane))
-      (ui/add-style! "plane-toggle"))))
-
-(defonce ^List axes [:x :y :z])
-
-(defmethod settings-row :active-plane
-  [app-view prefs _popup option]
-  (let [prefs-path (conj grid-prefs-path option)
-        plane-group (ToggleGroup.)
-        buttons (mapv (partial plane-toggle-button prefs plane-group prefs-path) axes)
-        label (Label. "Plane")]
-    (ui/observe (.selectedToggleProperty plane-group)
-                (fn [_ ^ToggleButton old-value ^ToggleButton new-value]
-                  (if new-value
-                    (do (let [active-plane (-> (.getText new-value)
-                                               string/lower-case
-                                               keyword)]
-                          (prefs/set! prefs prefs-path active-plane))
-                        (invalidate-grids! app-view))
-                    (.setSelected old-value true))))
-    (concat [label] buttons)))
-
-(defmethod settings-row :color
-  [app-view prefs _popup option]
-  (let [prefs-path (conj grid-prefs-path option)
-        text-field (TextField.)
-        [r g b a] (prefs/get prefs prefs-path)
-        color (->> (Color. r g b a) (.toString) nnext (drop-last 2) (apply str "#"))
-        label (Label. "Color")
-        cancel-fn (fn [_] (ui/text! text-field color))
-        update-fn (fn [_] (try
-                            (if-let [value (some-> (.getText text-field) colors/hex-color->color)]
-                              (do (prefs/set! prefs prefs-path value)
-                                  (invalidate-grids! app-view))
-                              (cancel-fn nil))
-                            (catch Exception _e
-                              (cancel-fn nil))))]
-    (doto text-field
-      (ui/text! color)
-      (ui/customize! update-fn cancel-fn)
-      (ensure-focus-traversable!))
-    [label text-field]))
-
-(defn- axis-group
-  [app-view prefs prefs-path axis]
-  (let [text-field (TextField.)
-        label (Label. (string/upper-case (name axis)))
-        size-val (str (get (prefs/get prefs prefs-path) axis))
-        cancel-fn (fn [_] (ui/text! text-field size-val))
-        update-fn (fn [_] (try
-                            (let [value (Float/parseFloat (.getText text-field))]
-                              (if (pos? value)
-                                (do (prefs/set! prefs (conj prefs-path axis) value)
-                                    (ui/text! text-field (str value))
-                                    (invalidate-grids! app-view))
-                                (cancel-fn nil)))
-                            (catch Exception _e
-                              (cancel-fn nil))))]
-    (doto text-field
-      (ui/text! size-val)
-      (ui/customize! update-fn cancel-fn)
-      (ensure-focus-traversable!))
-    [label text-field]))
-
-(defmethod settings-row :size
-  [app-view prefs _popup option]
-  (let [prefs-path (conj grid-prefs-path option)]
-    (into []
-          (comp (map (partial axis-group app-view prefs prefs-path))
-                (mapcat identity))
-          axes)))
+      (ui/on-action! (fn [_]
+                       (prefs/set! prefs prefs-path (ui/value check-box))
+                       (invalidate-grids! app-view))))
+    (HBox/setHgrow label Priority/ALWAYS)
+    (ui/add-style! label "slide-switch-label")
+    [label check-box]))
 
 (declare settings)
 
@@ -936,13 +877,8 @@
         reset-fn (fn [^ActionEvent event]
                    (let [target ^Node (.getTarget event)
                          parent (.getParent target)]
-                     (doseq [path [[:size :x]
-                                   [:size :y]
-                                   [:size :z]
-                                   [:active-plane]
-                                   [:opacity]
-                                   [:color]]]
-                       (let [path (into grid-prefs-path path)]
+                     (doseq [path [[:speed] [:flip-y]]]
+                       (let [path (into camera-perspective-prefs-path path)]
                          (prefs/set! prefs path (:default (prefs/schema prefs path)))))
                      (invalidate-grids! app-view)
                      (doto parent
@@ -959,7 +895,7 @@
         grid (g/node-value scene-view-id :grid)
         options (g/node-value grid :options)
         reset-btn (reset-button app-view prefs popup)]
-    (->> [:size :active-plane :color :opacity]
+    (->> [:speed :flip-y]
          (e/remove (partial contains? options))
          (reduce (fn [rows option]
                    (conj rows (doto (HBox. 5 (ui/node-array (settings-row app-view prefs popup option)))
