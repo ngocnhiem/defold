@@ -132,9 +132,6 @@ namespace dmPlatform
     void ShowWindow(HWindow window)
     {}
 
-    void HideWindow(HWindow window)
-    {}
-
     void SetSwapInterval(HWindow window, uint32_t swap_interval)
     {}
 
