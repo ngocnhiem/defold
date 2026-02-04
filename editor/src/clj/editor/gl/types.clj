@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -28,8 +28,14 @@
   (bind! [this gl render-args] "Bind this object to the GPU context.")
   (unbind! [this gl render-args] "Unbind this object from the GPU context."))
 
-(defn gl-binding? [value]
-  (satisfies? GLBinding value))
+(def
+  ^{:doc "Returns true if the value satisfies the GLBinding protocol."
+    :arglists '([value])}
+  gl-binding?
+  ;; This is quite a bit faster than the satisfies? function.
+  (let [gl-binding-class (:on-interface GLBinding)]
+    (fn gl-binding? [value]
+      (instance? gl-binding-class value))))
 
 (defn data-type-gl-type
   ^long [data-type]

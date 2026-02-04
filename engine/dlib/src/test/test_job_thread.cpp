@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -483,34 +483,32 @@ TEST_P(dmJobThreadTest, CancelParentAfterChild)
 
     for (uint32_t i = 0; i < CHILD_COUNT; ++i)
     {
-        if (m_NumThreads == 1)
+        int process_called = dmAtomicGet32(&children[i].m_ProcessCalled);
+        int callback_called = dmAtomicGet32(&children[i].m_CallbackCalled);
+        if (m_NumThreads == 1) // i.e. no threads
         {
             if (i <= MID_INDEX)
             {
-                ASSERT_EQ(1, dmAtomicGet32(&children[i].m_ProcessCalled));
-                ASSERT_EQ(1, dmAtomicGet32(&children[i].m_CallbackCalled));
+                ASSERT_EQ(1, process_called);
+                ASSERT_EQ(1, callback_called);
             }
             else
             {
-                ASSERT_EQ(0, dmAtomicGet32(&children[i].m_ProcessCalled));
-                ASSERT_EQ(0, dmAtomicGet32(&children[i].m_CallbackCalled));
+                ASSERT_EQ(0, process_called);
+                ASSERT_EQ(0, callback_called);
             }
         }
         else
         {
             if (i == MID_INDEX)
             {
-                ASSERT_EQ(1, dmAtomicGet32(&children[i].m_ProcessCalled));
-                ASSERT_EQ(1, dmAtomicGet32(&children[i].m_CallbackCalled));
-            }
-            else if (i < MID_INDEX)
-            {
-                ASSERT_EQ(1, dmAtomicGet32(&children[i].m_ProcessCalled));
-                ASSERT_EQ(0, dmAtomicGet32(&children[i].m_CallbackCalled));
+                ASSERT_EQ(1, process_called);
+                ASSERT_EQ(1, callback_called);
             }
             else
             {
-                // Since the MID_INDEX has finished, it's possible that the threads has already picked up
+                // As it is multi threaded, we cannot be certain that the tasks have either started
+                // and/or finished.
             }
         }
     }
@@ -569,16 +567,8 @@ TEST_P(dmJobThreadTest, CancelParentAfterChild)
             }
             else if (children[i].m_Job)
             {
-                // We know the ones prior to the MID_INDEX should have finished
-                if ((i < MID_INDEX))
-                {
-                    ASSERT_EQ(dmJobThread::JOB_STATUS_FINISHED, children[i].m_CallbackStatus);
-                    ASSERT_EQ(1, dmAtomicGet32(&children[i].m_ProcessCalled));
-                }
-                else
-                {
-                    // Can't guarantuee the state they're in
-                }
+                // As it is multi threaded, we cannot be certain that the tasks have either started
+                // and/or finished, or if they've been cancelled.
             }
         }
     }

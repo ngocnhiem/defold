@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -16,8 +16,7 @@
   :description      "Defold game editor"
   :url              "https://www.defold.com/learn/"
 
-  :repositories     {"local" ~(str (.toURI (java.io.File. "localjars")))
-                     "jogamp" "https://jogamp.org/deployment/maven"}
+  :repositories     {"local" ~(str (.toURI (java.io.File. "localjars")))}
 
   :plugins          [[lein-protobuf-minimal-mg "0.4.5" :hooks false]
                      [codox "0.9.3"]]
@@ -36,14 +35,11 @@
                      [com.google.protobuf/protobuf-java           "3.20.1"]
                      [ch.qos.logback/logback-classic              "1.2.1"]
                      [org.slf4j/jul-to-slf4j                      "1.7.22"]
-                     [joda-time/joda-time                         "2.9.2"]
                      [commons-io/commons-io                       "2.4"]
-                     [org.apache.commons/commons-configuration2   "2.0"]
                      [commons-codec/commons-codec                 "1.10"]
                      [org.projectodd.shimdandy/shimdandy-api      "1.2.0"]
                      [org.projectodd.shimdandy/shimdandy-impl     "1.2.0"]
                      [potemkin                                    "0.4.3"]
-                     [com.nanohttpd/nanohttpd                     "2.1.1"]
                      [com.sun.jersey/jersey-core                  "1.19"]
                      [com.sun.jersey/jersey-client                "1.19"]
                      [com.sun.jersey.contribs/jersey-multipart    "1.19"]
@@ -67,21 +63,18 @@
                      [org.commonmark/commonmark-ext-gfm-tables "0.25.1"]
                      [org.commonmark/commonmark-ext-yaml-front-matter "0.25.1"]
                      [org.commonmark/commonmark-ext-heading-anchor "0.25.1"]
+                     [org.jsoup/jsoup "1.11.3"]
 
                      [com.cognitect.aws/api "0.8.673"]
                      [com.cognitect.aws/endpoints "1.1.12.478"]
                      [com.cognitect.aws/s3 "847.2.1387.0"]
 
-                     ;; bob needs javax.xml.bind, and it's removed in jdk 11
-                     [javax.xml.bind/jaxb-api "2.3.0"]
-                     [com.sun.xml.bind/jaxb-core "2.3.0"]
-                     [com.sun.xml.bind/jaxb-impl "2.3.0"]
 
                      [org.luaj/luaj-jse "3.0.1"]
 
                      [com.github.ben-manes.caffeine/caffeine "3.1.2"]
 
-                     [cljfx "1.9.6"
+                     [cljfx "1.10.6"
                       :exclusions [org.clojure/clojure
                                    org.openjfx/javafx-base
                                    org.openjfx/javafx-graphics
@@ -112,8 +105,7 @@
 
   :resource-paths    ["resources" "generated-resources"]
 
-  :proto-paths       ["../com.dynamo.cr/com.dynamo.cr.common/proto"
-                      "../engine/ddf/src"
+  :proto-paths       ["../engine/ddf/src"
                       "../engine/engine/proto"
                       "../engine/gameobject/proto"
                       "../engine/gamesys/proto"
@@ -293,18 +285,17 @@
                                                     [com.clojure-goes-fast/clj-async-profiler "0.5.1"]
                                                     [criterium "0.4.3"]
                                                     [lambdaisland/deep-diff2 "2.10.211"]
-                                                    [io.github.cljfx/dev "1.0.39"]
+                                                    [io.github.cljfx/dev "1.10.6.42"]
                                                     [org.clojure/test.check "1.1.1"]
-                                                    [org.clojure/tools.trace "0.7.9"]
-                                                    [org.mockito/mockito-core "1.10.19"]]
+                                                    [org.clojure/tools.trace "0.7.9"]]
                                 :source-paths      ["src/dev"]
                                 :repl-options      {:init-ns user}
                                 :proto-paths       ["test/proto"]
                                 :resource-paths    ["test/resources"]
                                 :jvm-opts          ["-Ddefold.extension.lua-preprocessor.url=https://github.com/defold/extension-lua-preprocessor/archive/refs/tags/1.1.3.zip"
-                                                    "-Ddefold.extension.rive.url=https://github.com/defold/extension-rive/archive/refs/tags/9.0.0.zip"
+                                                    "-Ddefold.extension.rive.url=https://github.com/defold/extension-rive/archive/refs/tags/10.0.0.zip"
                                                     "-Ddefold.extension.simpledata.url=https://github.com/defold/extension-simpledata/archive/refs/tags/v1.1.0.zip"
-                                                    "-Ddefold.extension.spine.url=https://github.com/defold/extension-spine/archive/refs/tags/4.2.0.zip"
+                                                    "-Ddefold.extension.spine.url=https://github.com/defold/extension-spine/archive/refs/tags/4.3.0.zip"
                                                     "-Ddefold.extension.teal.url=https://github.com/defold/extension-teal/archive/refs/tags/v1.4.zip"
                                                     "-Ddefold.extension.texturepacker.url=https://github.com/defold/extension-texturepacker/archive/refs/tags/2.5.0.zip"
                                                     "-Ddefold.unpack.path=tmp/unpack"

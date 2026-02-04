@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -336,17 +336,13 @@ static JobResult CancelJobInternal(JobThreadContext* ctx, HJob hjob)
     {
         return JOB_RESULT_PENDING;
     }
-    if (item->m_Status == JOB_STATUS_CANCELED)
-    {
-        return JOB_RESULT_CANCELED;
-    }
     if (item->m_Status == JOB_STATUS_FINISHED)
     {
         return JOB_RESULT_OK;
     }
 
-    // Can only really cancel a queued or created item
-    assert(item->m_Status == JOB_STATUS_CREATED || item->m_Status == JOB_STATUS_QUEUED);
+    // Can only cancel queued/created items directly, but still wait on children when already canceled
+    assert(item->m_Status == JOB_STATUS_CREATED || item->m_Status == JOB_STATUS_QUEUED || item->m_Status == JOB_STATUS_CANCELED);
 
     JobResult result = JOB_RESULT_CANCELED;
 

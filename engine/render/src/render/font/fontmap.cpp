@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -188,6 +188,7 @@ namespace dmRender
         font_map->m_ShadowAlpha = params.m_ShadowAlpha;
         font_map->m_LayerMask = params.m_LayerMask;
         font_map->m_IsMonospaced = params.m_IsMonospaced;
+        font_map->m_IsDynamic = params.m_IsDynamic;
         font_map->m_Padding = params.m_Padding;
 
         font_map->m_OnGlyphCacheMiss = params.m_OnGlyphCacheMiss;
@@ -579,11 +580,11 @@ namespace dmRender
         uint32_t glyph_image_height     = g->m_Bitmap.m_Height;
         uint32_t glyph_image_channels   = g->m_Bitmap.m_Channels;
         uint8_t* glyph_data             = g->m_Bitmap.m_Data;
-        uint32_t glyph_data_compression = g->m_Bitmap.m_Flags; // E.g. FONT_GLYPH_COMPRESSION_NONE;
+        uint32_t glyph_data_flags       = g->m_Bitmap.m_Flags; // E.g. FONT_GLYPH_COMPRESSION_NONE;
         uint32_t glyph_data_size        = g->m_Bitmap.m_DataSize;
 
         void* data = 0;
-        if (FONT_GLYPH_COMPRESSION_DEFLATE == glyph_data_compression)
+        if ((FONT_GLYPH_COMPRESSION_DEFLATE & glyph_data_flags))
         {
             // When if came to choosing between the different algorithms, here are some speed/compression tests
             // Decoding 100 glyphs
@@ -611,7 +612,7 @@ namespace dmRender
 
             data = font_map->m_CellTempData;
         }
-        else if (FONT_GLYPH_COMPRESSION_NONE == glyph_data_compression)
+        else
         {
             uint32_t num_out_channels;
             switch(font_map->m_CacheFormat)
@@ -641,11 +642,6 @@ namespace dmRender
                     }
                 }
             }
-        }
-        else
-        {
-            dmLogOnceError("Unknown glyph compression: %u for glyph (%c / %u) in font %s", glyph_data_compression, g->m_Codepoint, g->m_GlyphIndex, dmHashReverseSafe64(font_map->m_NameHash));
-            return;
         }
 
         dmGraphics::TextureParams tex_params;

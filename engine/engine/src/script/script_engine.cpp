@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -25,6 +25,17 @@ extern "C"
 namespace dmEngine
 {
     dmEngine::HEngine g_Engine = 0;
+
+/*# System API documentation
+ *
+ * Functions and messages for using system resources, controlling the engine,
+ * error handling and debugging.
+ *
+ * @document
+ * @name System
+ * @namespace sys
+ * @language Lua
+ */
 
 /*#
  * Enables engine throttling.

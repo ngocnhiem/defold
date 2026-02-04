@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -473,7 +473,7 @@ TEST_F(ResourceTest, TestCreateTextureFromScript)
 
     ASSERT_EQ(0, dmResource::GetRefCount(m_Factory, res_hash));
 
-     dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 TEST_F(ResourceTest, TestCreateSoundDataFromScript)
@@ -531,6 +531,7 @@ TEST_F(ResourceTest, TestResourceScriptBuffer)
     dmGameObject::HInstance go = Spawn(m_Factory, m_Collection, "/resource/script_buffer.goc", dmHashString64("/script_buffer"), 0, Point3(0, 0, 0), Quat(0, 0, 0, 1), Vector3(1, 1, 1));
     ASSERT_NE((void*)0, go);
 
+    DeleteInstance(m_Collection, go);
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
     dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
@@ -644,6 +645,8 @@ TEST_F(ResourceTest, TestSetTextureFromScript)
     ASSERT_TRUE(dmGameObject::Init(m_Collection));
     ASSERT_TRUE(dmGameObject::PostUpdate(m_Collection));
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+
+    dmResource::Release(m_Factory, texture_set_res);
 
     dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
@@ -1320,7 +1323,9 @@ TEST_F(SpriteTest, FrameCount)
 
     WaitForTestsDone(100, false, 0);
 
+    dmGameObject::Delete(m_Collection, go, true);
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+    ASSERT_TRUE(dmGameObject::Update(m_Collection, &m_UpdateContext));
 }
 
 TEST_F(SpriteTest, GetSetSliceProperty)
@@ -1377,6 +1382,7 @@ TEST_F(ParticleFxTest, PlayAnim)
     ASSERT_TRUE(tests_done);
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 static float GetFloatProperty(dmGameObject::HInstance go, dmhash_t component_id, dmhash_t property_id)
@@ -1900,6 +1906,7 @@ TEST_F(WindowTest, MouseLock)
 
     dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 
+    dmHID::Final(hid_context);
     dmHID::DeleteContext(hid_context);
     dmPlatform::DeleteWindow(window);
 }
@@ -2758,6 +2765,7 @@ TEST_F(CollisionObject2DTest, WakingCollisionObjectTest)
     }
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 // Test case for collision-object properties
@@ -2795,6 +2803,7 @@ TEST_F(CollisionObject2DTest, PropertiesTest)
     }
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 TEST_F(Trigger2DTest, EventTriggerFalseTest)
@@ -2835,6 +2844,7 @@ TEST_F(Trigger2DTest, EventTriggerFalseTest)
     }
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 TEST_P(GroupAndMask2DTest, GroupAndMaskTest )
@@ -2896,9 +2906,11 @@ TEST_P(GroupAndMask2DTest, GroupAndMaskTest )
     }
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
-TEST_P(GroupAndMask3DTest, GroupAndMaskTest )
+TEST_P(GroupAndMask3DTest, GroupAndMaskTest)
 {
     const GroupAndMaskParams& params = GetParam();
 
@@ -2957,6 +2969,8 @@ TEST_P(GroupAndMask3DTest, GroupAndMaskTest )
     }
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 GroupAndMaskParams groupandmask_params[] = {
@@ -3013,6 +3027,7 @@ TEST_F(VelocityThreshold2DTest, VelocityThresholdTest)
     }
 
     ASSERT_TRUE(dmGameObject::Final(m_Collection));
+    dmGameSystem::FinalizeScriptLibs(scriptlibcontext);
 }
 
 TEST_F(ComponentTest, DispatchBuffersTest)
@@ -4187,6 +4202,7 @@ bool RunFile(lua_State* L, const char* filename)
 
     int ret = luaL_dostring(L, buffer);
     free(buffer);
+    dmDDF::FreeMessage(ddf);
 
     if (ret != 0)
     {
@@ -4896,10 +4912,16 @@ TEST_F(RenderConstantsTest, SetGetConstant)
     // Make sure it's still valid and doesn't trigger an ASAN issue
     ASSERT_EQ(name_hash1, constant->m_NameHash);
 
+    dmRender::HConstant constant2 = 0;
+    dmGameSystem::GetRenderConstant(constants, name_hash2, &constant2);
+
     ASSERT_NE(0, dmGameSystem::ClearRenderConstant(constants, name_hash1)); // removed
     ASSERT_EQ(0, dmGameSystem::ClearRenderConstant(constants, name_hash1)); // not removed
     ASSERT_NE(0, dmGameSystem::ClearRenderConstant(constants, name_hash2));
     ASSERT_EQ(0, dmGameSystem::ClearRenderConstant(constants, name_hash2));
+
+    dmRender::DeleteConstant(constant);
+    dmRender::DeleteConstant(constant2);
 
     // Setting raw value
     dmVMath::Vector4 value(1,2,3,4);
@@ -5714,6 +5736,8 @@ TEST_F(ShaderTest, Compute)
         ASSERT_EQ(dmHashString64("texture_out"),               ddf->m_Reflection.m_Textures[0].m_NameHash);
         ASSERT_EQ(dmGraphics::ShaderDesc::SHADER_TYPE_IMAGE2D, ddf->m_Reflection.m_Textures[0].m_Type.m_Type.m_ShaderType);
     }
+
+    dmDDF::FreeMessage(ddf);
 }
 
 TEST_F(ShaderTest, ComputeResource)
@@ -6128,5 +6152,7 @@ int main(int argc, char **argv)
     dmDDF::RegisterAllTypes();
 
     jc_test_init(&argc, argv);
-    return jc_test_run_all();
+    int result = jc_test_run_all();
+    dmLog::LogFinalize();
+    return result;
 }

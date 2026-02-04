@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2020-2025 The Defold Foundation
+# Copyright 2020-2026 The Defold Foundation
 # Copyright 2014-2020 King
 # Copyright 2009-2014 Ragnar Svensson, Christian Murray
 # Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -124,7 +124,7 @@ PACKAGES_ALL=[
     "maven-3.0.1",
     "vecmath",
     "vpx-1.7.0",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "defold-robot-0.7.0",
     "bullet-2.77",
@@ -141,12 +141,12 @@ PACKAGES_ALL=[
 
 PACKAGES_HOST=[
     "vpx-1.7.0",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1"]
 
 PACKAGES_IOS_X86_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "glfw-2.7.1",
@@ -160,7 +160,7 @@ PACKAGES_IOS_X86_64=[
 
 PACKAGES_IOS_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "moltenvk-1474891",
@@ -175,7 +175,7 @@ PACKAGES_IOS_64=[
 
 PACKAGES_MACOS_X86_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "vpx-1.7.0",
     "tremolo-b0cb4d1",
     "bullet-2.77",
@@ -198,7 +198,7 @@ PACKAGES_MACOS_X86_64=[
 
 PACKAGES_MACOS_ARM64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "vpx-1.7.0",
     "tremolo-b0cb4d1",
     "bullet-2.77",
@@ -220,7 +220,7 @@ PACKAGES_MACOS_ARM64=[
 
 PACKAGES_WIN32=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "glut-3.7.6",
     "bullet-2.77",
     "vulkan-v1.4.307",
@@ -235,7 +235,7 @@ PACKAGES_WIN32=[
 
 PACKAGES_WIN32_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "glut-3.7.6",
     "sassc-5472db213ec223a67482df2226622be372921847",
     "bullet-2.77",
@@ -258,7 +258,7 @@ PACKAGES_WIN32_64=[
 
 PACKAGES_LINUX_X86_64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "bullet-2.77",
     "glslang-ba5c010c",
     "spirv-cross-97709575",
@@ -281,7 +281,7 @@ PACKAGES_LINUX_X86_64=[
 
 PACKAGES_LINUX_ARM64=[
     "protobuf-3.20.1",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "bullet-2.77",
     "glslang-2fed4fc0",
     "spirv-cross-97709575",
@@ -305,7 +305,7 @@ PACKAGES_ANDROID=[
 "protobuf-3.20.1",
     "android-support-multidex",
     "androidx-multidex",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "glfw-2.7.1",
@@ -322,7 +322,7 @@ PACKAGES_ANDROID_64=[
 "protobuf-3.20.1",
     "android-support-multidex",
     "androidx-multidex",
-    "luajit-2.1.0-a4f56a4",
+    "luajit-2.1.0-3e223cb",
     "tremolo-b0cb4d1",
     "bullet-2.77",
     "glfw-2.7.1",
@@ -783,7 +783,7 @@ class Configuration(object):
         def make_package_path(root, platform, package):
             return join(root, 'packages', package) + '-%s.tar.gz' % platform
         print("Installing waf")
-        waf_package = "waf-2.0.3"
+        waf_package = "waf-2.1.9"
         waf_path = make_package_path(self.defold_root, 'common', waf_package)
         self._extract_tgz(waf_path, self.ext)
 
@@ -934,11 +934,15 @@ class Configuration(object):
         if not result:
             self.fatal("Failed sdk check")
 
-        paths = os.environ['PATH'].split(os.path.pathsep)
-        cmake = self._find_program(get_host_platform(), 'cmake', paths)
+        cmake = shutil.which('cmake')
         if not cmake:
             self.fatal("CMake not found in PATH")
         self._log(f"Found CMake: {cmake}")
+
+        ninja = shutil.which('ninja')
+        if not ninja:
+            self.fatal("Ninja not found in PATH")
+        self._log(f"Found Ninja: {ninja}")
 
         args = ["cmake", f"-DTARGET_PLATFORM={target_platform}", "-P", join(self.defold_root, "scripts/cmake/check_install.cmake")]
         if self.verbose:
@@ -1627,14 +1631,17 @@ class Configuration(object):
         verbose = '-v' if is_verbose else ''
         test = '' if (self.skip_tests or not supports_tests) else 'run_tests'
         build_test = 'build_tests' if build_tests else ''
+        cmake_build_tests = 'ON' if build_tests else 'OFF'
         install = 'install'
+
+        trace = '' #'--trace-expand'
 
         # ***************************************************************************************
         # generate the build script
         log_cmd_config = f'CMake configure {lib}'
         self.build_tracker.start_command(log_cmd_config)
 
-        cmake_configure_args = f"cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS=ON".split()
+        cmake_configure_args = f"cmake -S . -B build -GNinja {trace} -DCMAKE_BUILD_TYPE={build_type} -DTARGET_PLATFORM={platform} -DBUILD_TESTS={cmake_build_tests}".split()
         cmake_configure_args += self._cmake_feature_defines()
         run.env_command(self._form_env(), cmake_configure_args, cwd = libdir)
 
@@ -1676,7 +1683,6 @@ class Configuration(object):
 # For now gradle right in
 # - 'com.dynamo.cr/com.dynamo.cr.bob'
 # - 'com.dynamo.cr/com.dynamo.cr.test'
-# - 'com.dynamo.cr/com.dynamo.cr.common'
 # Maybe in the future we consider to move it into install_ext
     def get_gradle_wrapper(self):
         if os.name == 'nt':  # Windows
@@ -1688,7 +1694,6 @@ class Configuration(object):
         self.build_tracker.start_component('bob_light', self.host)
 
         bob_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.bob')
-        # common_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.common')
 
         sha1 = self._git_sha1()
         if os.path.exists(os.path.join(self.dynamo_home, 'archive', sha1)):
@@ -1724,8 +1729,9 @@ class Configuration(object):
         host = self.host
 
         # Make sure we build these for the host platform for the toolchain (bob light)
+        host_lib_skip_tests = host != self.target_platform
         for lib in HOST_LIBS:
-            self._build_engine_lib(args, lib, host)
+            self._build_engine_lib(args, lib, host, skip_tests = host_lib_skip_tests)
         if not self.skip_bob_light:
             # We must build bob-light, which builds content during the engine build
             self.build_bob_light()
@@ -1868,7 +1874,6 @@ class Configuration(object):
 
     def build_bob(self):
         bob_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.bob')
-        # common_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.common')
         test_dir = join(self.defold_root, 'com.dynamo.cr/com.dynamo.cr.bob.test')
 
         sha1 = self._git_sha1()
@@ -2023,7 +2028,7 @@ class Configuration(object):
 
         if self.skip_tests:
             cmd.append("--skip-tests")
-            
+
         if self.skip_codesign:
             cmd.append('--skip-codesign')
         else:

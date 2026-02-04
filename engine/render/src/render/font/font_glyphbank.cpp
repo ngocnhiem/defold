@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -13,6 +13,7 @@
 // specific language governing permissions and limitations under the License.
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <font/font.h>
 
 
@@ -36,7 +37,7 @@ static void GBFontDestroy(HFont hfont)
 {
     GlyphBankFont* font = (GlyphBankFont*)hfont;
     // The actual data comes from the resource system, so no need to free that
-    free((void*)font);
+    delete font;
 }
 
 static uint32_t GBGetResourceSize(HFont hfont)
@@ -127,22 +128,22 @@ static FontResult GBGetGlyph(HFont hfont, uint32_t glyph_index, const FontGlyphO
     out->m_Ascent       = g->m_Ascent;
     out->m_Descent      = g->m_Descent;
 
-    uint32_t padding2 = bank->m_GlyphPadding*2;
-    out->m_Width        = g->m_Width + padding2;
-    out->m_Height       = g->m_Ascent + g->m_Descent + padding2;
+    out->m_Width        = g->m_Width;
+    out->m_Height       = g->m_Ascent + g->m_Descent;
 
     if (options->m_GenerateImage)
     {
         if (g->m_GlyphDataSize != 0)
         {
+            uint32_t cell_padding_2 = bank->m_GlyphPadding * 2;
             uint8_t* data = (uint8_t*)bank->m_GlyphData.m_Data;
             uint8_t* glyph_data = GetPointer(data, g->m_GlyphDataOffset);
 
-            out->m_Bitmap.m_DataSize = g->m_GlyphDataSize;
+            out->m_Bitmap.m_DataSize = (uint32_t)g->m_GlyphDataSize;
             out->m_Bitmap.m_Data = glyph_data + 1;
-            out->m_Bitmap.m_Flags = glyph_data[0];
-            out->m_Bitmap.m_Width = out->m_Width;
-            out->m_Bitmap.m_Height = out->m_Height;
+            out->m_Bitmap.m_Flags = glyph_data[0] | FONT_GLYPH_BM_FLAG_DATA_IS_BORROWED;
+            out->m_Bitmap.m_Width = out->m_Width + cell_padding_2;
+            out->m_Bitmap.m_Height = out->m_Height + cell_padding_2;
             out->m_Bitmap.m_Channels = bank->m_GlyphChannels;
         }
     }
