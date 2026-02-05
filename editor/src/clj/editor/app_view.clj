@@ -442,17 +442,17 @@
                   (not= :mouse-clicked (:type last-action))))))))
 
 (handler/defhandler :scene.select-move-tool :workbench
-  (enabled? [app-view evaluation-context] (camera-controls-active? app-view evaluation-context))
+  #_(enabled? [app-view evaluation-context] (camera-controls-active? app-view evaluation-context))
   (run [app-view] (g/transact (g/set-property app-view :active-tool :move)))
   (state [app-view evaluation-context] (= (g/node-value app-view :active-tool evaluation-context) :move)))
 
 (handler/defhandler :scene.select-scale-tool :workbench
-  (enabled? [app-view evaluation-context] (camera-controls-active? app-view evaluation-context))
+  #_(enabled? [app-view evaluation-context] (camera-controls-active? app-view evaluation-context))
   (run [app-view] (g/transact (g/set-property app-view :active-tool :scale)))
   (state [app-view evaluation-context] (= (g/node-value app-view :active-tool evaluation-context) :scale)))
 
 (handler/defhandler :scene.select-rotate-tool :workbench
-  (enabled? [app-view evaluation-context] (camera-controls-active? app-view evaluation-context))
+  #_(enabled? [app-view evaluation-context] (camera-controls-active? app-view evaluation-context))
   (run [app-view] (g/transact (g/set-property app-view :active-tool :rotate)))
   (state [app-view evaluation-context] (= (g/node-value app-view :active-tool evaluation-context) :rotate)))
 

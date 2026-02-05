@@ -1188,10 +1188,11 @@
                                 screen-x (:screen-x action)
                                 screen-y (:screen-y action)]
                             (swap! current-input assoc :cursor-pos [screen-x screen-y])
-                            (ui/user-data! parent ::last-mouse-action action)
+                            ;; (ui/user-data! parent ::last-mouse-action action)
                             (when (= :mouse-pressed (:type action))
                               (when (= :secondary (:button action))
                                 (ui/set-cursor parent (cursor :none))
+                                (reset! ui/*disable-handlers* true)
                                 (swap! current-input assoc :cursor-lock-pos [screen-x screen-y]))
                               (swap! current-input update :mouse-buttons conj (:button action))
                               (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]
@@ -1203,6 +1204,7 @@
                             (when (= :mouse-released (:type action))
                               (when (= :secondary (:button action))
                                 (ui/set-cursor parent (cursor nil))
+                                (reset! ui/*disable-handlers* false)
                                 (swap! current-input assoc :cursor-lock-pos nil))
                               (swap! current-input update :mouse-buttons disj (:button action))
                               (swap! current-input assoc :modifiers (->> [:alt :shift :meta :control]

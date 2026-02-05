@@ -77,6 +77,8 @@
 
 (defonce ^:dynamic *main-stage* (atom nil))
 
+(defonce *disable-handlers* (atom false))
+
 ;; Slight hack to work around the fact that we have not yet found a
 ;; reliable way of detecting when the application loses focus.
 
@@ -1383,7 +1385,7 @@
 (defn resolve-handler-ctx [command-contexts command user-data]
   (let [handler-ctx (handler/active command command-contexts user-data)]
     (cond
-      (nil? handler-ctx)
+      (or (nil? handler-ctx) @*disable-handlers*)
       ::not-active
 
       (not (handler/enabled? handler-ctx)) ; Safe to not supply evaluation-context - we're executing a command.
