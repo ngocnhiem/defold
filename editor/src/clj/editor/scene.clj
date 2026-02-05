@@ -1084,9 +1084,6 @@
 (def ^:private smoothed-look-delta (atom [0.0 0.0]))
 (def ^:private look-smoothing 0.35)
 
-(def ^:private camera-yaw (atom 0.0))
-(def ^:private camera-pitch (atom 0.0))
-
 (defn- clamp [value min-val max-val]
   (max min-val (min max-val value)))
 
@@ -1124,15 +1121,11 @@
                                   [0.0 0.0]))
 
         new-camera (if (and is-secondary-button (or (not= smooth-dx 0.0) (not= smooth-dy 0.0)))
-                     (let [rate (* look-sensitivity dt)
-                           smooth-dy (* smooth-dy (if (prefs/get prefs [:scene :perspective-camera :flip-y]) -1 1))
-                           _ (swap! camera-yaw + (* smooth-dx rate))
-                           _ (swap! camera-pitch #(clamp (+ % (* smooth-dy rate))
-                                                         (Math/toRadians -85.0)
-                                                         (Math/toRadians 85.0)))
-                           q-yaw (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 @camera-yaw)))
-                           q-pitch (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 @camera-pitch)))
-                           new-rotation (doto (Quat4d. q-yaw) (.mul q-pitch))]
+                     (let [smooth-dy (* smooth-dy (if (prefs/get prefs [:scene :perspective-camera :flip-y]) -1 1))
+                           [rx ry rz] (math/quat->euler (:rotation current-camera))
+                           yaw (+ ry (* smooth-dx look-sensitivity))
+                           pitch (max -86.0 (min 86.0 (+ rx (* smooth-dy look-sensitivity))))
+                           new-rotation (math/euler->quat [pitch yaw rz])]
                        (assoc current-camera :rotation new-rotation))
                      current-camera)]
 
