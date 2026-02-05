@@ -1084,6 +1084,12 @@
 (def ^:private smoothed-look-delta (atom [0.0 0.0]))
 (def ^:private look-smoothing 0.35)
 
+(def ^:private camera-yaw (atom 0.0))
+(def ^:private camera-pitch (atom 0.0))
+
+(defn- clamp [value min-val max-val]
+  (max min-val (min max-val value)))
+
 (defn- update-camera-view! [image-view current-input node-id dt])
 (defn- update-camera-view! [_image-view current-input node-id dt]
   (let [camera-node (view->camera node-id)
@@ -1119,10 +1125,14 @@
 
         new-camera (if (and is-secondary-button (or (not= smooth-dx 0.0) (not= smooth-dy 0.0)))
                      (let [rate (* look-sensitivity dt)
-                           current-rotation (Quat4d. (:rotation current-camera))
-                           q1 (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 (* smooth-dy rate))))
-                           q2 (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 (* smooth-dx rate))))
-                           new-rotation (doto (Quat4d. q2) (.mul current-rotation) (.mul q1))]
+                           smooth-dy (* smooth-dy (if (prefs/get prefs [:scene :perspective-camera :flip-y]) -1 1))
+                           _ (swap! camera-yaw + (* smooth-dx rate))
+                           _ (swap! camera-pitch #(clamp (+ % (* smooth-dy rate))
+                                                         (Math/toRadians -85.0)
+                                                         (Math/toRadians 85.0)))
+                           q-yaw (doto (Quat4d.) (.set (AxisAngle4d. 0.0 1.0 0.0 @camera-yaw)))
+                           q-pitch (doto (Quat4d.) (.set (AxisAngle4d. 1.0 0.0 0.0 @camera-pitch)))
+                           new-rotation (doto (Quat4d. q-yaw) (.mul q-pitch))]
                        (assoc current-camera :rotation new-rotation))
                      current-camera)]
 
