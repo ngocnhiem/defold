@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -243,7 +243,7 @@
          (vector? attribute-locations)
          (= (count attributes) (count attribute-locations))]}
   (let [expanded-attributes
-        (coll/transfer attributes (empty attributes)
+        (coll/into-> attributes (empty attributes)
           (mapcat
             (fn [attribute]
               (if-let [row-column-count (attribute-info->row-column-count attribute)]
@@ -251,7 +251,7 @@
                 [attribute]))))
 
         expanded-attribute-locations
-        (coll/transfer attribute-locations (empty attribute-locations)
+        (coll/into-> attribute-locations (empty attribute-locations)
           (coll/mapcat-indexed
             (fn [^long attribute-index ^long base-location]
               (let [attribute (attributes attribute-index)

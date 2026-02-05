@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -150,21 +150,35 @@ static float GetLineTextMetrics(TextGlyph* glyphs, uint32_t row_start, uint32_t 
         }
     }
 
-    TextGlyph& last = glyphs[n-1];
+    // note: tracking is ignored since it's already added in TextLayoutLegacyCreate
+    // note: padding is only intended for monospaced fonts, see comment in fontmap.h
+
+    TextGlyph last = glyphs[n-1];
 
     float row_start_x = glyphs[0].m_X;
 
     if (monospace)
     {
         float extent_last = last.m_Advance + padding;
-        float width = last.m_X - row_start_x + (n-1) * tracking + extent_last;
+        float width = last.m_X - row_start_x + extent_last;
         return width;
     }
 
-    // the extent of the last character is left bearing + width
+    // find the last non-whitespace character while also measuring the width
+    // of any trailing whitespace characters
+    float trailing_space_width = 0;
+    for (int i = n - 1; i >= 0; i--)
+    {
+        TextGlyph g = glyphs[i];
+        if (g.m_Codepoint != dmUtf8::UTF_WHITESPACE_SPACE)
+        {
+            last = g;
+            break;
+        }
+        trailing_space_width += g.m_Advance;
+    }
     float extent_last = last.m_LeftBearing + last.m_Width;
-    float width = last.m_X - row_start_x + (n-1) * tracking + extent_last;
-
+    float width = last.m_X - row_start_x + extent_last + trailing_space_width;
     return width;
 }
 
@@ -208,12 +222,19 @@ TextResult TextLayoutLegacyCreate(HFontCollection collection,
     HFont font = FontCollectionGetFont(collection, 0);
     float scale = FontGetScaleFromSize(font, settings->m_Size);
 
+    uint32_t ascent = (uint32_t)FontGetAscent(font, 1.0f);
+    uint32_t descent = (uint32_t)FontGetDescent(font, 1.0f); // positive value
+    uint32_t line_height = ascent + descent;
+    float line_height_scaled = line_height * scale;
+    float tracking = line_height_scaled * settings->m_Tracking;
+
     FontGlyphOptions options;
     options.m_Scale = 1.0f; // Return in points
     options.m_GenerateImage = false;
 
     uint32_t num_whitespaces = 0;
     // Lay them all out in a single line, using points
+// TODO: Make this optional, so that user can choose to use pixel alignment
     uint32_t x = 0;
     uint32_t y = 0; // the legacy "shaping" doesn't support Y offsets
     FontGlyph font_glyph;
@@ -230,6 +251,10 @@ TextResult TextLayoutLegacyCreate(HFontCollection collection,
         TextGlyph g = {0};
         g.m_Font = font;
         g.m_Codepoint = c;
+        // make sure to always set the position of the glyph, regardless
+        // if FontGetGlyph was successful or not (see #11766)
+        g.m_X = x;
+        g.m_Y = y;
 
         uint32_t whitespace = dmUtf8::IsWhiteSpace(c);
         num_whitespaces += whitespace;
@@ -241,14 +266,12 @@ TextResult TextLayoutLegacyCreate(HFontCollection collection,
                 g.m_Codepoint = font_glyph.m_Codepoint;   // may be the correct one, or the fallback one
             }
             g.m_GlyphIndex = font_glyph.m_GlyphIndex;
-            g.m_X = x;
-            g.m_Y = y;
             g.m_Width = font_glyph.m_Width * scale;
             g.m_Height = font_glyph.m_Height * scale;
             g.m_Advance = font_glyph.m_Advance * scale;
             g.m_LeftBearing = font_glyph.m_LeftBearing * scale;
 
-            x += g.m_Advance;
+            x += g.m_Advance + tracking;
         }
 
         layout->m_Glyphs[i] = g;
@@ -263,10 +286,6 @@ TextResult TextLayoutLegacyCreate(HFontCollection collection,
     if (!settings->m_LineBreak)
         width = 1000000.0f;
     Layout(layout, width, &max_line_width, lm, !settings->m_LineBreak);
-
-    uint32_t ascent = (uint32_t)FontGetAscent(font, 1.0f);
-    uint32_t descent = (uint32_t)FontGetDescent(font, 1.0f); // positive value
-    uint32_t line_height = ascent + descent;
 
     // metrics->m_MaxAscent = ascent;
     // metrics->m_MaxDescent = descent;

@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -46,6 +46,7 @@
             [editor.scene-tools :as scene-tools]
             [editor.shaders :as shaders]
             [editor.texture-set :as texture-set]
+            [editor.texture-util :as texture-util]
             [editor.types :as types]
             [editor.validation :as validation]
             [editor.workspace :as workspace]
@@ -61,7 +62,7 @@
            [com.dynamo.gamesys.proto AtlasProto$Atlas AtlasProto$AtlasAnimation AtlasProto$AtlasImage TextureSetProto$TextureSet Tile$Playback]
            [com.jogamp.opengl GL GL2]
            [editor.types Animation Image]
-           [java.awt.image BufferedImage]
+           [java.lang.ref WeakReference]
            [java.nio ByteBuffer]
            [java.util List]
            [javax.vecmath AxisAngle4d Matrix4d Point3d Vector3d]))
@@ -505,6 +506,10 @@
 (defn- validate-max-page-size [node-id page-size]
   (validation/prop-error :fatal node-id :validate-max-page-size max-page-size-error-message page-size))
 
+(defn- texture-page-count-error-message [x]
+  (when (> x 8)
+    (format "Atlas page count (%d) cannot exceed 8 pages per atlas" x)))
+
 (defn- validate-layout-properties [node-id margin inner-padding extrude-borders]
   (when-some [errors (->> [(validate-margin node-id margin)
                            (validate-inner-padding node-id inner-padding)
@@ -521,8 +526,7 @@
 
 (g/defnk produce-build-targets [_node-id resource texture-set texture-page-count packed-page-images-generator texture-profile build-settings build-errors]
   (g/precluding-errors build-errors
-    (let [project           (project/get-project _node-id)
-          workspace         (project/workspace project)
+    (let [workspace         (resource/workspace resource)
           compress?         (:compress-textures? build-settings false)
           texture-target    (image/make-array-texture-build-target workspace _node-id packed-page-images-generator texture-profile texture-page-count compress?)
           pb-msg            (assoc texture-set :texture (-> texture-target :resource :resource))
@@ -556,18 +560,21 @@
     (catch Exception error
       (g/->error error-node-id :max-page-size :fatal nil (.getMessage error)))))
 
-(defn- call-generator [generator]
-  ((:f generator) (:args generator)))
-
 (defn- generate-packed-page-images [{:keys [digest-ignored/error-node-id image-resources layout-data-generator]}]
-  (let [buffered-images (mapv #(resource-io/with-error-translation % error-node-id nil
-                                 (image-util/read-image %))
-                              image-resources)]
+  (let [buffered-images (->> image-resources
+                             (pmap #(resource-io/with-error-translation % error-node-id nil
+                                      (image-util/read-image %)))
+                             (vec))]
     (g/precluding-errors buffered-images
-      (let [layout-data (call-generator layout-data-generator)]
+      (let [layout-data (texture-util/call-generator layout-data-generator)]
         (g/precluding-errors layout-data
           (let [id->image (zipmap (map resource/proj-path image-resources) buffered-images)]
             (texture-set-gen/layout-atlas-pages (:layout layout-data) id->image)))))))
+
+(defn- calculate-texture-page-count [layout-data max-page-size]
+  (if (every? pos? max-page-size)
+    (count (.layouts ^TextureSetGenerator$LayoutResult (:layout layout-data)))
+    texture/non-paged-page-count))
 
 (g/defnk produce-layout-data-generator
   [_node-id animation-images all-atlas-images extrude-borders inner-padding margin max-page-size :as args]
@@ -592,19 +599,21 @@
          :args augmented-args})))
 
 (g/defnk produce-packed-page-images-generator
-  [_node-id extrude-borders image-resources inner-padding margin layout-data-generator]
+  [_node-id extrude-borders image-resources inner-padding margin layout-data-generator max-page-size]
   (let [flat-image-resources (filterv some? (flatten image-resources))
-        image-sha1s (map (fn [resource]
-                           (resource-io/with-error-translation resource _node-id nil
-                             (resource/resource->path-inclusive-sha1-hex resource)))
-                         flat-image-resources)
-        errors (filter g/error? image-sha1s)]
-    (if (seq errors)
-      (g/error-aggregate errors)
-      (let [packed-image-sha1 (digestable/sha1-hash
+        image-sha1s (pmap (fn [resource]
+                            (resource-io/with-error-translation resource _node-id nil
+                              (resource/resource->path-inclusive-sha1 resource)))
+                          flat-image-resources)]
+    (g/precluding-errors image-sha1s
+      ;; Note: Dragging or reordering images up and down the outline for animations results in a different order,
+      ;; which produces a different hash, which triggers an unnecessary atlas regeneration, so hash unordered
+      (let [images-sha1 (digestable/sha1s->unordered-sha1-hex image-sha1s)
+            packed-image-sha1 (digestable/sha1-hash
                                 {:extrude-borders extrude-borders
-                                 :image-sha1s image-sha1s
+                                 :images-sha1 images-sha1
                                  :inner-padding inner-padding
+                                 :max-page-size max-page-size
                                  :margin margin
                                  :type :packed-atlas-image})]
         {:f generate-packed-page-images
@@ -714,14 +723,17 @@
             (dynamic edit-type (g/constantly {:type types/Vec2 :labels ["W" "H"]}))
             (dynamic read-only? (g/constantly true)))
   (property margin g/Int (default (protobuf/default AtlasProto$Atlas :margin))
+            (dynamic edit-type (g/constantly {:type g/Int :min 0}))
             (dynamic label (properties/label-dynamic :atlas :margin))
             (dynamic tooltip (properties/tooltip-dynamic :atlas :margin))
             (dynamic error (g/fnk [_node-id margin] (validate-margin _node-id margin))))
   (property inner-padding g/Int (default (protobuf/default AtlasProto$Atlas :inner-padding))
+            (dynamic edit-type (g/constantly {:type g/Int :min 0}))
             (dynamic label (properties/label-dynamic :atlas :inner-padding))
             (dynamic tooltip (properties/tooltip-dynamic :atlas :inner-padding))
             (dynamic error (g/fnk [_node-id inner-padding] (validate-inner-padding _node-id inner-padding))))
   (property extrude-borders g/Int (default (protobuf/default AtlasProto$Atlas :extrude-borders))
+            (dynamic edit-type (g/constantly {:type g/Int :min 0}))
             (dynamic label (properties/label-dynamic :atlas :extrude-borders))
             (dynamic tooltip (properties/tooltip-dynamic :atlas :extrude-borders))
             (dynamic error (g/fnk [_node-id extrude-borders] (validate-extrude-borders _node-id extrude-borders))))
@@ -756,30 +768,35 @@
 
   (output layout-data-generator g/Any          produce-layout-data-generator)
   (output texture-set-data g/Any               :cached produce-texture-set-data)
-  (output layout-data      g/Any               :cached (g/fnk [layout-data-generator] (call-generator layout-data-generator)))
+  (output layout-data      g/Any               :cached (g/fnk [layout-data-generator] (texture-util/call-generator layout-data-generator)))
   (output layout-size      g/Any               (g/fnk [layout-data] (:size layout-data)))
   (output texture-set      g/Any               (g/fnk [texture-set-data] (:texture-set texture-set-data)))
   (output uv-transforms    g/Any               (g/fnk [layout-data] (:uv-transforms layout-data)))
   (output layout-rects     g/Any               (g/fnk [layout-data] (:rects layout-data)))
 
-  (output texture-page-count g/Int             (g/fnk [layout-data max-page-size]
-                                                 (if (every? pos? max-page-size)
-                                                   (count (.layouts ^TextureSetGenerator$LayoutResult (:layout layout-data)))
-                                                   texture/non-paged-page-count)))
+  (output texture-page-count g/Int (g/fnk [_node-id layout-data max-page-size]
+                                     (let [page-count (calculate-texture-page-count layout-data max-page-size)]
+                                       (or (validation/prop-error :fatal _node-id
+                                                                  :validate-texture-page-count
+                                                                  texture-page-count-error-message
+                                                                  page-count)
+                                           page-count))))
 
   (output packed-page-images-generator g/Any   produce-packed-page-images-generator)
-  (output packed-page-images [BufferedImage]   :cached (g/fnk [packed-page-images-generator] (call-generator packed-page-images-generator)))
   (output texture-set-pb   g/Any               :cached produce-atlas-texture-set-pb)
 
-  (output gpu-texture      g/Any               :cached (g/fnk [_node-id packed-page-images texture-profile]
-                                                         (let [page-texture-images+texture-bytes
-                                                               (mapv #(tex-gen/make-preview-texture-image % texture-profile)
-                                                                     packed-page-images)]
-                                                           (texture/texture-images->gpu-texture
-                                                             _node-id
-                                                             page-texture-images+texture-bytes
-                                                             {:min-filter gl/nearest
-                                                              :mag-filter gl/nearest}))))
+  (output gpu-texture g/Any :cached
+          (g/fnk [_node-id packed-page-images-generator texture-profile]
+            ;; NOTE: Temporary fix until we can properly disconnect the image nodes that invalidate this
+            (or (when (= (:sha1 packed-page-images-generator) (g/user-data _node-id :gpu-texture-sha1))
+                  (some-> ^WeakReference (g/user-data _node-id :gpu-texture-cached) .get))
+                (let [texture (-> (texture-util/construct-gpu-texture _node-id packed-page-images-generator texture-profile)
+                                  (texture/set-params {:min-filter gl/nearest
+                                                       :mag-filter gl/nearest}))
+                      texture-ref (WeakReference. texture)]
+                  (g/user-data! _node-id :gpu-texture-sha1 (:sha1 packed-page-images-generator))
+                  (g/user-data! _node-id :gpu-texture-cached texture-ref)
+                  texture))))
 
   (output anim-data        g/Any               :cached produce-anim-data)
   (output image-path->rect g/Any               :cached produce-image-path->rect)
@@ -886,9 +903,9 @@
       (map (partial make-atlas-animation self)
            (:animations atlas)))))
 
-(defn- selection->atlas [selection] (handler/adapt-single selection AtlasNode))
-(defn- selection->animation [selection] (handler/adapt-single selection AtlasAnimation))
-(defn- selection->image [selection] (handler/adapt-single selection AtlasImage))
+(defn- selection->atlas [selection evaluation-context] (handler/adapt-single selection AtlasNode evaluation-context))
+(defn- selection->animation [selection evaluation-context] (handler/adapt-single selection AtlasAnimation evaluation-context))
+(defn- selection->image [selection evaluation-context] (handler/adapt-single selection AtlasImage evaluation-context))
 
 (def ^:private default-animation
   (protobuf/make-map-without-defaults AtlasProto$AtlasAnimation
@@ -914,8 +931,12 @@
 
 (handler/defhandler :edit.add-embedded-component :workbench
   :label (localization/message "command.edit.add-embedded-component.variant.atlas")
-  (active? [selection] (selection->atlas selection))
-  (run [app-view selection] (add-animation-group-handler app-view (selection->atlas selection))))
+  (active? [selection evaluation-context] (selection->atlas selection evaluation-context))
+  (run [app-view selection]
+    (add-animation-group-handler
+      app-view
+      (g/with-auto-evaluation-context evaluation-context
+        (selection->atlas selection evaluation-context)))))
 
 (defn- add-images-handler [app-view workspace project parent accept-fn] ; parent = new parent of images
   (when-some [image-resources (seq (resource-dialog/make workspace project
@@ -945,15 +966,19 @@
 
 (handler/defhandler :edit.add-referenced-component :workbench
   :label (localization/message "command.edit.add-referenced-component.variant.atlas")
-  (active? [selection] (or (selection->atlas selection) (selection->animation selection)))
+  (active? [selection evaluation-context]
+    (or (selection->atlas selection evaluation-context)
+        (selection->animation selection evaluation-context)))
   (run [app-view project selection]
-    (let [atlas (selection->atlas selection)]
-      (when-some [parent-node (or atlas (selection->animation selection))]
-        (let [workspace (project/workspace project)
-              accept-fn (if atlas
-                          (complement (set (g/node-value atlas :image-resources)))
-                          fn/constantly-true)]
-          (add-images-handler app-view workspace project parent-node accept-fn))))))
+    (g/let-ec [atlas (selection->atlas selection evaluation-context)
+               animation (selection->animation selection evaluation-context)
+               parent-node (or atlas animation)
+               workspace (project/workspace project evaluation-context)
+               accept-fn (if atlas
+                           (complement (set (g/node-value atlas :image-resources evaluation-context)))
+                           fn/constantly-true)]
+      (when (some? parent-node)
+        (add-images-handler app-view workspace project parent-node accept-fn)))))
 
 (defn- vec-move
   [v x offset]
@@ -981,29 +1006,40 @@
               [source target] connections]
           (g/connect child source parent target))))))
 
-(defn- move-active? [selection]
-  (some->> selection
-    selection->image
-    core/scope
-    (g/node-instance? AtlasAnimation)))
+(defn- move-active? [selection {:keys [basis] :as evaluation-context}]
+  (some->> (selection->image selection evaluation-context)
+           (core/scope basis)
+           (g/node-instance? basis AtlasAnimation)))
 
 (handler/defhandler :edit.reorder-up :workbench
-  (active? [selection] (move-active? selection))
-  (enabled? [selection] (let [node-id (selection->image selection)
-                              parent (core/scope node-id)
-                              ^List children (vec (g/node-value parent :nodes))
-                              node-child-index (.indexOf children node-id)]
-                          (pos? node-child-index)))
-  (run [selection] (move-node! (selection->image selection) -1)))
+  (active? [selection evaluation-context] (move-active? selection evaluation-context))
+  (enabled? [selection evaluation-context]
+    (let [basis (:basis evaluation-context)
+          node-id (selection->image selection evaluation-context)
+          parent (core/scope basis node-id)
+          ^List children (vec (g/node-value parent :nodes evaluation-context))
+          node-child-index (.indexOf children node-id)]
+      (pos? node-child-index)))
+  (run [selection]
+    (move-node!
+      (g/with-auto-evaluation-context evaluation-context
+        (selection->image selection evaluation-context))
+      -1)))
 
 (handler/defhandler :edit.reorder-down :workbench
-  (active? [selection] (move-active? selection))
-  (enabled? [selection] (let [node-id (selection->image selection)
-                              parent (core/scope node-id)
-                              ^List children (vec (g/node-value parent :nodes))
-                              node-child-index (.indexOf children node-id)]
-                          (< node-child-index (dec (.size children)))))
-  (run [selection] (move-node! (selection->image selection) 1)))
+  (active? [selection evaluation-context] (move-active? selection evaluation-context))
+  (enabled? [selection evaluation-context]
+    (let [basis (:basis evaluation-context)
+          node-id (selection->image selection evaluation-context)
+          parent (core/scope basis node-id)
+          ^List children (vec (g/node-value parent :nodes evaluation-context))
+          node-child-index (.indexOf children node-id)]
+      (< node-child-index (dec (.size children)))))
+  (run [selection]
+    (move-node!
+      (g/with-auto-evaluation-context evaluation-context
+        (selection->image selection evaluation-context))
+      1)))
 
 (defn- snap-axis
   [^double threshold ^double v]
@@ -1098,9 +1134,9 @@
   (mapv (partial hash-map :image) image-resources))
 
 (defn- create-dropped-images
-  [parent image-resources]
-  (condp g/node-instance? parent
-    AtlasNode (let [existing-image-resources (set (g/node-value parent :image-resources))
+  [parent image-resources evaluation-context]
+  (condp (partial g/node-instance? (:basis evaluation-context)) parent
+    AtlasNode (let [existing-image-resources (set (g/node-value parent :image-resources evaluation-context))
                     new-image? (complement existing-image-resources)]
                 (->> (filter new-image? image-resources)
                      (image-resources->image-msgs)
@@ -1110,12 +1146,14 @@
 
 (defn- handle-drop
   [root-id selection _workspace _world-pos resources]
-  (let [parent (or (handler/adapt-single selection AtlasAnimation)
-                   (some #(core/scope-of-type % AtlasAnimation) selection)
-                   root-id)]
-    (->> resources
-         (e/filter image/image-resource?)
-         (create-dropped-images parent))))
+  (g/with-auto-evaluation-context evaluation-context
+    (let [basis (:basis evaluation-context)
+          parent (or (handler/adapt-single selection AtlasAnimation evaluation-context)
+                     (some #(core/scope-of-type basis % AtlasAnimation) selection)
+                     root-id)
+          image-resources (e/filter image/image-resource? resources)]
+      (g/eager-tx-data
+        (create-dropped-images parent image-resources evaluation-context)))))
 
 (defn handle-input [self action selection-data]
   (case (:type action)
@@ -1201,6 +1239,7 @@
       :load-fn load-atlas
       :icon atlas-icon
       :icon-class :design
+      :category (localization/message "resource.category.resources")
       :view-types [:scene :text]
       :view-opts {:scene {:drop-fn handle-drop
                           :tool-controller AtlasToolController}})))

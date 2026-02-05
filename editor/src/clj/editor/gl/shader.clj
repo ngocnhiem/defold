@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -683,7 +683,7 @@ These forms should be quoted, as if they came from a macro."
   (let [max-page-count (long (or (:max-page-count opts) 0))
 
         augmented-shader-infos
-        (coll/transfer shader-paths []
+        (coll/into-> shader-paths []
           (map (fn [^String shader-path]
                  (let [shader-source (shader-path->source shader-path)]
                    (shader-gen/transpile-shader-source shader-path shader-source max-page-count)))))]

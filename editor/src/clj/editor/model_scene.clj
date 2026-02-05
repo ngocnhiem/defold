@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -475,7 +475,7 @@
         model-transform (math/clj->mat4 translation rotation scale)
 
         renderable-meshes
-        (coll/transfer (:meshes model) []
+        (coll/into-> (:meshes model) []
           (map-indexed
             (fn [mesh-index mesh]
               (let [mesh-request-id (assoc model-request-id :mesh-index mesh-index)]
@@ -585,8 +585,8 @@
   (make-scene _node-id renderable-mesh-set))
 
 (defn- finalize-claim-scene [scene _old-node-id new-node-id]
-  (update scene :children coll/mapv>
-          update :children coll/mapv>
+  (update scene :children coll/mapv->
+          update :children coll/mapv->
           update-in [:renderable :user-data :attribute-bindings]
           attribute/claim-transformed-attribute-buffer-bindings
           assoc :scene-node-id new-node-id))

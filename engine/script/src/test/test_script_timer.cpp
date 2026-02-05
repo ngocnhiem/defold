@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -179,7 +179,7 @@ TEST_F(ScriptTimerTest, TestMixedOwnersTimer)
     ASSERT_EQ(2u, killCount);
 
     killCount = dmScript::CancelTimer(timer_world, handles[4]);
-    ASSERT_EQ(true, killCount);
+    ASSERT_EQ(1u, killCount);
 
     killCount = dmScript::KillTimers(timer_world, owner[0]);
     ASSERT_EQ(0u, killCount);

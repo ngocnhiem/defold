@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -73,6 +73,12 @@ namespace dmGraphics
         void     UnmapMemory(VkDevice vk_device);
 
         const VulkanResourceType GetType();
+    };
+
+    struct VulkanUniformBuffer
+    {
+        UniformBuffer m_BaseUniformBuffer;
+        DeviceBuffer  m_DeviceBuffer;
     };
 
     struct VulkanTexture
@@ -427,6 +433,7 @@ namespace dmGraphics
         VertexDeclaration*              m_CurrentVertexDeclaration[MAX_VERTEX_BUFFERS];
         uint32_t                        m_CurrentVertexBufferOffset[MAX_VERTEX_BUFFERS];
         StorageBufferBinding            m_CurrentStorageBuffers[MAX_STORAGE_BUFFERS];
+        VulkanUniformBuffer*            m_CurrentUniformBuffers[MAX_SET_COUNT][MAX_BINDINGS_PER_SET_COUNT];
         VulkanProgram*                  m_CurrentProgram;
         Pipeline*                       m_CurrentPipeline;
         HTexture                        m_CurrentSwapchainTexture;

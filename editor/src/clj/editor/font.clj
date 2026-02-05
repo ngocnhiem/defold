@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -563,7 +563,7 @@
      :build-fn build-glyph-bank
      :user-data user-data}))
 
-(g/defnk produce-build-targets [_node-id resource font-map material dep-build-targets runtime-generation-build-target]
+(g/defnk produce-build-targets [_node-id resource cache-width cache-height font-map material dep-build-targets runtime-generation-build-target]
   (or (when-let [errors (->> [(validation/prop-error :fatal _node-id :material validation/prop-nil? material "Material")
                               (validation/prop-error :fatal _node-id :material validation/prop-resource-not-exists? material "Material")]
                              (remove nil?)
@@ -586,8 +586,8 @@
                      :render-mode (:render-mode font-map)
                      :all-chars (:all-chars font-map)
                      :characters (:characters font-map)
-                     :cache-width (:cache-width font-map)
-                     :cache-height (:cache-height font-map)
+                     :cache-width cache-width
+                     :cache-height cache-height
                      :sdf-spread (:sdf-spread font-map)
                      :sdf-outline (:sdf-outline font-map)
                      :sdf-shadow (:sdf-shadow font-map))
@@ -837,7 +837,7 @@
                                                    h (:cache-height font-map)
                                                    channels (:glyph-channels font-map)
                                                    data-format (glyph-channels->data-format channels)]
-                                               (texture/empty-texture _node-id w h data-format
+                                               (texture/empty-texture _node-id data-format w h
                                                                       (material/sampler->tex-params (first material-samplers)) 0)))))
   (output material-shader ShaderLifecycle (gu/passthrough material-shader))
   (output type g/Keyword produce-font-type)
@@ -913,6 +913,7 @@
       :sanitize-fn sanitize-font
       :icon font-icon
       :icon-class :design
+      :category (localization/message "resource.category.resources")
       :view-types [:scene :text])
     (workspace/register-resource-type workspace
       :ext "glyph_bank")
@@ -968,7 +969,7 @@
                                                   (.put src-data)
                                                   (.flip))]
                                    (when (> (:glyph-data-size glyph) 0)
-                                     (texture/tex-sub-image gl texture 0 tgt-data x y w h data-format))
+                                     (texture/update-sub-image! texture gl 0 tgt-data data-format x y w h))
                                    (assoc m glyph {:x x :y y})))))))
             glyph)))))
 

@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -15,6 +15,7 @@
 (ns editor.dialogs
   (:require [cljfx.api :as fx]
             [cljfx.ext.list-view :as fx.ext.list-view]
+            [cljfx.composite :as fx.composite]
             [cljfx.fx.group :as fx.group]
             [cljfx.fx.h-box :as fx.h-box]
             [cljfx.fx.hyperlink :as fx.hyperlink]
@@ -26,6 +27,7 @@
             [cljfx.fx.progress-indicator :as fx.progress-indicator]
             [cljfx.fx.region :as fx.region]
             [cljfx.fx.scene :as fx.scene]
+            [cljfx.fx.stack-pane :as fx.stack-pane]
             [cljfx.fx.v-box :as fx.v-box]
             [cljfx.lifecycle :as fx.lifecycle]
             [cljfx.prop :as fx.prop]
@@ -42,8 +44,10 @@
             [editor.util :as util]
             [service.log :as log]
             [util.coll :as coll]
+            [util.path :as path]
             [util.thread-util :as thread-util])
   (:import [clojure.lang Named]
+           [com.defold.control ClippingContainer]
            [java.io File]
            [java.nio.file Path Paths]
            [java.util Collection List]
@@ -52,10 +56,25 @@
            [javafx.event Event]
            [javafx.scene.control ListView TextField]
            [javafx.scene.input KeyCode KeyEvent MouseButton MouseEvent]
-           [javafx.stage DirectoryChooser FileChooser FileChooser$ExtensionFilter Stage Window]
+           [javafx.stage DirectoryChooser FileChooser FileChooser$ExtensionFilter Screen Stage Window]
            [org.apache.commons.io FilenameUtils]))
 
 (set! *warn-on-reflection* true)
+
+(def clipping-container
+  (fx.composite/describe ClippingContainer :ctor [] :props fx.stack-pane/props))
+
+(def ^:private dialogs-css-delay
+  (delay (str (io/resource "dialogs.css"))))
+
+(defn max-dialog-stage-height []
+  (let [screens (Screen/getScreens)
+        n (.size screens)]
+    (loop [i 0
+           max-height 0.0]
+      (if (= i n)
+        max-height
+        (recur (unchecked-inc i) (max max-height (.getHeight (.getVisualBounds ^Screen (.get screens i)))))))))
 
 (defn dialog-stage
   "Dialog `:stage` that manages scene graph itself and provides layout common
@@ -79,8 +98,9 @@
   (-> props
       (dissoc :size :header :content :footer :root-props)
       (assoc :fx/type fxui/dialog-stage
+             :max-height (max-dialog-stage-height)
              :scene {:fx/type fx.scene/lifecycle
-                     :stylesheets [(str (io/resource "dialogs.css"))]
+                     :stylesheets [@dialogs-css-delay]
                      :root (-> root-props
                                (fxui/add-style-classes
                                  "dialog-body"
@@ -95,7 +115,12 @@
                                                     :children [header]}
                                                    {:fx/type fx.v-box/lifecycle
                                                     :style-class "dialog-content"
-                                                    :children [content]}
+                                                    :children [{:fx/type clipping-container
+                                                                :max-height (case size
+                                                                              :small 480.0
+                                                                              :default 600.0
+                                                                              :large 720.0)
+                                                                :children [content]}]}
                                                    {:fx/type fx.v-box/lifecycle
                                                     :style-class "dialog-with-content-footer"
                                                     :children [footer]}]
@@ -126,7 +151,7 @@
                              :as props}]
   (let [button-descs (mapv (fn [button-props]
                              (let [button-desc (-> button-props
-                                                   (assoc :fx/type fxui/button
+                                                   (assoc :fx/type fxui/legacy-button
                                                           :on-action {:result (:result button-props)})
                                                    (update :text localization)
                                                    (dissoc :result))]
@@ -269,11 +294,11 @@
                            :text height-text
                            :on-text-changed {:event-type :set-height}}]}
      :footer {:fx/type dialog-buttons
-              :children [{:fx/type fxui/button
+              :children [{:fx/type fxui/legacy-button
                           :cancel-button true
                           :on-action {:event-type :cancel}
                           :text (localization (localization/message "dialog.button.cancel"))}
-                         {:fx/type fxui/button
+                         {:fx/type fxui/legacy-button
                           :variant :primary
                           :disable (or (not width-valid) (not height-valid))
                           :default-button true
@@ -398,12 +423,12 @@
             :children [{:fx/type fxui/legacy-label
                         :text (localization (localization/message "dialog.error.footer"))}
                        {:fx/type dialog-buttons
-                        :children [{:fx/type fxui/button
+                        :children [{:fx/type fxui/legacy-button
                                     :cancel-button true
                                     :on-action {:result false}
                                     :text (localization (localization/message "dialog.button.dismiss"))}
                                    {:fx/type fxui/ext-focused-by-default
-                                    :desc {:fx/type fxui/button
+                                    :desc {:fx/type fxui/legacy-button
                                            :variant :primary
                                            :default-button true
                                            :on-action {:result true}
@@ -426,6 +451,7 @@
 (defn- load-project-dialog [{:keys [progress localization] :as props}]
   {:fx/type dialog-stage
    :showing (fxui/dialog-showing? props)
+   :title (ui/make-title)
    :on-close-request (fn [_] (Platform/exit))
    :header {:fx/type fx.h-box/lifecycle
             :style-class "spacing-default"
@@ -448,7 +474,7 @@
                          :progress (or (progress/fraction progress)
                                        -1.0)}]} ; Indeterminate.
    :footer {:fx/type dialog-buttons
-            :children [{:fx/type fxui/button
+            :children [{:fx/type fxui/legacy-button
                         :disable true
                         :text (localization (localization/message "dialog.button.cancel"))}]}})
 
@@ -588,7 +614,7 @@
                         :visible filter-in-progress}
                        {:fx/type dialog-buttons
                         :h-box/hgrow :always
-                        :children [{:fx/type fxui/button
+                        :children [{:fx/type fxui/legacy-button
                                     :text (localization ok-label)
                                     :variant :primary
                                     :disable (zero? (count filtered-items))
@@ -786,11 +812,11 @@
                            :editable false
                            :text (or error-msg sanitized-name)}]}
      :footer {:fx/type dialog-buttons
-              :children [{:fx/type fxui/button
+              :children [{:fx/type fxui/legacy-button
                           :text (localization (localization/message "dialog.button.cancel"))
                           :cancel-button true
                           :on-action {:event-type :cancel}}
-                         {:fx/type fxui/button
+                         {:fx/type fxui/legacy-button
                           :disable (or invalid path-empty)
                           :text (localization (localization/message "dialog.new-folder.button.create-folder"))
                           :variant :primary
@@ -830,11 +856,11 @@
                            :text ip
                            :on-text-changed {:event-type :set-ip}}]}
      :footer {:fx/type dialog-buttons
-              :children [{:fx/type fxui/button
+              :children [{:fx/type fxui/legacy-button
                           :text (localization (localization/message "dialog.button.cancel"))
                           :cancel-button true
                           :on-action {:event-type :cancel}}
-                         {:fx/type fxui/button
+                         {:fx/type fxui/legacy-button
                           :disable (not ip-valid)
                           :text (localization (localization/message "dialog.target-ip.button.add"))
                           :variant :primary
@@ -927,11 +953,11 @@
                                           (map #(apply-extension sanitized %))
                                           (string/join ", ")))}]}
      :footer {:fx/type dialog-buttons
-              :children [{:fx/type fxui/button
+              :children [{:fx/type fxui/legacy-button
                           :text (localization (localization/message "dialog.button.cancel"))
                           :cancel-button true
                           :on-action {:event-type :cancel}}
-                         {:fx/type fxui/button
+                         {:fx/type fxui/legacy-button
                           :variant :primary
                           :default-button true
                           :disable invalid
@@ -1011,7 +1037,7 @@
                                        :variant (if location-exists :default :error)
                                        :on-text-changed {:event-type :set-location}
                                        :text relative-path}
-                                      {:fx/type fxui/button
+                                      {:fx/type fxui/legacy-button
                                        :variant :icon
                                        :on-action {:event-type :pick-location}
                                        :text "…"}]}
@@ -1023,11 +1049,11 @@
                                    (str relative-path \/ sanitized-name)
                                    "")}]}
      :footer {:fx/type dialog-buttons
-              :children [{:fx/type fxui/button
+              :children [{:fx/type fxui/legacy-button
                           :text (localization (localization/message "dialog.button.cancel"))
                           :cancel-button true
                           :on-action {:event-type :cancel}}
-                         {:fx/type fxui/button
+                         {:fx/type fxui/legacy-button
                           :disable (not valid-input)
                           :text (if type
                                   (localization (localization/message "dialog.new-file.button.create.resource" {"type" type}))
@@ -1060,33 +1086,43 @@
                                                  previous-location)))
                        :cancel (assoc state ::fxui/result nil)
                        :confirm (assoc state ::fxui/result
-                                       (-> (io/file (:location state) (sanitize-file-name ext (:name state)))
-                                           ;; Canonical path turns Windows path
-                                           ;; into the correct case. We need
-                                           ;; this to be able to match internal
-                                           ;; resource maps, which are case
-                                           ;; sensitive unlike the NTFS file
-                                           ;; system.
-                                           (.getCanonicalFile)))))
+                                             ;; We need to the actual case of
+                                             ;; the path in the file system for
+                                             ;; an exact match in the internal
+                                             ;; resource maps, which are
+                                             ;; case-sensitive unlike the NTFS
+                                             ;; file system.
+                                             (-> (path/actual-cased (:location state))
+                                                 (io/file (sanitize-file-name ext (:name state)))))))
     :description {:fx/type new-file-dialog
                   :localization localization}))
 
 (defn ^:dynamic make-resolve-file-conflicts-dialog
   [src-dest-pairs localization]
-  (make-confirmation-dialog
-    localization
-    {:icon :icon/circle-question
-     :size :large
-     :title (localization/message "dialog.name-conflict.title")
-     :header (localization/message "dialog.name-conflict.header" {"count" (count src-dest-pairs)})
-     :buttons [{:text (localization/message "dialog.button.cancel")
-                :cancel-button true
-                :default-button true}
-               {:text (localization/message "dialog.name-conflict.button.name-differently")
-                :result :rename}
-               {:text (localization/message "dialog.name-conflict.button.overwrite-files")
-                :variant :danger
-                :result :overwrite}]}))
+  ;; We do not allow the user to choose the :overwrite action if we're about to
+  ;; overwrite a broken symlink.
+  (let [any-dest-is-broken-symlink
+        (coll/any? (fn [[_ ^File dest]]
+                     (and (not (.exists dest))
+                          (path/symlink? dest)))
+                   src-dest-pairs)]
+
+    (make-confirmation-dialog
+      localization
+      {:icon :icon/circle-question
+       :size :large
+       :title (localization/message "dialog.name-conflict.title")
+       :header (localization/message "dialog.name-conflict.header" {"count" (count src-dest-pairs)})
+       :buttons (cond-> [{:text (localization/message "dialog.button.cancel")
+                          :cancel-button true
+                          :default-button true}
+                         {:text (localization/message "dialog.name-conflict.button.name-differently")
+                          :result :rename}]
+
+                        (not any-dest-is-broken-symlink)
+                        (conj {:text (localization/message "dialog.name-conflict.button.overwrite-files")
+                               :variant :danger
+                               :result :overwrite}))})))
 
 (def ext-with-selection-props
   (fx/make-ext-with-props
@@ -1119,14 +1155,14 @@
                                            :pref-row-count 20
                                            :text str}})
                         :footer {:fx/type dialog-buttons
-                                 :children [{:fx/type fxui/button
+                                 :children [{:fx/type fxui/legacy-button
                                              :text (localization (localization/message "dialog.button.close"))
                                              :cancel-button true
                                              :on-action {:event-type :cancel}}
-                                            {:fx/type fxui/button
+                                            {:fx/type fxui/legacy-button
                                              :text (localization (localization/message "dialog.target-discovery-log.button.clear-log"))
                                              :on-action {:event-type :clear}}
-                                            {:fx/type fxui/button
+                                            {:fx/type fxui/legacy-button
                                              :text (localization (localization/message "dialog.target-discovery-log.button.restart-discovery"))
                                              :on-action {:event-type :restart}}]}})))]
     (vreset! renderer-ref renderer)

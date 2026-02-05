@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -398,7 +398,7 @@
                 :type-unsigned-short num/normalized->ushort-double
                 :type-int num/normalized->int-double
                 :type-unsigned-int num/normalized->uint-double))]
-        (update new-attribute :values coll/transform (map coerce-fn)))
+        (update new-attribute :values coll/transform-> (map coerce-fn)))
 
       ;; If the vector type changes, resize the default value in the material.
       ;; This change will also cause attribute overrides stored elsewhere in the
@@ -631,4 +631,5 @@
     :sanitize-fn sanitize-material
     :icon "icons/32/Icons_31-Material.png"
     :icon-class :property
+    :category (localization/message "resource.category.shaders")
     :view-types [:cljfx-form-view :text]))

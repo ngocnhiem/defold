@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -556,6 +556,31 @@ public class AndroidBundler implements IBundler {
                 }
             }
 
+            // copy shared libraries (third-party from extensions)
+            for (Platform platformArchitecture : getArchitectures(project)) {
+                String architectureLibName = platformToLibMap.get(platformArchitecture);
+                File binaryDir = new File(FilenameUtils.concat(project.getBinaryOutputDirectory(),
+                        platformArchitecture.getExtenderPair()));
+                File destDir = new File(libDir, architectureLibName);
+
+                BundleHelper.copySharedLibraries(platformArchitecture, binaryDir, destDir, path -> {
+                    String filename = path.getFileName().toString();
+                    String pathStr = path.toString();
+
+                    if (filename.equals("libdmengine.so")) {
+                        return false;
+                    }
+
+                    // Skip JNI files (handled separately above)
+                    if (pathStr.contains("/jni/") || pathStr.contains("\\jni\\")) {
+                        return false;
+                    }
+
+                    return true;
+                });
+                BundleHelper.throwIfCanceled(canceled);
+            }
+
             // create base.zip
             File baseZip = new File(aabDir, "base.zip");
             logger.info("Zipping " + baseDir + " to " + baseZip);
@@ -569,7 +594,7 @@ public class AndroidBundler implements IBundler {
             BundleHelper.throwIfCanceled(canceled);
             return baseZip;
         } catch (Exception e) {
-            throw new CompileExceptionError("Failed creating AAB base.zip", e);
+            throw new CompileExceptionError("Failed creating AAB base.zip. Cause: " + String.valueOf(e.getMessage()), e);
         }
     }
 
@@ -589,7 +614,7 @@ public class AndroidBundler implements IBundler {
             File aabDir = new File(outDir, "aab");
             File baseConfig = new File(aabDir, "BundleConfig.json");
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(baseConfig))) {
-                String uncompressedGlob = "\"assets/game.arcd\"";
+                String uncompressedGlob = "\"assets/game.arcd\",\"assets/**/*.zip\"";
                 if (!extractNativeLibs) {
                     uncompressedGlob += ",";
                     uncompressedGlob += "\"lib/**/*.so\"";

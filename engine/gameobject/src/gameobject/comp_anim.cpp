@@ -1,4 +1,4 @@
-// Copyright 2020-2025 The Defold Foundation
+// Copyright 2020-2026 The Defold Foundation
 // Copyright 2014-2020 King
 // Copyright 2009-2014 Ragnar Svensson, Christian Murray
 // Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -22,6 +22,7 @@
 
 #include "component.h"
 #include "gameobject_script.h"
+#include "gameobject_props.h"
 #include "gameobject_props_lua.h"
 
 extern "C"
@@ -159,9 +160,9 @@ namespace dmGameObject
         return CREATE_RESULT_OK;
     }
 
-    UpdateResult CompAnimPreUpdate(const ComponentsUpdateParams& params, ComponentsUpdateResult& update_result)
+    UpdateResult CompAnimUpdate(const ComponentsUpdateParams& params, ComponentsUpdateResult& update_result)
     {
-        DM_PROFILE("PreUpdate");
+        DM_PROFILE("Update");
 
         /*
          * The update is divided into three passes.
@@ -211,7 +212,8 @@ namespace dmGameObject
                     {
                         PropertyDesc desc;
                         PropertyOptions property_opt;
-                        property_opt.m_Index = 0;
+                        AddPropertyOptionsIndex(&property_opt, 0);
+
                         GetProperty(anim.m_Instance, anim.m_ComponentId, anim.m_PropertyId, property_opt, desc);
                         anim.m_From = (float)desc.m_Variant.m_Number;
                     }
@@ -317,7 +319,7 @@ namespace dmGameObject
                 else
                 {
                     PropertyOptions property_opt;
-                    property_opt.m_Index = 0;
+                    AddPropertyOptionsIndex(&property_opt, 0);
                     SetProperty(anim.m_Instance, anim.m_ComponentId, anim.m_PropertyId, property_opt, PropertyVar(v));
                 }
             }
@@ -548,7 +550,8 @@ namespace dmGameObject
             return PROPERTY_RESULT_INVALID_INSTANCE;
         PropertyDesc prop_desc;
         PropertyOptions property_opt;
-        property_opt.m_Index = 0;
+        AddPropertyOptionsIndex(&property_opt, 0);
+
         PropertyResult prop_result = GetProperty(instance, component_id, property_id, property_opt, prop_desc);
         if (prop_result != PROPERTY_RESULT_OK)
         {
@@ -623,7 +626,7 @@ namespace dmGameObject
         }
         PropertyDesc prop_desc;
         PropertyOptions property_opt;
-        property_opt.m_Index = 0;
+        AddPropertyOptionsIndex(&property_opt, 0);
         PropertyResult prop_result = GetProperty(instance, component_id, property_id, property_opt, prop_desc);
         if (prop_result != PROPERTY_RESULT_OK)
         {

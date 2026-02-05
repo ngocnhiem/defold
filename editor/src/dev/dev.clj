@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -60,6 +60,7 @@
             [lambdaisland.deep-diff2.printer-impl :as deep-diff.printer-impl]
             [lambdaisland.deep-diff2.puget.color :as puget.color]
             [lambdaisland.deep-diff2.puget.printer :as puget.printer]
+            [macro]
             [potemkin.namespaces :as namespaces]
             [service.log :as log]
             [util.coll :as coll :refer [pair]]
@@ -90,7 +91,8 @@
 
 (namespaces/import-vars
   [util.debug-util stack-trace]
-  [integration.test-util outline-node-id outline-node-info resource-outline-node-id resource-outline-node-info])
+  [integration.test-util outline-node-id outline-node-info resource-outline-node-id resource-outline-node-info]
+  [macro pprint-code pprint-macroexpanded simplify-expression])
 
 (defn javafx-tree [obj]
   (jfx/info-tree obj))
@@ -230,7 +232,7 @@
   (prefs/project (workspace/project-directory (workspace))))
 
 (defn localization []
-  (some #(-> % :env :localization) (ui/contexts (ui/main-scene))))
+  (some #(-> % :env :localization) (ui/contexts (ui/main-scene) true)))
 
 (declare ^:private exclude-keys-deep-helper)
 
@@ -240,7 +242,7 @@
     (exclude-keys-deep-helper excluded-map-entry? value)
 
     (coll? value)
-    (coll/transform value
+    (coll/transform-> value
       (map (partial exclude-keys-deep-value-helper excluded-map-entry?)))
 
     :else
@@ -304,6 +306,18 @@
   (let [wrapped-value-fn (deep-keep-kv-wrapped-value-fn value-fn)]
     (util/deep-keep-kv deep-keep-finalize-coll-value-fn wrapped-value-fn value)))
 
+(defn nodes-of-type
+  ([node-type]
+   (nodes-of-type (g/now) node-type))
+  ([basis node-type]
+   (sequence
+     (comp (map val)
+           (mapcat :nodes)
+           (map val)
+           (filter #(g/node-instance*? node-type %))
+           (map gt/node-id))
+     (:graphs basis))))
+
 (defn views-of-type [node-type]
   (keep (fn [node-id]
           (when (g/node-instance? node-type node-id)
@@ -326,7 +340,8 @@
    (when-some [focused-control (focused-control)]
      (command-contexts focused-control)))
   ([^Node control]
-   (ui/node-contexts control true)))
+   (g/with-auto-evaluation-context evaluation-context
+     (ui/node-contexts control true evaluation-context))))
 
 (defn command-env
   ([command]
@@ -628,112 +643,50 @@
         (map (comp :k g/node-type))
         graphs))))
 
-(defn- ns->namespace-name
-  ^String [ns]
-  (name (ns-name ns)))
+(defn println-err
+  [& more]
+  (binding [*out* *err*]
+    (apply println more)))
 
-(defn- class->canonical-symbol [^Class class]
-  (symbol (.getName class)))
+(defn- input-source-endpoints
+  [basis node-id input-label]
+  (e/map gt/source-endpoint
+         (gt/arcs-by-target basis node-id input-label)))
 
-(defn- make-alias-names-by-namespace-name [ns]
-  (into {(ns->namespace-name 'clojure.core) nil
-         (ns->namespace-name ns) nil}
-        (map (fn [[alias-symbol referenced-ns]]
-               (pair (ns->namespace-name referenced-ns)
-                     (name alias-symbol))))
-        (ns-aliases ns)))
+(defn immediate-predecessor-endpoints
+  [basis node-id label]
+  (let [node-type (g/node-type* basis node-id)
+        output-info (get (in/declared-outputs node-type) label)]
+    (cond
+      (some? output-info)
+      (e/mapcat
+        (fn [dep-label]
+          (if (= label dep-label)
+            (when (g/has-input? node-type dep-label)
+              (input-source-endpoints basis node-id dep-label))
+            [(gt/endpoint node-id dep-label)]))
+        (:dependencies output-info))
 
-(defn- make-simple-symbols-by-canonical-symbol [ns]
-  (into {}
-        (map (fn [[alias-symbol imported-class]]
-               (pair (class->canonical-symbol imported-class)
-                     alias-symbol)))
-        (ns-imports ns)))
+      (g/has-input? node-type label)
+      (input-source-endpoints basis node-id label))))
 
-(defn- simplify-namespace-name [namespace-name alias-names-by-namespace-name]
-  {:pre [(or (nil? namespace-name) (string? namespace-name))
-         (map? alias-names-by-namespace-name)]}
-  (let [alias-name (get alias-names-by-namespace-name namespace-name ::not-found)]
-    (case alias-name
-      ::not-found namespace-name
-      alias-name)))
-
-(defn- simplify-symbol-name [symbol-name]
-  (string/replace symbol-name
-                  #"__(\d+)__auto__$"
-                  "#"))
-
-(defn- simplify-symbol [expression alias-names-by-namespace-name]
-  (-> expression
-      (namespace)
-      (simplify-namespace-name alias-names-by-namespace-name)
-      (symbol (-> expression name simplify-symbol-name))
-      (with-meta (meta expression))))
-
-(defn- simplify-keyword [expression alias-names-by-namespace-name]
-  (-> expression
-      (namespace)
-      (simplify-namespace-name alias-names-by-namespace-name)
-      (keyword (name expression))))
-
-(defn- simplify-expression-impl [expression alias-names-by-namespace-name simple-symbols-by-canonical-symbol]
-  (cond
-    (record? expression)
-    expression
-
-    (map? expression)
-    (into (coll/empty-with-meta expression)
-          (map (fn [[key value]]
-                 (pair (simplify-expression-impl key alias-names-by-namespace-name simple-symbols-by-canonical-symbol)
-                       (simplify-expression-impl value alias-names-by-namespace-name simple-symbols-by-canonical-symbol))))
-          expression)
-
-    (or (vector? expression)
-        (set? expression))
-    (into (coll/empty-with-meta expression)
-          (map #(simplify-expression-impl % alias-names-by-namespace-name simple-symbols-by-canonical-symbol))
-          expression)
-
-    (coll/list-or-cons? expression)
-    (into (coll/empty-with-meta expression)
-          (map #(simplify-expression-impl % alias-names-by-namespace-name simple-symbols-by-canonical-symbol))
-          (reverse expression))
-
-    (symbol? expression)
-    (or (get simple-symbols-by-canonical-symbol expression)
-        (simplify-symbol expression alias-names-by-namespace-name))
-
-    (keyword? expression)
-    (simplify-keyword expression alias-names-by-namespace-name)
-
-    :else
-    expression))
-
-(defmacro simplify-expression
-  ([expression]
-   `(simplify-expression *ns* ~expression))
-  ([ns expression]
-   `(let [ns# ~ns]
-      (#'simplify-expression-impl
-        ~expression
-        (#'make-alias-names-by-namespace-name ns#)
-        (#'make-simple-symbols-by-canonical-symbol ns#)))))
-
-(defn- pprint-code-impl [expression]
-  (binding [pprint/*print-suppress-namespaces* false
-            pprint/*print-right-margin* 100
-            pprint/*print-miser-width* 60]
-    (pprint/with-pprint-dispatch
-      pprint/code-dispatch
-      (pprint/pprint expression))))
-
-(defmacro pprint-code
-  "Pretty-print the supplied code expression while attempting to retain readable
-  formatting. Useful when developing macros."
-  ([expression]
-   `(#'pprint-code-impl (simplify-expression ~expression)))
-  ([ns expression]
-   `(#'pprint-code-impl (simplify-expression ~ns ~expression))))
+(defn recursive-predecessor-endpoints
+  [basis node-id label]
+  (let [*endpoint->predecessors-ref (volatile! {})]
+    (letfn [(endpoint->predecessors-ref [endpoint]
+              (if-some [predecessors-ref (get (deref *endpoint->predecessors-ref) endpoint)]
+                predecessors-ref
+                (let [predecessors-ref (volatile! nil)]
+                  (vswap! *endpoint->predecessors-ref assoc endpoint predecessors-ref)
+                  (vreset! predecessors-ref
+                           (let [node-id (gt/endpoint-node-id endpoint)
+                                 label (gt/endpoint-label endpoint)
+                                 immediate-predecessors (set (immediate-predecessor-endpoints basis node-id label))]
+                             (coll/into-> immediate-predecessors immediate-predecessors
+                               (mapcat (comp deref endpoint->predecessors-ref)))))
+                  predecessors-ref)))]
+      (let [endpoint (gt/endpoint node-id label)]
+        (deref (endpoint->predecessors-ref endpoint))))))
 
 ;; Utilities for investigating successors performance
 
@@ -753,9 +706,8 @@
                                identity
                                (fn [endpoint]
                                  (let [node-id (gt/endpoint-node-id endpoint)
-                                       label (gt/endpoint-label endpoint)
-                                       graph-id (gt/node-id->graph-id node-id)]
-                                   (cond->> (get-in basis [:graphs graph-id :successors node-id label])
+                                       label (gt/endpoint-label endpoint)]
+                                   (cond->> (g/successors basis node-id label)
                                             successor-filter
                                             (into [] (filter #(successor-filter [endpoint %])))))))))
                          endpoints)]
@@ -1195,7 +1147,7 @@
                                                       :number
                                                       :string)]
                                         (col-txt printer element num-str)))
-                            data (coll/transfer row-col-strs [:align]
+                            data (coll/into-> row-col-strs [:align]
                                    (map (fn [col-strs]
                                           (interpose " " (map fmt-col col-strs))))
                                    (interpose :break))]
@@ -1457,7 +1409,7 @@
                          :progress (or (progress/fraction progress)
                                        -1.0)}]} ; Indeterminate.
    :footer {:fx/type dialogs/dialog-buttons
-            :children [{:fx/type fxui/button
+            :children [{:fx/type fxui/legacy-button
                         :text "Cancel"
                         :cancel-button true
                         :on-action {:event-type :cancel}}]}})
@@ -1487,6 +1439,37 @@
          (if (instance? Throwable result)
            (throw result)
            result))))))
+
+(defn run-with-terminal-progress [^String header-text worker-fn]
+  (let [localization test-util/localization
+        done-progress (progress/make (localization/message nil nil "Done") 1 1)
+        prev-progress-volatile (volatile! nil)]
+    (letfn [(render-progress! [progress]
+              (let [prev-progress @prev-progress-volatile
+                    preamble (if prev-progress "\033[F\033[K" "")
+                    message (localization (progress/message progress))
+                    ^long pos (:pos progress)
+                    ^long size (:size progress)]
+                (vreset! prev-progress-volatile progress)
+                (when (nil? prev-progress)
+                  (println-err header-text))
+                (println-err
+                  (if (pos? size)
+                    (let [size-str (str size)
+                          size-len (.length size-str)
+                          fmt (format "%s  [%%%dd/%s] %%s"
+                                      preamble
+                                      size-len
+                                      size-str)]
+                      (format fmt pos message))
+                    (format "%s  [0/1] %s"
+                            preamble
+                            message)))))]
+      (let [result (worker-fn render-progress!)]
+        (render-progress! (if-some [{:keys [size]} @prev-progress-volatile]
+                            (assoc done-progress :pos size :size size)
+                            done-progress))
+        result))))
 
 (defn node-load-infos-by-proj-path [node-load-infos]
   (coll/pair-map-by
@@ -1631,6 +1614,7 @@
          (persistent! batches))))))
 
 (defn clear-enable-all! []
+  (g/forget-logged-evaluation-context-scope-violations!)
   (clear-caches!)
   (handler/enable-disabled-handlers!)
   (ui/enable-stopped-timers!)

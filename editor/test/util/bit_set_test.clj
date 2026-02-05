@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -322,6 +322,27 @@
     (is (= [1] (bit-set/into [] [1])))
     (is (= [2 4 1 3] (bit-set/into [2 4] [1 3])))
     (is (= [0 1 3 4] (bit-set/into [0 1] (map inc) [2 3])))))
+
+(deftest into->-test
+  (testing "bit-set into vector."
+    (is (= [] (bit-set/into-> (bit-set/of) [])))
+    (is (= [1 2 3] (bit-set/into-> (bit-set/of 1 2 3) [])))
+    (is (= [0 1 2 3] (bit-set/into-> (bit-set/of 1 2 3) [0])))
+    (is (= ["1" "2" "3"] (bit-set/into-> (bit-set/of 1 2 3) [] (map str))))
+    (is (= [4 6 8]
+           (bit-set/into-> (bit-set/of 1 2 3) []
+             (map inc)
+             (map (fn [^long x] (* 2 x)))))))
+
+  (testing "bit-set into bit-set."
+    (is (= (bit-set/of) (bit-set/into-> (bit-set/of) (bit-set/of))))
+    (is (= (bit-set/of 1 2 3) (bit-set/into-> (bit-set/of 1 2 3) (bit-set/of))))
+    (is (= (bit-set/of 0 1 2 3) (bit-set/into-> (bit-set/of 1 2 3) (bit-set/of 0))))
+    (is (= (bit-set/of 2 3 4) (bit-set/into-> (bit-set/of 1 2 3) (bit-set/of) (map inc))))
+    (is (= (bit-set/of 4 6 8)
+           (bit-set/into-> (bit-set/of 1 2 3) (bit-set/of)
+             (map inc)
+             (map (fn [^long x] (* 2 x))))))))
 
 (deftest indices-test
   (is (= (vector-of :int) (bit-set/indices (bit-set/of))))

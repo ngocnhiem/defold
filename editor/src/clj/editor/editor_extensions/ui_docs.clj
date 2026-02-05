@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -256,6 +256,15 @@
 (def ^:private icon-props
   (into icon-specific-props common-props))
 
+(def image-size-coercer
+  (coerce/wrap-with-pred coerce/number pos? "is not positive"))
+
+(def ^:private image-props
+  (into [(make-prop :image :coerce coerce/string :required true :doc "either a resource path (starts with <code>/</code>), or an URL")
+         (make-prop :width :coerce image-size-coercer :doc "width of the image view, the image will be fit inside it while preserving its aspect ratio")
+         (make-prop :height :coerce image-size-coercer :doc "height of the image view, the image will be fit inside it while preserving its aspect ratio")]
+        common-props))
+
 (def ^:private common-input-props
   (into [(make-prop :enabled
                     :coerce coerce/boolean
@@ -480,6 +489,12 @@
     "icon"
     :description "An icon from a predefined set"
     :props icon-props))
+
+(def image-component
+  (component
+    "image"
+    :description "An image"
+    :props image-props))
 
 (def button-component
   (component
@@ -746,6 +761,7 @@ end)</code></pre>"})
               paragraph-component
               heading-component
               icon-component
+              image-component
               button-component
               check-box-component
               select-box-component

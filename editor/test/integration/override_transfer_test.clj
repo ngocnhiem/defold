@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -47,7 +47,7 @@
   ([project proj-path-predicate evaluation-context]
    (let [resources-by-proj-path (g/valid-node-value project :resource-map evaluation-context)
          resource-nodes-by-proj-path (g/valid-node-value project :nodes-by-resource-path evaluation-context)]
-     (coll/transfer resource-nodes-by-proj-path (sorted-map)
+     (coll/into-> resource-nodes-by-proj-path (sorted-map)
        (keep (fn [[proj-path resource-node-id]]
                (when (proj-path-predicate proj-path)
                  (let [resource (resources-by-proj-path proj-path)

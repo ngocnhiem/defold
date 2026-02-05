@@ -1,4 +1,4 @@
-;; Copyright 2020-2025 The Defold Foundation
+;; Copyright 2020-2026 The Defold Foundation
 ;; Copyright 2014-2020 King
 ;; Copyright 2009-2014 Ragnar Svensson, Christian Murray
 ;; Licensed under the Defold License version 1.0 (the "License"); you may not use
@@ -46,7 +46,7 @@
 (g/deftype Regions [TRegion])
 (g/deftype RegionGrouping {s/Any [TRegion]})
 
-(def ^:private default-indent-type :tabs)
+(def default-indent-type :tabs)
 
 (defn make-code-error-user-data [^String path line-number]
   (let [cursor-range (some-> line-number data/line-number->CursorRange)]
