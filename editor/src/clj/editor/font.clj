@@ -114,49 +114,47 @@
 
 (defn- calc-sdf-screen-scale
   "Return pixels per local unit for the given transform, or 0.0 if invalid."
-  [^Matrix4d view-proj ^Region viewport ^Matrix4d world-transform]
-  (if (or (nil? view-proj) (nil? viewport) (nil? world-transform))
-    0.0
-    (let [m (doto (Matrix4d. view-proj) (.mul world-transform))
-          col0 (Vector4d.)
-          col1 (Vector4d.)
-          col3 (Vector4d.)]
-      (.getColumn m 0 col0)
-      (.getColumn m 1 col1)
-      (.getColumn m 3 col3)
-      (let [c0 (Vector4d. col3)
-            cx (doto (Vector4d. col0) (.add col3))
-            cy (doto (Vector4d. col1) (.add col3))
-            w0 (.w c0)
-            wx (.w cx)
-            wy (.w cy)]
-        (if (or (< (Math/abs w0) sdf-min-w)
-                (< (Math/abs wx) sdf-min-w)
-                (< (Math/abs wy) sdf-min-w))
-          0.0
-          (let [inv-w0 (/ 1.0 w0)
-                inv-wx (/ 1.0 wx)
-                inv-wy (/ 1.0 wy)
-                ndc0-x (* (.x c0) inv-w0)
-                ndc0-y (* (.y c0) inv-w0)
-                ndc-dx-x (- (* (.x cx) inv-wx) ndc0-x)
-                ndc-dx-y (- (* (.y cx) inv-wx) ndc0-y)
-                ndc-dy-x (- (* (.x cy) inv-wy) ndc0-x)
-                ndc-dy-y (- (* (.y cy) inv-wy) ndc0-y)
-                vp-w (- (.right viewport) (.left viewport))
-                vp-h (- (.bottom viewport) (.top viewport))]
-            (if (or (<= vp-w 0.0) (<= vp-h 0.0))
-              0.0
-              (let [half-w (* 0.5 vp-w)
-                    half-h (* 0.5 vp-h)
-                    dx (* ndc-dx-x half-w)
-                    dy (* ndc-dx-y half-h)
-                    len-sq-x (+ (* dx dx) (* dy dy))
-                    dx2 (* ndc-dy-x half-w)
-                    dy2 (* ndc-dy-y half-h)
-                    len-sq-y (+ (* dx2 dx2) (* dy2 dy2))
-                    scale (Math/sqrt (Math/max len-sq-x len-sq-y))]
-                (if (<= scale 0.0) 0.0 scale)))))))))
+  ^double [^Matrix4d view-proj ^Region viewport ^Matrix4d world-transform]
+  (let [m (doto (Matrix4d. view-proj) (.mul world-transform))
+        col0 (Vector4d.)
+        col1 (Vector4d.)
+        col3 (Vector4d.)]
+    (.getColumn m 0 col0)
+    (.getColumn m 1 col1)
+    (.getColumn m 3 col3)
+    (let [c0 (Vector4d. col3)
+          cx (doto (Vector4d. col0) (.add col3))
+          cy (doto (Vector4d. col1) (.add col3))
+          w0 (.w c0)
+          wx (.w cx)
+          wy (.w cy)]
+      (if (or (< (Math/abs w0) sdf-min-w)
+              (< (Math/abs wx) sdf-min-w)
+              (< (Math/abs wy) sdf-min-w))
+        0.0
+        (let [inv-w0 (/ 1.0 w0)
+              inv-wx (/ 1.0 wx)
+              inv-wy (/ 1.0 wy)
+              ndc0-x (* (.x c0) inv-w0)
+              ndc0-y (* (.y c0) inv-w0)
+              ndc-dx-x (- (* (.x cx) inv-wx) ndc0-x)
+              ndc-dx-y (- (* (.y cx) inv-wx) ndc0-y)
+              ndc-dy-x (- (* (.x cy) inv-wy) ndc0-x)
+              ndc-dy-y (- (* (.y cy) inv-wy) ndc0-y)
+              vp-w (- (double (.right viewport)) (double (.left viewport)))
+              vp-h (- (double (.bottom viewport)) (double (.top viewport)))]
+          (if (or (<= vp-w 0.0) (<= vp-h 0.0))
+            0.0
+            (let [half-w (* 0.5 vp-w)
+                  half-h (* 0.5 vp-h)
+                  dx (* ndc-dx-x half-w)
+                  dy (* ndc-dx-y half-h)
+                  len-sq-x (+ (* dx dx) (* dy dy))
+                  dx2 (* ndc-dy-x half-w)
+                  dy2 (* ndc-dy-y half-h)
+                  len-sq-y (+ (* dx2 dx2) (* dy2 dy2))
+                  scale (Math/sqrt (Math/max len-sq-x len-sq-y))]
+              (if (<= scale 0.0) 0.0 scale))))))))
 
 (defn- add-sdf-screen-scale
   "Annotate text entries with :sdf-screen-scale when rendering SDF fonts."
@@ -177,12 +175,16 @@
     text-entries))
 
 (defn- wrap-with-sdf-params
-  [put-pos-uv-fn font-map sdf-screen-scale ^Matrix4d world-transform]
+  [put-pos-uv-fn font-map ^double sdf-screen-scale ^Matrix4d world-transform]
   (let [{:keys [sdf-spread sdf-outline sdf-shadow]} font-map
+        sdf-spread (double sdf-spread)
+        sdf-outline (double sdf-outline)
+        sdf-shadow (double sdf-shadow)
         sdf-scale (if (> sdf-screen-scale 0.0)
-                    (max sdf-screen-scale sdf-min-screen-scale)
+                    (Math/max sdf-screen-scale (double sdf-min-screen-scale))
                     (local-scale-from-transform (or world-transform geom/Identity4d)))
-        sdf-scale (if (< sdf-scale sdf-min-scale) sdf-min-scale sdf-scale)
+        sdf-scale (double sdf-scale)
+        sdf-scale (if (< sdf-scale (double sdf-min-scale)) (double sdf-min-scale) sdf-scale)
         sdf-smoothing (/ 0.25 (* sdf-spread sdf-scale))
         sdf-edge 0.75]
     (fn [^ByteBuffer bb x y z u v]
@@ -419,12 +421,12 @@
 
 
 (defn- fill-vertex-buffer-quads
-  [vbuf text-entries font-map distance-field? put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn unpacked-layer-mask text-cursor-offset alpha outline-alpha shadow-alpha]
+  [vbuf text-entries font-map is-distance-field put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn unpacked-layer-mask text-cursor-offset alpha outline-alpha shadow-alpha]
   (reduce (fn [vbuf entry]
             (let [alpha (or alpha 1.0)
                   outline-alpha (or outline-alpha 1.0)
                   shadow-alpha (or shadow-alpha 1.0)
-                  sdf-put-pos-uv-fn (if distance-field?
+                  sdf-put-pos-uv-fn (if is-distance-field
                                       (wrap-with-sdf-params put-pos-uv-fn font-map (double (:sdf-screen-scale entry 0.0)) (:world-transform entry))
                                       put-pos-uv-fn)
                   put-pos-uv-fn (wrap-with-feature-data sdf-put-pos-uv-fn
@@ -475,7 +477,7 @@
 (defn- fill-vertex-buffer
   [^GL2 gl vbuf {:keys [type font-map texture] :as font-data} text-entries glyph-cache]
   (let [put-glyph-quad-fn (make-put-glyph-quad-fn font-map)
-        distance-field? (= type :distance-field)
+        is-distance-field (= type :distance-field)
         put-pos-uv-fn put-pos-uv!
         [_ outline-enabled shadow-enabled] (mapv protobuf/int->boolean (get-layers-in-mask (:layer-mask font-map)))
         layer-mask-enabled (> (count-layers-in-mask (:layer-mask font-map)) 1)
@@ -495,9 +497,9 @@
                           (- 0 (* (:padding font-map) 0.5))
                           0)
                      :y 0}]
-    (when (and layer-mask-enabled shadow-enabled) (fill-vertex-buffer-quads vbuf text-entries font-map distance-field? put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn [0 0 1] shadow-offset alpha outline-alpha shadow-alpha))
-    (when (and layer-mask-enabled outline-enabled) (fill-vertex-buffer-quads vbuf text-entries font-map distance-field? put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn [0 1 0] font-offset alpha outline-alpha shadow-alpha))
-    (fill-vertex-buffer-quads vbuf text-entries font-map distance-field? put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn face-mask font-offset alpha outline-alpha shadow-alpha)))
+    (when (and layer-mask-enabled shadow-enabled) (fill-vertex-buffer-quads vbuf text-entries font-map  is-distance-field put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn [0 0 1] shadow-offset alpha outline-alpha shadow-alpha))
+    (when (and layer-mask-enabled outline-enabled) (fill-vertex-buffer-quads vbuf text-entries font-map  is-distance-field put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn [0 1 0] font-offset alpha outline-alpha shadow-alpha))
+    (fill-vertex-buffer-quads vbuf text-entries font-map  is-distance-field put-pos-uv-fn line-height char->glyph glyph-cache put-glyph-quad-fn face-mask font-offset alpha outline-alpha shadow-alpha)))
 
 (defn gen-vertex-buffer
   ([^GL2 gl font-data text-entries]
